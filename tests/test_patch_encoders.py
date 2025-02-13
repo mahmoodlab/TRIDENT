@@ -78,6 +78,21 @@ class TestPatchEncoders(unittest.TestCase):
         
     def test_musk_forward(self):
         self._test_encoder_forward('musk')
+    
+    def test_hibou_l_forward(self):
+        self._test_encoder_forward('hibou_l')
+    
+    def test_kaiko_forward(self):
+        self._test_encoder_forward('kaiko-vits8')
+        self._test_encoder_forward('kaiko-vits16')
+        self._test_encoder_forward('kaiko-vitb8')
+        self._test_encoder_forward('kaiko-vitb16')
+        self._test_encoder_forward('kaiko-vitl14')
+        
+    def test_lunitvits8_forward(self):
+        self._test_encoder_forward('lunit-vits8')
+    
+    
 
 if __name__ == '__main__':
     unittest.main()

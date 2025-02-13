@@ -69,9 +69,16 @@ class TestSlideEncoders(unittest.TestCase):
             ('chief', CHIEFSlideEncoder),
             ('gigapath', GigaPathSlideEncoder),
             ('titan', TitanSlideEncoder),
+            ('madeleine', MadeleineSlideEncoder),
         ]:
             encoder = encoder_factory(model_name)
             self.assertIsInstance(encoder, expected_class)
+
+    def test_madeleine_encoder_initialization(self):
+        sample_batch = {
+            'features': torch.randn(1, 100, 512),
+        }
+        self._test_encoder_forward(MadeleineSlideEncoder(), sample_batch, torch.bfloat16)
 
     def test_slide_encoder_factory_invalid_name(self):
         print("\033[95m" + "Testing Slide Encoder Factory with invalid names" + "\033[0m")

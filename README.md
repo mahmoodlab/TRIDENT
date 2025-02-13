@@ -15,7 +15,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 - **Tissue Segmentation**: Extract tissue from background using a DeepLabv3 model (supports H&E, IHC, penmark and artifact removal, etc.).
 - **Patch Extraction**: Extract tissue patches of any size and magnification.
-- **Patch Feature Extraction**: Extract patch embeddings from tissue patches using 13 popular foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCH](https://www.nature.com/articles/s41591-024-02856-4), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and many more...
+- **Patch Feature Extraction**: Extract patch embeddings from tissue patches using 20 popular foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCH](https://www.nature.com/articles/s41591-024-02856-4), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and many more...
 - **Slide Feature Extraction**: Extract slide embeddings from pre-extracted patch embeddings using 5 whole-slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), 
 [PRISM](https://arxiv.org/abs/2405.10254), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w) and [CHIEF](https://www.nature.com/articles/s41586-024-07894-z). 
 
@@ -92,7 +92,7 @@ python run_single_slide.py --slide_path wsis/xxxx.svs --job_dir ./trident_proces
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 13 patch encoders, loaded via a patch-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 20 patch encoders, loaded via a patch-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 - **UNI**: [MahmoodLab/UNI](https://huggingface.co/MahmoodLab/UNI)  (`--patch_encoder uni_v1`)
 - **UNIv2**: [MahmoodLab/UNI2-h](https://huggingface.co/MahmoodLab/UNI2-h)  (`--patch_encoder uni_v2`)
@@ -105,8 +105,11 @@ Trident supports 13 patch encoders, loaded via a patch-level [`encoder_factory`]
 - **Prov-Gigapath**: [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath)  (`--patch_encoder gigapath`)
 - **H-Optimus-0**: [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0)  (`--patch_encoder hoptimus0`)
 - **MUSK**: [xiangjx/musk](https://huggingface.co/xiangjx/musk)  (`--patch_encoder musk`)
+- **Kaiko**: Hosted on TorchHub  (`--patch_encoder kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14`)
+- **Lunit**: [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino)  (`--patch_encoder lunit-vits8`)
+- **Hibou**: [histai/hibou-L](https://huggingface.co/histai/hibou-L)  (`--patch_encoder hibou_l`)
 - **CTransPath-CHIEF**: Automatic download  (`--patch_encoder ctranspath`)
-- **ResNet50**: Pretrained on ImageNet via torchvision.  (`--patch_encoder resnet50`)
+- **ResNet50**: Hosted on torchvision.  (`--patch_encoder resnet50`)
 
 **Step 3b: Slide Feature Extraction:** Extracts slide embeddings using a slide encoder. Will also automatically extract patch embeddings. 
  - **Command**:
@@ -123,11 +126,12 @@ Trident supports 13 patch encoders, loaded via a patch-level [`encoder_factory`]
    - Features are saved as h5 files in `./trident_processed/20x_256px/slide_features_titan`. (Shape: `(feature_dim)`)
 
 Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
-- **Threads**: Coming Soon! [MahmoodLab/threads](https://huggingface.co/MahmoodLab/threads) (`--slide_encoder threads`).
-- **Titan**: [MahmoodLab/TITAN](https://huggingface.co/MahmoodLab/TITAN) (`--slide_encoder titan`)
-- **PRISM**: [paige-ai/Prism](https://huggingface.co/paige-ai/Prism) (`--slide_encoder prism`)
-- **CHIEF**: [CHIEF](https://github.com/hms-dbmi/CHIEF) (`--slide_encoder chief`)
-- **GigaPath**: [prov-gigapath]()  (`--slide_encoder gigapath`)
+- **Threads**: Coming Soon! [MahmoodLab/threads](https://huggingface.co/MahmoodLab/threads) (`--slide_encoder threads`). Based on `conch_v15` with `512x512` @20x.
+- **Titan**: [MahmoodLab/TITAN](https://huggingface.co/MahmoodLab/TITAN) (`--slide_encoder titan`). Based on `conch_v15` with `512x512` @20x.
+- **PRISM**: [paige-ai/Prism](https://huggingface.co/paige-ai/Prism) (`--slide_encoder prism`). Based on `virchow` with `256x256` @20x.
+- **CHIEF**: [CHIEF](https://github.com/hms-dbmi/CHIEF) (`--slide_encoder chief`). Based on `ctranspath` with `256x256` @10x.
+- **GigaPath**: [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath)  (`--slide_encoder gigapath`). Based on `gigapath` with `256x256x` @20x.
+- **Madeleine**: [MahmoodLab/madeleine](https://huggingface.co/MahmoodLab/madeleine) (`--slide_encoder madeleine`). Based on `conch_v1` with `256x256` @10x.
 
 > [!NOTE]
 > If you have a patient containing multiple slides, you have two ways for constructing whole-patient embeddings: processing each slide independently and taking the average of the slide features (late fusion) or pooling all patches together and processing that as a single "pseudo-slide" (early fusion). You can use Trident-generated slide embeddings in your own late fusion pipeline, or use Trident-generated patch embeddings in your own early fusion pipeline. For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).

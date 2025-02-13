@@ -38,6 +38,8 @@ def encoder_factory(model_name, pretrained=True, freeze=True, **kwargs):
             enc = CHIEFSlideEncoder
         elif 'gigapath' in model_name:
             enc = GigaPathSlideEncoder
+        elif 'madeleine' in model_name:
+            enc = MadeleineSlideEncoder
         elif 'abmil' in model_name:
             enc = ABMILSlideEncoder
         else:
@@ -53,7 +55,8 @@ slide_to_patch_encoder_name = {
     'tcga': 'conch_v15',
     'prism': 'virchow',
     'chief': 'ctranspath',
-    'gigapath': 'gigapath'
+    'gigapath': 'gigapath',
+    'madeleine': 'conch_v1',
 }
 
 ####################################################################################################
@@ -284,6 +287,31 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
         return z
 
 
+class MadeleineSlideEncoder(BaseSlideEncoder):
+
+    def _build(self, pretrained=True, **kwargs):
+
+        assert pretrained, "MadeleineSlideEncoder has no non-pretrained models. Please load with pretrained=True."
+
+        self.enc_name = 'madeleine'
+        weights_path = get_weights_path('slide', self.enc_name)
+        embedding_dim = 512
+
+        try:
+            from madeleine.models.factory import create_model_from_pretrained
+        except:
+            traceback.print_exc()
+            raise Exception("Please install Madeleine using `pip install git+https://github.com/mahmoodlab/MADELEINE.git`")  
+        
+        model, precision = create_model_from_pretrained(weights_path)
+
+        return model, precision, embedding_dim
+    
+    def forward(self, x, device='cuda'):
+        z = self.model.encode_he(x['features'], device)
+        return z
+
+
 class ThreadsSlideEncoder(BaseSlideEncoder):
 
     def _build(self, pretrained=True, **kwargs):
@@ -295,7 +323,7 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
         except:
             traceback.print_exc()
             raise Exception("Coming Soon! Thanks for your patience.")
-
+        
         return None, None, None
 
     def forward(self, batch, device='cuda', return_raw_attention=False):
@@ -349,6 +377,20 @@ class MeanSlideEncoder(BaseSlideEncoder):
             embedding_dim = 1024
         elif model_name == 'mean-musk':
             embedding_dim = 1024
+        elif model_name == 'mean-hibou_l':
+            embedding_dim = 1024
+        elif model_name == 'mean-kaiko-vit8s':
+            embedding_dim = 384
+        elif model_name == 'mean-kaiko-vit16s':
+            embedding_dim = 384
+        elif model_name == 'mean-kaiko-vit8b':
+            embedding_dim = 768
+        elif model_name == 'mean-kaiko-vit16b':
+            embedding_dim = 768
+        elif model_name == 'mean-kaiko-vit14l':
+            embedding_dim = 1024
+        elif model_name == 'lunit-vits8':
+            embedding_dim = 384
         else:
             print(f"\033[93mWARNING: Could not automatically infer embedding_dim for mean encoder {self.enc_name}. Setting to None.\033[0m")
             embedding_dim = None

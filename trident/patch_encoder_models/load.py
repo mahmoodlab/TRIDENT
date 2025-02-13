@@ -49,6 +49,20 @@ def encoder_factory(model_name, **kwargs):
         enc = Phikonv2InferenceEncoder
     elif model_name == 'musk':
         enc = MuskInferenceEncoder
+    elif model_name == 'hibou_l':
+        enc = HibouLInferenceEncoder
+    elif model_name == 'kaiko-vitb8':
+        enc = KaikoB8InferenceEncoder
+    elif model_name == 'kaiko-vitb16':
+        enc = KaikoB16InferenceEncoder
+    elif model_name == 'kaiko-vits8':
+        enc = KaikoS8InferenceEncoder
+    elif model_name == 'kaiko-vits16':
+        enc = KaikoS16InferenceEncoder
+    elif model_name == 'kaiko-vitl14':
+        enc = KaikoL14InferenceEncoder
+    elif model_name == 'lunit-vits8':
+        enc = LunitS8InferenceEncoder
     else:
         raise ValueError(f"Unknown encoder name {model_name}")
 
@@ -129,6 +143,7 @@ class MuskInferenceEncoder(BasePatchEncoder):
                 ms_aug=self.inference_aug,
                 return_global=self.return_global  
                 )[0]  # Forward pass yields (vision_cls, text_cls). We only need vision_cls.
+
 
 class Conchv1InferenceEncoder(BasePatchEncoder):
     
@@ -235,6 +250,83 @@ class PhikonInferenceEncoder(BasePatchEncoder):
         return out
     
 
+class HibouLInferenceEncoder(BasePatchEncoder):
+    def _build(self, **kwargs):
+
+        from transformers import AutoModel
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = 'hibou_l'
+        weights_path = get_weights_path('patch', self.enc_name)
+        
+        if os.path.exists(weights_path):
+            model = AutoModel.from_pretrained(weights_path)
+        else:
+            model = AutoModel.from_pretrained("histai/hibou-L", trust_remote_code=True)
+            os.makedirs(weights_path, exist_ok=True)
+            model.save_pretrained(weights_path)
+        
+        mean, std = get_constants('hibou')
+        eval_transform = get_eval_transforms(mean, std, target_img_size=224, interpolation=InterpolationMode.BICUBIC, max_size=None, antialias=True)
+        precision = torch.float32
+
+        return model, eval_transform, precision
+    
+    def forward(self, x):
+        out = self.forward_features(x)
+        out = out.pooler_output
+        return out
+    
+    def forward_features(self, x):
+        out = self.model(pixel_values=x)
+        return out
+    
+
+class KaikoInferenceEncoder(BasePatchEncoder):
+    MODEL_NAME = None  # set in subclasses
+
+    def _build(self, **kwargs):
+        from torchvision.transforms import InterpolationMode
+        self.enc_name = f"kaiko-{self.MODEL_NAME}"
+        weights_path = get_weights_path("patch", self.enc_name)
+
+        if os.path.exists(weights_path):
+            model = torch.load(weights_path, map_location="cpu", weights_only=False)
+        else:
+            model = torch.hub.load("kaiko-ai/towards_large_pathology_fms", self.MODEL_NAME, trust_repo=True)
+            os.makedirs(os.path.dirname(weights_path), exist_ok=True)
+            torch.save(model, weights_path)
+
+        mean, std = get_constants("kaiko")
+        eval_transform = get_eval_transforms(mean, std, target_img_size=224, center_crop=True, interpolation=InterpolationMode.BILINEAR, max_size=None, antialias=True)
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class KaikoS16InferenceEncoder(KaikoInferenceEncoder):
+    MODEL_NAME = "vits16"
+
+
+class KaikoS8InferenceEncoder(KaikoInferenceEncoder):
+    MODEL_NAME = "vits8"
+
+
+class KaikoB16InferenceEncoder(KaikoInferenceEncoder):
+    MODEL_NAME = "vitb16"
+
+
+class KaikoB8InferenceEncoder(KaikoInferenceEncoder):
+    MODEL_NAME = "vitb8"
+
+
+class KaikoL14InferenceEncoder(KaikoInferenceEncoder):
+    MODEL_NAME = "vitl14"
+
+
 class ResNet50InferenceEncoder(BasePatchEncoder):
     def _build(
         self, 
@@ -273,7 +365,27 @@ class ResNet50InferenceEncoder(BasePatchEncoder):
             out = out[0]
         return out
                      
+
+class LunitS8InferenceEncoder(BasePatchEncoder):
+    def _build(self, **kwargs):
+        import timm
+        from timm.data import resolve_model_data_config
+        from timm.data.transforms_factory import create_transform
+
+        self.enc_name = 'lunit-vits8'
+
+        model = timm.create_model(
+            model_name="hf-hub:1aurent/vit_small_patch8_224.lunit_dino",
+            pretrained=True,
+        )
+
+        data_config = resolve_model_data_config(model)
+        eval_transform = create_transform(**data_config, is_training=False)
+        precision = torch.float32
+
+        return model, eval_transform, precision
     
+
 class UNIInferenceEncoder(BasePatchEncoder):
     def _build(
         self, 

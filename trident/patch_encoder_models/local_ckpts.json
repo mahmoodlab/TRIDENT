@@ -10,6 +10,13 @@
     "virchow2": "",
     "hoptimus0": "",
     "phikon_v2": "./phikon_v2",
+    "hibou_l": "./hibou_l",
+    "kaiko-vitb8": "./kaiko_b8",
+    "kaiko-vitb16": "./kaiko_b16",
+    "kaiko-vits8": "./kaiko_s8",
+    "kaiko-vits16": "./kaiko_s16",
+    "kaiko-vitl14": "./kaiko_l14",
+    "lunit-vits8": "./lunit_s8",
     "conch_v15": "./conchv1_5/pytorch_model_vision.bin",
     "custom_encoder": ""
 }
