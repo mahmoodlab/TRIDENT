@@ -80,7 +80,7 @@ python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_pr
 ## Under the Hood
 
 ### Segmentation
-Segmentation is performed by a [DeepLabV3 model](https://arxiv.org/abs/1706.05587v3) finetuned specifically to segment tissue from background in WSIs. By default, `run_trident.py` segments at 10x magnification. Use `--fast_seg` to segment at 5x magnification, which is faster but may be less accurate. If neither option yields good results, you can manually set `seg_mag` in `processor.run_segmentation_job()` to a higher magnification level. Note that higher magnification levels will be substantially slower.
+Segmentation is performed by a deep learning model. 2 options: HEST segmenter, a [DeepLabV3 model](https://arxiv.org/abs/1706.05587v3) finetuned specifically to segment tissue from background in WSIs (`--segmenter hest`), or GrandQC segmenter, published in [Nat. Comm](https://www.nature.com/articles/s41467-024-54769-y) which can be used with `--segmenter grandqc`. 
 
 ### Patching
 Trident's patching module is deterministic and extracts a set of patch coordinates given a tissue mask. Patches are extracted at a particular size (`patch_size`) and particular magnification (`mag`). Trident will attempt to read the base resolution of the WSI and calculate the appropriate downsample factor to extract patches at the desired magnification. Patches can either be nonoverlapping (`overlap == 0`) or overlapping (`overlap > 0`), where `overlap` refers to the absolute overlap in pixels. Trident keeps all patches that contain at least one pixel of tissue.
