@@ -459,6 +459,8 @@ class OpenSlideWSI:
             src_pixel_size = self.mpp,
             dst_pixel_size = destination_mpp
         )
+        precision = segmentation_model.precision
+        device = segmentation_model.device
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size), pin_memory=True)
@@ -469,7 +471,11 @@ class OpenSlideWSI:
         predicted_mask = np.zeros((height, width), dtype=np.uint8)
 
         for imgs, (xcoords, ycoords) in dataloader:
-            preds = segmentation_model(imgs).cpu().numpy()
+
+            imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
+            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                preds = segmentation_model(imgs).cpu().numpy()
+
             x_starts = np.round(xcoords.numpy() * mpp_reduction_factor).astype(int)
             y_starts = np.round(ycoords.numpy() * mpp_reduction_factor).astype(int)
             x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
