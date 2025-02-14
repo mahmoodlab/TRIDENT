@@ -40,6 +40,8 @@ def parse_arguments():
     parser.add_argument('--segmenter', type=str, default='hest', 
                         choices=['hest', 'grandqc',], 
                         help='Type of tissue vs background segmenter. Options are HEST or GrandQC.')
+    parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
+                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
                         help='Do you want to remove holes?')
     # Patching arguments
@@ -95,7 +97,11 @@ def run_task(processor, args):
         # Minimal example for tissue segmentation:
         # python run_batch_of_slides.py --task seg --wsi_dir wsis --job_dir trident_processed --gpu 0
         from trident.segmentation_models.load import segmentation_model_factory
-        segmentation_model = segmentation_model_factory(args.segmenter, device=f'cuda:{args.gpu}')
+        segmentation_model = segmentation_model_factory(
+            args.segmenter,
+            confidence_thresh=args.seg_conf_thresh,
+            device=f'cuda:{args.gpu}'
+        )
         processor.run_segmentation_job(
             segmentation_model,
             seg_mag=segmentation_model.target_mag,

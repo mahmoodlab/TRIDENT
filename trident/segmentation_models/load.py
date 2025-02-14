@@ -7,10 +7,10 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 from abc import abstractmethod
 
 class SegmentationModel(torch.nn.Module):
-    def __init__(self, freeze=True, **build_kwargs):
+    def __init__(self, freeze=True, confidence_thresh=0.5, **build_kwargs):
         super().__init__()
         self.model, self.eval_transforms = self._build(**build_kwargs)
-        self.confidence_thresh = 0.5
+        self.confidence_thresh = confidence_thresh
 
         # Set all parameters to be non-trainable
         if freeze and self.model is not None:
@@ -156,18 +156,22 @@ class GrandQCSegmenter(SegmentationModel):
         '''
         Custom forward pass.
         '''
-        logits = self.model.predict(batch)        
-        predictions =  1 - torch.argmax(logits, dim=1).to(torch.uint8)
+        logits = self.model.predict(batch)
+        probs = torch.softmax(logits, dim=1)  
+        max_probs, predicted_classes = torch.max(probs, dim=1)  
+        predictions = (max_probs >= self.confidence_thresh) * (1 - predicted_classes)
+        predictions = predictions.to(torch.uint8)
+ 
         return predictions
 
 
-def segmentation_model_factory(model_name, device, freeze=True):
+def segmentation_model_factory(model_name, confidence_thresh, device, freeze=True):
     '''
     Build a slide encoder based on model name.
     '''
     if model_name == 'hest':
-        return HESTSegmenter(freeze, checkpoint_dir = os.path.join(current_dir, 'hest-tissue-seg/'), device = device)
+        return HESTSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'hest-tissue-seg/'), device=device)
     elif model_name == 'grandqc':
-        return GrandQCSegmenter(freeze, checkpoint_dir = os.path.join(current_dir, 'grandqc/'), device = device)
+        return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'grandqc/'), device=device)
     else:
         raise ValueError(f"Model type {model_name} not supported")
