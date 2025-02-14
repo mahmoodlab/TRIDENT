@@ -108,6 +108,9 @@ class JpegCompressionTransform:
 class GrandQCSegmenter(SegmentationModel):
 
     def _build(self, checkpoint_dir, device):
+        """
+        Credit to https://www.nature.com/articles/s41467-024-54769-y
+        """
         import segmentation_models_pytorch as smp
 
         self.device = device
