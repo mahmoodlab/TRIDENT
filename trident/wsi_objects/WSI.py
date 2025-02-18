@@ -524,6 +524,9 @@ class OpenSlideWSI:
         self.gdf_contours = gdf_contours
         self.tissue_seg_path = gdf_saveto
 
+        if isinstance(self.img, DummyOpenSlide):
+            self.img.close()
+
         # Draw the contours on the thumbnail image
         contours_saveto = os.path.join(job_dir, 'contours', f'{self.name}.jpg')
         annotated = np.array(thumbnail)
@@ -665,6 +668,9 @@ class OpenSlideWSI:
                 assets = assets,
                 attributes = {'coords': attributes},
                 mode='w')
+
+        if isinstance(self.img, DummyOpenSlide):
+            self.img.close()
         
         return out_fname
 
@@ -862,6 +868,9 @@ class OpenSlideWSI:
             torch.save(features, os.path.join(save_features, f'{self.name}.{saveas}'))
         else:
             raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
+        
+        if isinstance(self.img, DummyOpenSlide):
+            self.img.close()
 
         return os.path.join(save_features, f'{self.name}.{saveas}')
 
