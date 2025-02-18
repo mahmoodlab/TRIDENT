@@ -8,12 +8,15 @@ import torch
 from typing import List, Tuple, Optional
 from torch.utils.data import DataLoader
 
+Image.MAX_IMAGE_PIXELS = None  # Disable limit
+
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords, read_coords_legacy,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers
 )
+
 class OpenSlideWSI:
     """
     The `OpenSlideWSI` class provides an interface to work with Whole Slide Images (WSIs) using OpenSlide. 
@@ -114,8 +117,11 @@ class OpenSlideWSI:
         """
         if not self.lazy_init:
             try:
-                self.img = openslide.OpenSlide(self.slide_path)
-                # set openslide attrs as self
+                try:
+                    self.img = openslide.OpenSlide(self.slide_path)
+                except Exception as e:
+                    print(f'Cannot read slide at path {self.slide_path}. Attempting using PIL.')
+                    self.img = DummyOpenSlide(path=self.slide_path, mpp=self.mpp)
                 self.dimensions = self.get_dimensions()
                 self.width, self.height = self.dimensions
                 self.level_count = self.img.level_count
@@ -134,6 +140,8 @@ class OpenSlideWSI:
                     except FileNotFoundError:
                         raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
             except Exception as e:
+                # Trying with PIL (experimental)
+
                 raise Exception(f"Error initializing WSI: {e}")
 
     def __repr__(self) -> str:
@@ -954,3 +962,48 @@ class OpenSlideWSI:
                     mode='w')
 
         return save_path
+
+
+class DummyOpenSlide:
+    def __init__(self, path, mpp):
+        self.path = path
+        self.img = None  # Lazy loading
+        self.properties = {
+            openslide.PROPERTY_NAME_MPP_X: str(mpp),
+            openslide.PROPERTY_NAME_MPP_Y: str(mpp),
+        }
+        with Image.open(path) as img:
+            self.level_dimensions = [(img.width, img.height)]
+        self.level_downsamples = [1]
+
+    def _ensure_image_open(self):
+        if self.img is None:
+            self.img = Image.open(self.path)
+
+    @property
+    def dimensions(self):
+        self._ensure_image_open()
+        return self.img.size
+
+    @property
+    def level_count(self):
+        return 1
+
+    def get_thumbnail(self, size):
+        self._ensure_image_open()
+        img = self.img.copy()
+        img.thumbnail(size)
+        return img
+
+    def read_region(self, location, level, size):
+        self._ensure_image_open()
+        region = self.img.crop((location[0], location[1], location[0] + size[0], location[1] + size[1]))
+        return region.convert("RGBA")
+
+    def get_best_level_for_downsample(self, downsample):
+        return 0  # Single level only
+
+    def close(self):
+        if self.img is not None:
+            self.img.close()
+            self.img = None
