@@ -127,12 +127,6 @@ class OpenSlideWSI:
                 self.mag = self._fetch_magnification(self.custom_mpp_keys)
                 self.lazy_init = True
 
-                if self.tissue_seg_path is not None:
-                    try:
-                        # self.mask = cv2.imread(self.tissue_seg_path, cv2.IMREAD_GRAYSCALE)
-                        self.gdf_contours = gpd.read_file(self.tissue_seg_path)
-                    except FileNotFoundError:
-                        raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
             except Exception as e:
                 raise Exception(f"Error initializing WSI: {e}")
 
@@ -513,7 +507,6 @@ class OpenSlideWSI:
         )
         gdf_contours.set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
         gdf_contours.to_file(gdf_saveto, driver="GeoJSON")
-        self.gdf_contours = gdf_contours
         self.tissue_seg_path = gdf_saveto
 
         # Draw the contours on the thumbnail image
@@ -586,6 +579,20 @@ class OpenSlideWSI:
         # If no suitable level is found, raise an error
         raise ValueError(f"No suitable level found for downsample {downsample}.")
 
+    def load_gdf_contours(self):
+        """
+        Load geodataframe with tissue vs. background contours.
+
+        Returns:
+        --------
+        gpd: Geodataframe. Each entry is a contour.
+        """
+        try:
+            gdf_contours = gpd.read_file(self.tissue_seg_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
+        return gdf_contours
+
     def extract_tissue_coords(
         self,
         target_mag: int,
@@ -625,12 +632,13 @@ class OpenSlideWSI:
         """
 
         self._lazy_initialize()
+        gdf_contours = self.load_gdf_contours()
 
         patcher = self.create_patcher(
             patch_size=patch_size,
             src_mag=self.mag,
             dst_mag=target_mag,
-            mask=self.gdf_contours,
+            mask=gdf_contours,
             coords_only=True,
             overlap=overlap,
             threshold=min_tissue_proportion,

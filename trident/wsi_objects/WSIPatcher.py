@@ -27,7 +27,7 @@ class OpenSlideWSIPatcher:
         """ Initialize patcher, compute number of (masked) rows, columns.
 
         Args:
-            wsi (WSI): wsi to patch
+            wsi (OpenSlideWSI): wsi to patch
             patch_size (int): patch width/height in pixel on the slide after rescaling
             src_pixel_size (float, optional): pixel size in um/px of the slide before rescaling. Defaults to None.
             dst_pixel_size (float, optional): pixel size in um/px of the slide after rescaling. Defaults to None.
