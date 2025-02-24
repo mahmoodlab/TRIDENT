@@ -5,7 +5,7 @@ from PIL import Image
 import os 
 import warnings
 import torch 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from torch.utils.data import DataLoader
 
 from trident.wsi_objects.WSIPatcher import *
@@ -156,6 +156,7 @@ class OpenSlideWSI:
         >>> wsi.get_dimensions()
         (100000, 80000)
         """
+        self._lazy_initialize() # ensure WSI has been init
         return self.img.dimensions
 
     def read_region(
@@ -187,6 +188,7 @@ class OpenSlideWSI:
         >>> print(region.shape)
         (512, 512, 3)
         """
+        self._lazy_initialize() # ensure WSI has been init
         return np.array(self.read_region_pil(location, level, size))
     
     def read_region_pil(
@@ -217,6 +219,7 @@ class OpenSlideWSI:
         >>> region = wsi.read_region_pil((0, 0), level=0, size=(512, 512))
         >>> region.show()
         """
+        self._lazy_initialize() # ensure WSI has been init
         return self.img.read_region(location, level, size).convert('RGB')
 
     def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
@@ -238,6 +241,7 @@ class OpenSlideWSI:
         >>> thumbnail = wsi.get_thumbnail((256, 256))
         >>> thumbnail.show()
         """
+        self._lazy_initialize() # ensure WSI has been init
         return self.img.get_thumbnail(size).convert('RGB')
 
     def create_patcher(
@@ -302,6 +306,7 @@ class OpenSlideWSI:
         If the MPP value is unavailable, this method attempts to calculate it 
         from the slide's resolution metadata.
         """
+        self._lazy_initialize() # ensure WSI has been init
         mpp_x = None
         mpp_keys = [
             openslide.PROPERTY_NAME_MPP_X,
@@ -368,6 +373,7 @@ class OpenSlideWSI:
         >>> print(mag)
         40
         """
+        self._lazy_initialize() # ensure WSI has been init
         try:
             if self.mpp is None:
                 mpp_x = self._fetch_mpp(custom_mpp_keys)
@@ -412,7 +418,7 @@ class OpenSlideWSI:
         holes_are_tissue: bool = True,
         job_dir: str | None = None,
         batch_size: int = 16,
-    ) -> str:
+    ) -> Union[str, gpd.GeoDataFrame]:
         """
         The `segment_tissue` function of the class `OpenSlideWSI` segments tissue regions in the WSI using 
         a specified segmentation model. It processes the WSI at a target magnification level, optionally 
@@ -433,8 +439,9 @@ class OpenSlideWSI:
 
         Returns:
         --------
-        str:
-            The absolute path to where the segmentation as GeoJSON is saved. 
+        Union[str, geopandas.GeoDataFrame]:
+            If `job_dir` is provided, returns the absolute path to where the segmentation is saved as a GeoJSON. 
+            If `job_dir` is None, returns a geodataframe where each entry is a contour tissue.
 
         Example:
         --------
@@ -442,7 +449,7 @@ class OpenSlideWSI:
         >>> # Results saved in "output_dir"
         """
 
-        self._lazy_initialize()
+        self._lazy_initialize() # ensure WSI has been init
         max_dimension = 1000
         if self.width > self.height:
             thumbnail_width = max_dimension
@@ -496,30 +503,34 @@ class OpenSlideWSI:
         for hole in holes:
             cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
 
-        # Save thumbnail image
-        thumbnail_saveto = os.path.join(job_dir, 'thumbnails', f'{self.name}.jpg')
-        os.makedirs(os.path.dirname(thumbnail_saveto), exist_ok=True)
-        thumbnail.save(thumbnail_saveto)
-
-        # Save geopandas contours
-        gdf_saveto = os.path.join(job_dir, 'contours_geojson', f'{self.name}.geojson')
-        os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
+        # Create geopandas contours
         gdf_contours = mask_to_gdf(
             mask=predicted_mask,
             max_nb_holes=0 if holes_are_tissue else 5,
             min_contour_area=1000,
             pixel_size=self.mpp,
             contour_scale=1/mpp_reduction_factor
-        )
-        gdf_contours.set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
+        ).set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
+
+        # return contours if no save path is provided.
+        if job_dir is None:
+            return gdf_contours
+
+        gdf_saveto = os.path.join(job_dir, 'contours_geojson', f'{self.name}.geojson')
+        os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
         gdf_contours.to_file(gdf_saveto, driver="GeoJSON")
         self.gdf_contours = gdf_contours
         self.tissue_seg_path = gdf_saveto
 
-        # Draw the contours on the thumbnail image
+        # Save thumbnail image with contours drawn
         contours_saveto = os.path.join(job_dir, 'contours', f'{self.name}.jpg')
         annotated = np.array(thumbnail)
         overlay_gdf_on_thumbnail(gdf_contours, annotated, contours_saveto, thumbnail_width / self.width)
+
+        # Save thumbnail image
+        thumbnail_saveto = os.path.join(job_dir, 'thumbnails', f'{self.name}.jpg')
+        os.makedirs(os.path.dirname(thumbnail_saveto), exist_ok=True)
+        thumbnail.save(thumbnail_saveto)
 
         return gdf_saveto
 
@@ -556,6 +567,7 @@ class OpenSlideWSI:
         >>> print(level, custom_downsample)
         2, 1.1
         """
+        self._lazy_initialize() # ensure WSI has been init
         level_downsamples = self.level_downsamples
 
         # First, check for an exact match within tolerance
@@ -684,6 +696,7 @@ class OpenSlideWSI:
         >>> print(viz_path)
         output_viz/sample_name.png
         """
+        self._lazy_initialize() # ensure WSI has been init
 
         try:
             coords_attrs, coords = read_coords(coords_path)  # Coords are ALWAYS wrt. level 0 of the slide.
@@ -762,11 +775,11 @@ class OpenSlideWSI:
         self,
         patch_encoder: torch.nn.Module,
         coords_path: str,
-        save_features: str,
+        save_features: str = None,
         device: str = 'cuda:0',
         saveas: str = 'h5',
         batch_limit: int = 512
-    ) -> str:
+    ) -> Union[str, np.array]:
         """
         The `extract_features` function of the class `OpenSlideWSI` extracts feature embeddings 
         from the WSI using a specified patch encoder. It processes the patches as specified 
@@ -778,8 +791,8 @@ class OpenSlideWSI:
             The model used for feature extraction.
         coords_path : str
             Path to the file containing patch coordinates.
-        save_features : str
-            Directory path to save the extracted features.
+        save_features : str, optional
+            Directory path to save the extracted features. Defaults to None.
         device : str, optional
             Device to run feature extraction on (e.g., 'cuda:0'). Defaults to 'cuda:0'.
         saveas : str, optional
@@ -789,8 +802,9 @@ class OpenSlideWSI:
 
         Returns:
         --------
-        str:
-            The absolute file path to the saved feature file in the specified format.
+        Union[str, np.array]:
+            If `save_features` provides a save path, returns the absolute file path to the saved patch feature file in the specified format.
+            If `save_features` is None, returns a numpy array of dimensions [#patches x patch_emb_dim] with the patch embeddings.
 
         Example:
         --------
@@ -837,6 +851,10 @@ class OpenSlideWSI:
         # Concatenate features
         features = np.concatenate(features, axis=0)
 
+        # Return features as numpy if no where to save them
+        if save_features is None:
+            return features 
+        
         # Save the features to disk
         os.makedirs(save_features, exist_ok=True)
         if saveas == 'h5':
@@ -862,9 +880,9 @@ class OpenSlideWSI:
         self,
         patch_features_path: str,
         slide_encoder: torch.nn.Module,
-        save_features: str,
+        save_features: str = None,
         device: str = 'cuda',
-    ) -> str:
+    ) -> Union[str, np.array]:
         """
         Extract slide-level features by encoding patch-level features using a pretrained slide encoder.
 
@@ -875,11 +893,14 @@ class OpenSlideWSI:
         Args:
             patch_features_path (str): Path to the HDF5 file containing patch-level features and coordinates.
             slide_encoder (torch.nn.Module): Pretrained slide encoder model for generating slide-level features.
-            save_features (str): Directory where the extracted slide features will be saved.
+            save_features (str, optional): Directory where the extracted slide features will be saved. Defaults to None.
             device (str, optional): Device to run computations on (e.g., 'cuda', 'cpu'). Defaults to 'cuda'.
 
         Returns:
-            str: The absolute path to the slide-level features.
+        --------
+        Union[str, np.array]:
+            If `save_features` provides a save path, returns the absolute file path to the saved slide feature file as h5.
+            If `save_features` is None, returns a numpy array of dimensions [slide_emb_dim] with the slide embeddings.
 
         Workflow:
             1. Load the pretrained slide encoder model and set it to evaluation mode.
@@ -937,6 +958,10 @@ class OpenSlideWSI:
         with torch.autocast(device_type='cuda', enabled=(slide_encoder.precision != torch.float32)):
             features = slide_encoder(batch, device)
         features = features.float().cpu().numpy().squeeze()
+
+        # Return slide embeddings if no save_features directory is specified:
+        if save_features is None:
+            return features 
 
         # Save slide-level features if save path is provided
         os.makedirs(save_features, exist_ok=True)

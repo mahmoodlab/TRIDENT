@@ -31,7 +31,7 @@ class OpenSlideWSIPatcher:
             patch_size (int): patch width/height in pixel on the slide after rescaling
             src_pixel_size (float, optional): pixel size in um/px of the slide before rescaling. Defaults to None.
             dst_pixel_size (float, optional): pixel size in um/px of the slide after rescaling. Defaults to None.
-	    src_mag (int, optional): level0 magnification of the slide before rescaling. Defaults to None.
+	        src_mag (int, optional): level0 magnification of the slide before rescaling. Defaults to None.
             dst_mag (int, optional): target magnification of the slide after rescaling. Defaults to None.
             overlap (int, optional): Overlap between patches in pixels. Defaults to 0. 
             mask (gpd.GeoDataFrame, optional): geopandas dataframe of Polygons. Defaults to None.
