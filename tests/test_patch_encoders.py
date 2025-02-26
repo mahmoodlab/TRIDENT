@@ -75,7 +75,10 @@ class TestPatchEncoders(unittest.TestCase):
 
     def test_hoptimus0_forward(self):
         self._test_encoder_forward('hoptimus0')
-        
+
+    def test_hoptimus1_forward(self):
+        self._test_encoder_forward('hoptimus1')
+
     def test_musk_forward(self):
         self._test_encoder_forward('musk')
     
