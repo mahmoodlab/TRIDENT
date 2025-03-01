@@ -90,7 +90,7 @@ class BasePatchEncoder(torch.nn.Module):
 
 
 class CustomInferenceEncoder(BasePatchEncoder):
-    def __init__(self, enc_name, model, transforms, precision, **kwargs):
+    def __init__(self, enc_name, model, transforms, precision):
         super().__init__()
         self.enc_name = enc_name
         self.model = model
@@ -103,7 +103,7 @@ class CustomInferenceEncoder(BasePatchEncoder):
 
 class MuskInferenceEncoder(BasePatchEncoder):
     
-    def _build(self, inference_aug = False, with_proj = False, out_norm = False, return_global = True, **kwargs):
+    def _build(self, inference_aug = False, with_proj = False, out_norm = False, return_global = True):
         '''
         Args:
             inference_aug (bool): Whether to use test-time multiscale augmentation. Default is False to allow for fair comparison with other models.
@@ -147,7 +147,7 @@ class MuskInferenceEncoder(BasePatchEncoder):
 
 class Conchv1InferenceEncoder(BasePatchEncoder):
     
-    def _build(self, with_proj = False, normalize = False, **kwargs):
+    def _build(self, with_proj = False, normalize = False):
         self.enc_name = 'conch_v1'
         self.with_proj = with_proj
         self.normalize = normalize
@@ -173,7 +173,7 @@ class Conchv1InferenceEncoder(BasePatchEncoder):
     
     
 class CTransPathInferenceEncoder(BasePatchEncoder):
-    def _build(self, **kwargs):
+    def _build(self):
         from torchvision.transforms import Compose, Resize, InterpolationMode
         from torch import nn
 
@@ -221,7 +221,7 @@ class CTransPathInferenceEncoder(BasePatchEncoder):
 
 
 class PhikonInferenceEncoder(BasePatchEncoder):
-    def _build(self, **kwargs):
+    def _build(self):
     
         from transformers import ViTModel
         from torchvision.transforms import Compose, Resize, InterpolationMode
@@ -251,7 +251,7 @@ class PhikonInferenceEncoder(BasePatchEncoder):
     
 
 class HibouLInferenceEncoder(BasePatchEncoder):
-    def _build(self, **kwargs):
+    def _build(self):
 
         from transformers import AutoModel
         from torchvision.transforms import InterpolationMode
@@ -285,7 +285,7 @@ class HibouLInferenceEncoder(BasePatchEncoder):
 class KaikoInferenceEncoder(BasePatchEncoder):
     MODEL_NAME = None  # set in subclasses
 
-    def _build(self, **kwargs):
+    def _build(self):
         from torchvision.transforms import InterpolationMode
         self.enc_name = f"kaiko-{self.MODEL_NAME}"
         weights_path = get_weights_path("patch", self.enc_name)
@@ -333,8 +333,7 @@ class ResNet50InferenceEncoder(BasePatchEncoder):
         pretrained=True, 
         timm_kwargs={"features_only": True, "out_indices": [3], "num_classes": 0},
         img_size=224,
-        pool=True,
-        **kwargs
+        pool=True
     ):
         import timm
         from torchvision.transforms import Compose, Resize, InterpolationMode
@@ -367,7 +366,7 @@ class ResNet50InferenceEncoder(BasePatchEncoder):
                      
 
 class LunitS8InferenceEncoder(BasePatchEncoder):
-    def _build(self, **kwargs):
+    def _build(self):
         import timm
         from timm.data import resolve_model_data_config
         from timm.data.transforms_factory import create_transform
@@ -389,8 +388,7 @@ class LunitS8InferenceEncoder(BasePatchEncoder):
 class UNIInferenceEncoder(BasePatchEncoder):
     def _build(
         self, 
-        timm_kwargs={"dynamic_img_size": True, "num_classes": 0, "init_values": 1.0},
-        **kwargs
+        timm_kwargs={"dynamic_img_size": True, "num_classes": 0, "init_values": 1.0}
     ):
         import timm
         from timm.data import resolve_data_config
@@ -410,10 +408,7 @@ class UNIInferenceEncoder(BasePatchEncoder):
     
     
 class UNIv2InferenceEncoder(BasePatchEncoder):
-    def _build(
-        self,
-        **kwargs
-    ):
+    def _build(self):
         import timm
         from timm.data import resolve_data_config
         from timm.data.transforms_factory import create_transform
@@ -449,9 +444,7 @@ class UNIv2InferenceEncoder(BasePatchEncoder):
 class GigaPathInferenceEncoder(BasePatchEncoder):
     def _build(
         self, 
-        timm_kwargs={},
-        **kwargs
-        ):
+        timm_kwargs={}):
         import timm
         assert timm.__version__ == '0.9.16', f"Gigapath requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
         from torchvision import transforms
@@ -479,8 +472,7 @@ class VirchowInferenceEncoder(BasePatchEncoder):
     def _build(
         self,
         return_cls=False,
-        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU},
-        **kwargs
+        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU}
     ):
         import timm
         from timm.data import resolve_data_config
@@ -517,8 +509,7 @@ class Virchow2InferenceEncoder(BasePatchEncoder):
     def _build(
         self,
         return_cls=False,
-        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU},
-        **kwargs
+        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU}
     ):
         import timm
         from timm.data import resolve_data_config
@@ -553,8 +544,7 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
     
     def _build(
         self,
-        timm_kwargs={'init_values': 1e-5, 'dynamic_img_size': False},
-        **kwargs
+        timm_kwargs={'init_values': 1e-5, 'dynamic_img_size': False}
     ):
         import timm
         assert timm.__version__ == '0.9.16', f"H-Optimus requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
@@ -578,7 +568,7 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
 
 
 class Phikonv2InferenceEncoder(BasePatchEncoder):
-    def _build(self, **kwargs):
+    def _build(self):
 
         from transformers import AutoModel
         import torchvision.transforms as T
@@ -611,7 +601,7 @@ class Phikonv2InferenceEncoder(BasePatchEncoder):
 
 
 class Conchv15InferenceEncoder(BasePatchEncoder):
-    def _build(self, img_size = 448, **kwargs):
+    def _build(self, img_size = 448):
 
         from trident.patch_encoder_models.model_zoo.conchv1_5.conchv1_5 import create_model_from_pretrained
 

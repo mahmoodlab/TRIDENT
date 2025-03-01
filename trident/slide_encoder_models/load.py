@@ -97,7 +97,7 @@ class BaseSlideEncoder(torch.nn.Module):
 
 class ABMILSlideEncoder(BaseSlideEncoder):
     
-    def _build(self, input_feature_dim, n_heads, head_dim, dropout, gated, pretrained=False, **kwargs):
+    def _build(self, input_feature_dim, n_heads, head_dim, dropout, gated, pretrained=False):
         from trident.slide_encoder_models.model_zoo.reusable_blocks.ABMIL import ABMIL
         import torch.nn as nn
         
@@ -146,7 +146,7 @@ class ABMILSlideEncoder(BaseSlideEncoder):
 
 class PRISMSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
         
         self.enc_name = 'prism'
 
@@ -183,7 +183,7 @@ class PRISMSlideEncoder(BaseSlideEncoder):
 
 class CHIEFSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
         
         self.enc_name = 'chief'
         weights_path = get_weights_path('slide', self.enc_name)
@@ -256,7 +256,7 @@ class CHIEFSlideEncoder(BaseSlideEncoder):
 
 class GigaPathSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
 
         self.enc_name = 'gigapath'
 
@@ -291,7 +291,7 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
 
 class MadeleineSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
 
         assert pretrained, "MadeleineSlideEncoder has no non-pretrained models. Please load with pretrained=True."
 
@@ -316,7 +316,7 @@ class MadeleineSlideEncoder(BaseSlideEncoder):
 
 class ThreadsSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
 
         self.enc_name = 'threads'
 
@@ -334,7 +334,7 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
 class TitanSlideEncoder(BaseSlideEncoder):
     
-    def _build(self, pretrained=True, **kwargs):
+    def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
         from transformers import AutoModel 
@@ -350,7 +350,7 @@ class TitanSlideEncoder(BaseSlideEncoder):
 
 class MeanSlideEncoder(BaseSlideEncoder):
 
-    def _build(self, model_name = 'mean-default', **kwargs):
+    def _build(self, model_name = 'mean-default'):
         self.enc_name = model_name
         
         if model_name == 'mean-conch_v1':
