@@ -45,6 +45,8 @@ def encoder_factory(model_name, **kwargs):
         enc = Virchow2InferenceEncoder
     elif model_name == 'hoptimus0':
         enc = HOptimus0InferenceEncoder
+    elif model_name == 'hoptimus1':
+        enc = HOptimus1InferenceEncoder
     elif model_name == 'phikon_v2':
         enc = Phikonv2InferenceEncoder
     elif model_name == 'musk':
@@ -553,6 +555,34 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
         self.enc_name = 'hoptimus0'
 
         model = timm.create_model("hf-hub:bioptimus/H-optimus-0", pretrained=True, **timm_kwargs)
+
+        eval_transform = transforms.Compose([
+            transforms.Resize(224),  
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.707223, 0.578729, 0.703617), 
+                std=(0.211883, 0.230117, 0.177517)
+            ),
+        ])
+        
+        precision = torch.float16
+        return model, eval_transform, precision
+
+
+class HOptimus1InferenceEncoder(BasePatchEncoder):
+    
+    def _build(
+        self,
+        timm_kwargs={'init_values': 1e-5, 'dynamic_img_size': False},
+        **kwargs
+    ):
+        import timm
+        assert timm.__version__ == '0.9.16', f"H-Optimus requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
+        from torchvision import transforms
+
+        self.enc_name = 'hoptimus1'
+
+        model = timm.create_model("hf-hub:bioptimus/H-optimus-1", pretrained=True **timm_kwargs)
 
         eval_transform = transforms.Compose([
             transforms.Resize(224),  

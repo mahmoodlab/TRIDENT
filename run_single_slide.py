@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
                         choices=['conch_v1', 'uni_v1', 'uni_v2', 'ctranspath', 'phikon', 
                                  'resnet50', 'gigapath', 'virchow', 'virchow2', 
-                                 'hoptimus0', 'phikon_v2', 'conch_v15', 'musk', 'hibou_l',
+                                 'hoptimus0', 'hoptimus1', 'phikon_v2', 'conch_v15', 'musk', 'hibou_l',
                                  'kaiko-vits8', 'kaiko-vits16', 'kaiko-vitb8', 'kaiko-vitb16',
                                  'kaiko-vitl14', 'lunit-vits8'],
                         help='Patch encoder to use')
