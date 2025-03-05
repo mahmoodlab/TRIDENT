@@ -1016,3 +1016,50 @@ class DummyOpenSlide:
         if self.img is not None:
             self.img.close()
             self.img = None
+
+
+class DummyCuCIMSlide:
+    def __init__(self, path, mpp):
+        from cucim import CuImage
+        self.path = path
+        self.img = None  # Lazy loading
+        self.cuimg = CuImage(path)
+        self.properties = {
+            "openslide.mpp-x": str(mpp),  # Adjusted the key names
+            "openslide.mpp-y": str(mpp),
+        }
+        self.level_dimensions = [self.cuimg.size()]  # Assuming cuCIM loads dimensions directly
+        self.level_downsamples = [1]
+
+    def _ensure_image_open(self):
+        if self.img is None:
+            self.img = self.cuimg.read_region((0, 0), (self.level_dimensions[0][0], self.level_dimensions[0][1]), 0)  # Reads whole image at the highest resolution
+
+    @property
+    def dimensions(self):
+        return self.level_dimensions[0]  # Returns dimensions of the highest resolution level
+
+    @property
+    def level_count(self):
+        return len(self.cuimg.resolutions)  # Returns the number of levels in the image
+
+    def get_thumbnail(self, size):
+        self._ensure_image_open()
+        return self.img.get_thumbnail(size)  # Uses cuCIM's thumbnail generation method
+
+    def read_region(self, location, level, size):
+        self._ensure_image_open()
+        # Extract region using numpy slicing for simplicity
+        region = self.img[location[1]:location[1]+size[1], location[0]:location[0]+size[0]]
+        return region  # Returns the region as a numpy array, convert to RGBA if needed
+
+    def get_best_level_for_downsample(self, downsample):
+        # Iterate through downsamples to find the best level
+        for i, ds in enumerate(self.level_downsamples):
+            if ds <= downsample:
+                return i
+        return len(self.level_downsamples) - 1  # Return the last level if no match found
+
+    def close(self):
+        self.img = None  # Handles closing, assuming cuCIM handles GPU memory management automatically
+
