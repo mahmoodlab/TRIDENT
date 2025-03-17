@@ -13,10 +13,10 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
-- **Tissue Segmentation**: Extract tissue from background (supports H&E, IHC, penmark and artifact removal, etc.).
+- **Tissue Segmentation**: Extract tissue from background (H&E, IHC, etc.).
 - **Patch Extraction**: Extract tissue patches of any size and magnification.
-- **Patch Feature Extraction**: Extract patch embeddings using one of over 20  foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and more...
-- **Slide Feature Extraction**: Extract slide embeddings using one of 6 slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w). 
+- **Patch Feature Extraction**: Extract patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and more...
+- **Slide Feature Extraction**: Extract slide embeddings from 5+ slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w). 
 
 ### Updates:
 - 02.25: New image converter from `czi`, `png`, etc to `tiff`.
@@ -25,75 +25,73 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 ### 🔨 1. **Installation**:
 - Create an environment: `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
-- **Install from local clone**:
-    - `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
-    - Local install with running `pip install -e .`.
-- **Install with pip**:
-    - `pip install git+https://github.com/mahmoodlab/trident.git `
-- Additional packages may be required to load some pretrained models. Follow error messages for instructions.
+- Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
+- Local installation: `pip install -e .`.
+
+Additional packages may be required to load some pretrained models. Follow error messages for instructions.
 
 ### 🔨 2. **Running Trident**:
 
-**Already familiar with WSI processing?** Interested in patch embeddings? Perform segmentation, patching, and UNI feature extraction for a directory of WSIs in a single command:
+**Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
 ```
-python run_batch_of_slides.py --task all --wsi_dir wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
 **Feeling cautious?**
 
-Run this script to perform all processing steps for just a single slide:
+Run this command to perform all processing steps for a **single** slide:
 ```
-python run_single_slide.py --slide_path wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
 **Or follow step-by-step instructions:**
 
-**Step 1: Tissue Segmentation:** Segments tissue vs. background from a list of WSIs
+**Step 1: Tissue Segmentation:** Segments tissue vs. background from a dir of WSIs
  - **Command**:
    ```bash
    python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpu 0 --segmenter hest
    ```
    - `--task seg`: Specifies that you want to do tissue segmentation.
-   - `--wsi_dir ./wsis`: Path to the directory containing WSIs.
-   - `--job_dir ./trident_processed`: Output directory for processed results.
-   - `--gpu 0`: Uses GPU with index 0 for computation.
-   - `--segmenter`: Segmentation model. Defaults to `hest`. Switch to `grandqc` for fast H&E segmentation.
+   - `--wsi_dir ./wsis`: Path to dir with your WSIs.
+   - `--job_dir ./trident_processed`: Output dir for processed results.
+   - `--gpu 0`: Uses GPU with index 0.
+   - `--segmenter`: Segmentation model. Defaults to `hest`. Switch to `grandqc` for fast H&E segmentation. Add the option `--remove_artifacts` for additional artifact clean up.
  - **Outputs**:
-   - WSI thumbnails are saved in `./trident_processed/thumbnails`.
-   - WSI thumbnails annotated with tissue contours are saved in `./trident_processed/contours`.
-   - GeoJSON files containing tissue contours are saved in `./trident_processed/contours_geojson`. These can be opened in [QuPath](https://qupath.github.io/) for editing/quality control, if necessary.
+   - WSI thumbnails in `./trident_processed/thumbnails`.
+   - WSI thumbnails with tissue contours in `./trident_processed/contours`.
+   - GeoJSON files containing tissue contours in `./trident_processed/contours_geojson`. These can be opened in [QuPath](https://qupath.github.io/) for editing/quality control, if necessary.
 
  **Step 2: Tissue Patching:** Extracts patches from segmented tissue regions at a specific magnification.
  - **Command**:
    ```bash
-   python run_batch_of_slides.py --task coords --wsi_dir wsis --job_dir ./trident_processed --mag 20 --patch_size 256 --overlap 0
+   python run_batch_of_slides.py --task coords --wsi_dir ./wsis --job_dir ./trident_processed --mag 20 --patch_size 256 --overlap 0
    ```
    - `--task coords`: Specifies that you want to do patching.
-   - `--wsi_dir wsis`: Path to the directory containing WSIs.
-   - `--job_dir ./trident_processed`: Output directory for processed results.
+   - `--wsi_dir wsis`: Path to the dir with your WSIs.
+   - `--job_dir ./trident_processed`: Output dir for processed results.
    - `--mag 20`: Extracts patches at 20x magnification.
    - `--patch_size 256`: Each patch is 256x256 pixels.
-   - `--overlap 0`: Patches overlap by 0 pixels. Note that this is the absolute overlap in pixels, i.e. use `--overlap 128` for 50% overlap on patches of size 256.
+   - `--overlap 0`: Patches overlap by 0 pixels (**always** an absolute number in pixels, e.g., `--overlap 128` for 50% overlap for 256x256 patches.
  - **Outputs**:
-   - Patch coordinates are saved as h5 files in `./trident_processed/20x_256px/patches`.
-   - WSI thumbnails annotated with patch borders are saved in `./trident_processed/20x_256px/visualization`.
+   - Patch coordinates as h5 files in `./trident_processed/20x_256px/patches`.
+   - WSI thumbnails annotated with patch borders in `./trident_processed/20x_256px/visualization`.
 
  **Step 3a: Patch Feature Extraction:** Extracts features from tissue patches using a specified encoder
  - **Command**:
    ```bash
-   python run_batch_of_slides.py --task feat --wsi_dir wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256 
+   python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256 
    ```
    - `--task feat`: Specifies that you want to do feature extraction.
-   - `--wsi_dir wsis`: Path to the directory containing WSIs.
-   - `--job_dir ./trident_processed`: Output directory for processed results.
-   - `--patch_encoder uni_v1`: Uses the `UNIv1` patch encoder. See below for list of supported models. 
+   - `--wsi_dir wsis`: Path to the dir with your WSIs.
+   - `--job_dir ./trident_processed`: Output dir for processed results.
+   - `--patch_encoder uni_v1`: Uses the `UNI` patch encoder. See below for list of supported models. 
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 256`: Patches are 256x256 pixels in size.
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 21 patch encoders, loaded via a patch-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 21 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 - **UNI**: [MahmoodLab/UNI](https://huggingface.co/MahmoodLab/UNI)  (`--patch_encoder uni_v1`)
 - **UNIv2**: [MahmoodLab/UNI2-h](https://huggingface.co/MahmoodLab/UNI2-h)  (`--patch_encoder uni_v2`)
@@ -113,14 +111,14 @@ Trident supports 21 patch encoders, loaded via a patch-level [`encoder_factory`]
 - **CTransPath-CHIEF**: Automatic download  (`--patch_encoder ctranspath`)
 - **ResNet50**: Hosted on torchvision.  (`--patch_encoder resnet50`)
 
-**Step 3b: Slide Feature Extraction:** Extracts slide embeddings using a slide encoder. Will also automatically extract patch embeddings. 
+**Step 3b: Slide Feature Extraction:** Extracts slide embeddings using a slide encoder. Will also automatically extract the right patch embeddings. 
  - **Command**:
    ```bash
-   python run_batch_of_slides.py --task feat --wsi_dir wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 512 
+   python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 512 
    ```
    - `--task feat`: Specifies that you want to do feature extraction.
-   - `--wsi_dir wsis`: Path to the directory containing WSIs.
-   - `--job_dir ./trident_processed`: Output directory for processed results.
+   - `--wsi_dir wsis`: Path to the dir containing WSIs.
+   - `--job_dir ./trident_processed`: Output dir for processed results.
    - `--slide_encoder titan`: Uses the `Titan` slide encoder. See below for supported models.
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 512`: Patches are 512x512 pixels in size.
@@ -136,9 +134,9 @@ Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](
 - **Madeleine**: [MahmoodLab/madeleine](https://huggingface.co/MahmoodLab/madeleine) (`--slide_encoder madeleine`). Based on `conch_v1` with `256x256` @10x.
 
 > [!NOTE]
-> If you have a patient containing multiple slides, you have two ways for constructing whole-patient embeddings: processing each slide independently and taking the average of the slide features (late fusion) or pooling all patches together and processing that as a single "pseudo-slide" (early fusion). You can use Trident-generated slide embeddings in your own late fusion pipeline, or use Trident-generated patch embeddings in your own early fusion pipeline. For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).
+> If your task includes multiple slides per patient, you can generate patient-level embeddings by: (1) processing each slide independently and taking their average slide embedding (late fusion) or (2) pooling all patches together and processing that as a single "pseudo-slide" (early fusion). For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).
 
-Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more cool things you can do with Trident and a more [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.
+Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more support as well as a [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.
 
 ### 🙋 FAQ
 - **Q**: How do I extract patch embeddings from legacy patch coordinates extracted with [CLAM](https://github.com/mahmoodlab/CLAM)?
