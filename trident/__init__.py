@@ -1,4 +1,4 @@
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
 from trident.wsi_objects.WSI import OpenSlideWSI
 from trident.wsi_objects.WSIPatcher import OpenSlideWSIPatcher
