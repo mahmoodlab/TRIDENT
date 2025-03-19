@@ -457,7 +457,8 @@ class OpenSlideWSI:
         patcher = self.create_patcher(
             patch_size = segmentation_model.input_size,
             src_pixel_size = self.mpp,
-            dst_pixel_size = destination_mpp
+            dst_pixel_size = destination_mpp,
+            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
         )
         precision = segmentation_model.precision
         device = segmentation_model.device
@@ -508,7 +509,7 @@ class OpenSlideWSI:
         os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
         gdf_contours = mask_to_gdf(
             mask=predicted_mask,
-            max_nb_holes=0 if holes_are_tissue else 5,
+            max_nb_holes=0 if holes_are_tissue else 20,
             min_contour_area=1000,
             pixel_size=self.mpp,
             contour_scale=1/mpp_reduction_factor
