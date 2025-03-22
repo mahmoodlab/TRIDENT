@@ -198,7 +198,8 @@ class Processor:
         self, 
         segmentation_model: torch.nn.Module, 
         seg_mag: int = 10, 
-        holes_are_tissue: bool = False
+        holes_are_tissue: bool = False,
+        batch_size: int = 16
     ) -> str:
         """
         The `run_segmentation_job` function performs tissue segmentation on all slides managed by the processor. 
@@ -214,6 +215,8 @@ class Processor:
                 10x magnification. Defaults to 10.
             holes_are_tissue (bool, optional): 
                 Specifies whether to treat holes within tissue regions as part of the tissue. Defaults to False.
+            batch_size (int, optional): 
+                The batch size for segmentation. Defaults to 16.
 
         Returns:
             str: Absolute path to where directory containing contours is saved.
@@ -268,8 +271,9 @@ class Processor:
                     segmentation_model=segmentation_model,
                     target_mag=seg_mag,
                     holes_are_tissue=holes_are_tissue,
-                    job_dir=self.job_dir
-                    )
+                    job_dir=self.job_dir,
+                    batch_size=batch_size
+                )
 
                 remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
 
