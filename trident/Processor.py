@@ -199,7 +199,8 @@ class Processor:
         segmentation_model: torch.nn.Module, 
         seg_mag: int = 10, 
         holes_are_tissue: bool = False,
-        batch_size: int = 16
+        batch_size: int = 16,
+        artifact_remover_model: torch.nn.Module = None
     ) -> str:
         """
         The `run_segmentation_job` function performs tissue segmentation on all slides managed by the processor. 
@@ -217,6 +218,8 @@ class Processor:
                 Specifies whether to treat holes within tissue regions as part of the tissue. Defaults to False.
             batch_size (int, optional): 
                 The batch size for segmentation. Defaults to 16.
+            artifact_remover_model (torch.nn.Module, optional): 
+                A pre-trained PyTorch model that can remove artifacts from an existing segmentation. Defaults to None.
 
         Returns:
             str: Absolute path to where directory containing contours is saved.
@@ -274,6 +277,15 @@ class Processor:
                     job_dir=self.job_dir,
                     batch_size=batch_size
                 )
+
+                # additionally remove artifacts for better segmentation.
+                if artifact_remover_model is not None:
+                    gdf_saveto = wsi.segment_tissue(
+                        segmentation_model=artifact_remover_model,
+                        target_mag=artifact_remover_model.target_mag,
+                        holes_are_tissue=False,
+                        job_dir=self.job_dir
+                    )
 
                 remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
 
