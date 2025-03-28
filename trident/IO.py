@@ -360,7 +360,7 @@ def read_coords_legacy(coords_path):
     with h5py.File(coords_path, 'r') as f:
         patch_size = f['coords'].attrs['patch_size']
         patch_level = f['coords'].attrs['patch_level']
-        custom_downsample = f['coords'].attrs['custom_downsample']
+        custom_downsample = f['coords'].attrs.get('custom_downsample', 1)
         coords = f['coords'][:]
     return patch_size, patch_level, custom_downsample, coords
 
