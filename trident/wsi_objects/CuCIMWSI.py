@@ -160,23 +160,18 @@ class CuCIMWSI(WSI):
         desired_downsample = max(downsample_x, downsample_y)
         level, _ = self.get_best_level_and_custom_downsample(desired_downsample)
 
-        # Read region at selected level
-        region = self.img.read_region(
+        # Compute the size to read at that level
+        level_width, level_height = self.level_dimensions[level]
+
+        # Read region at (0, 0) in target level
+        region = self.read_region(
             location=(0, 0),
-            size=self.level_dimensions[level],
+            size=(level_width, level_height),
             level=level
-        )
-        np_img = np.asarray(region)
+        ).convert("RGB")
+        region = region.resize((size[1], size[0]), resample=Image.BILINEAR)
 
-        # Drop alpha if present
-        if np_img.shape[-1] == 4:
-            np_img = np_img[..., :3]
-
-        # Convert to PIL and resize to final size
-        pil_img = Image.fromarray(np_img).convert("RGB")
-        pil_img = pil_img.resize(size, resample=Image.BILINEAR)
-
-        return pil_img
+        return region
 
     def read_region(
         self, 
