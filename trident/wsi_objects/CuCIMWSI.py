@@ -1,8 +1,9 @@
 from __future__ import annotations
 import numpy as np
 from PIL import Image
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import geopandas as gpd
+import torch 
 
 from trident.wsi_objects.WSI import WSI
 
@@ -183,75 +184,53 @@ class CuCIMWSI(WSI):
         level: int, 
         size: Tuple[int, int],
         device: str = 'cpu',
-    ) -> np.ndarray:
+        read_as: str = 'pil',
+    ) -> Union[np.ndarray, torch.Tensor, Image.Image]:
         """
-        The `read_region` function from the class `CuCIMWSI` extracts a specific region from the WSI as a NumPy array.
+        Extract a specific region from the whole-slide image (WSI) using CuCIM, with output as NumPy array,
+        Torch tensor, or PIL image.
 
         Args:
         -----
         location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
+            (x, y) coordinates of the top-left corner of the region to extract.
         level : int
             Pyramid level to read from.
         size : Tuple[int, int]
-            Width and height of the region.
-        device : str
-            Device used to run read the region. Defaults to cpu. 
+            (width, height) of the region to extract.
+        device : str, optional
+            Device used to perform the read. Can be 'cpu' or 'cuda:0', etc. Defaults to 'cpu'.
+        read_as : str, optional
+            Format to return the region in. Options are:
+            - 'numpy': returns a NumPy array
+            - 'torch': returns a Torch tensor (on GPU)
+            - 'pil': returns a PIL Image object (default)
 
         Returns:
         --------
-        np.ndarray:
-            The extracted region as a NumPy array.
+        Union[np.ndarray, torch.Tensor, PIL.Image.Image]
+            The extracted region in the specified format.
 
         Example:
         --------
-        >>> region = wsi.read_region((0, 0), level=0, size=(512, 512))
+        >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), device='cuda:0', read_as='torch')
         >>> print(region.shape)
-        (512, 512, 3)
+        torch.Size([512, 512, 3])
         """
+        region = self.img.read_region(location=location, level=level, size=size, device=device)
 
-        region = self.img.read_region(location=location, level=level, size=size, device='cpu')
-        region = cp.asnumpy(region) 
+        if read_as == 'torch':
+            if 'cuda' in device:
+                return torch.as_tensor(region, device=device)
+            else:
+                region = cp.asnumpy(region)
+                return torch.from_numpy(region).to('cuda')
+        elif read_as == 'numpy':
+            return cp.asnumpy(region)
+        elif read_as == 'pil':
+            return Image.fromarray(cp.asnumpy(region)).convert("RGB")
 
-        if region.shape[-1] == 4:
-            region = region[..., :3]
-
-        return region
-
-    def read_region_pil(
-        self, 
-        location: Tuple[int, int], 
-        level: int, 
-        size: Tuple[int, int],
-        device: str = 'cpu',
-    ) -> Image.Image:
-        """
-        The `read_region_pil` function from the class `CuCIMWSI` extracts a specific region from the WSI as a PIL Image.
-
-        Args:
-        -----
-        location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            Width and height of the region.
-        device : str
-            Device used to run read the region. Defaults to cpu. 
-
-        Returns:
-        --------
-        Image.Image:
-            The extracted region as a PIL Image in RGB format.
-
-        Example:
-        --------
-        >>> region = wsi.read_region_pil((0, 0), level=0, size=(512, 512))
-        >>> region.show()
-        """
-        region = self.read_region(location=location, level=level, size=size, device=device)
-        region = Image.fromarray(region).convert("RGB")
-        return region
+        raise ValueError(f"Unsupported read_as value: {read_as}")
 
     def get_dimensions(self) -> Tuple[int, int]:
         """

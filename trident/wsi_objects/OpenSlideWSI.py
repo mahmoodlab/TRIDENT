@@ -2,7 +2,7 @@ from __future__ import annotations
 import numpy as np
 import openslide
 from PIL import Image
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import geopandas as gpd
 
 from trident.wsi_objects.WSI import WSI
@@ -125,25 +125,30 @@ class OpenSlideWSI(WSI):
         level: int, 
         size: Tuple[int, int],
         device: str = 'cpu',
-    ) -> np.ndarray:
+        read_as: str = 'pil',
+    ) -> Union[np.ndarray, Image.Image]:
         """
-        The `read_region` function from the class `OpenSlideWSI` Extract a specific region from the WSI as a NumPy array.
+        Extract a specific region from the whole-slide image (WSI) as a NumPy array or PIL image.
 
         Args:
         -----
         location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
+            (x, y) coordinates of the top-left corner of the region to extract.
         level : int
             Pyramid level to read from.
         size : Tuple[int, int]
-            Width and height of the region.
-        device : str
-            Dead argument for compatibility with CuCIM. 
+            (width, height) of the region to extract.
+        device : str, optional
+            Unused. Present for API compatibility with CuCIM. Defaults to 'cpu'.
+        read_as : str, optional
+            Format to return the region in. Options are:
+            - 'numpy': returns a NumPy array
+            - 'pil': returns a PIL Image object (default)
 
         Returns:
         --------
-        np.ndarray:
-            The extracted region as a NumPy array.
+        Union[np.ndarray, PIL.Image.Image]
+            The extracted region in the specified format.
 
         Example:
         --------
@@ -151,41 +156,13 @@ class OpenSlideWSI(WSI):
         >>> print(region.shape)
         (512, 512, 3)
         """
-        return np.array(self.read_region_pil(location, level, size))
+        region = self.img.read_region(location, level, size).convert('RGB')
+
+        if read_as == 'numpy':
+            return np.array(region)
+        
+        return region
     
-    def read_region_pil(
-        self, 
-        location: Tuple[int, int], 
-        level: int, 
-        size: Tuple[int, int],
-        device: str = 'cpu',
-    ) -> Image.Image:
-        """
-        The `read_region_pil` function from the class `OpenSlideWSI` Extract a specific region from the WSI as a PIL Image.
-
-        Args:
-        -----
-        location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            Width and height of the region.
-        device : str
-            Dead argument for compatibility with CuCIM. 
-            
-        Returns:
-        --------
-        Image.Image:
-            The extracted region as a PIL Image in RGB format.
-
-        Example:
-        --------
-        >>> region = wsi.read_region_pil((0, 0), level=0, size=(512, 512))
-        >>> region.show()
-        """
-        return self.img.read_region(location, level, size).convert('RGB')
-
     def get_dimensions(self) -> Tuple[int, int]:
         """
         The `get_dimensions` function from the class `OpenSlideWSI` Retrieve the dimensions of the WSI.

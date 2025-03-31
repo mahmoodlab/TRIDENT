@@ -2,6 +2,8 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 import geopandas as gpd
+from typing import List, Tuple, Optional, Union
+import torch 
 
 from trident.wsi_objects.WSI import WSI
 
@@ -85,21 +87,58 @@ class ImageWSI(WSI):
         img.thumbnail(size)
         return img
 
-    def read_region(self, location: tuple[int, int], level: int, size: tuple[int, int]) -> np.ndarray:
+    def read_region(
+        self,
+        location: Tuple[int, int],
+        level: int,
+        size: Tuple[int, int],
+        device: str = 'cpu',
+        read_as: str = 'pil',
+    ) -> Union[np.ndarray, torch.Tensor, Image.Image]:
         """
-        Returns a region as a NumPy array.
-        """
-        pil_image = self.read_region_pil(location, level, size)
-        return np.array(pil_image)
+        Extract a specific region from the whole-slide image (WSI), returning it as a NumPy array,
+        Torch tensor, or PIL image.
 
-    def read_region_pil(self, location: tuple[int, int], level: int, size: tuple[int, int]) -> Image.Image:
-        """
-        Returns a region as a PIL image in RGBA mode.
+        Args:
+        -----
+        location : Tuple[int, int]
+            (x, y) coordinates of the top-left corner of the region to extract.
+        level : int
+            Pyramid level to read from.
+        size : Tuple[int, int]
+            (width, height) of the region to extract.
+        device : str, optional
+            Device used for post-processing. Defaults to 'cpu'. Not used during reading.
+        read_as : str, optional
+            Format to return the region in. Options are:
+            - 'numpy': returns a NumPy array
+            - 'torch': returns a Torch tensor (on GPU or CPU)
+            - 'pil': returns a PIL Image object (default)
+
+        Returns:
+        --------
+        Union[np.ndarray, torch.Tensor, PIL.Image.Image]
+            The extracted region in the specified format.
+
+        Example:
+        --------
+        >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), read_as='numpy')
+        >>> print(region.shape)
+        (512, 512, 3)
         """
         self._ensure_image_open()
         region = self.img.crop((location[0], location[1], location[0] + size[0], location[1] + size[1]))
-        return region.convert("RGB")
 
+        if read_as == 'pil':
+            return region
+        elif read_as == 'numpy':
+            return np.array(region)
+        elif read_as == 'torch':
+            array = np.array(region)
+            return torch.from_numpy(array).to(device)
+        
+        raise ValueError(f"Unsupported read_as value: {read_as}")
+    
     def segment_tissue(self, **kwargs):
         out = super().segment_tissue(**kwargs)
         self.close()
