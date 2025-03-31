@@ -223,8 +223,7 @@ class CuCIMWSI(WSI):
             if 'cuda' in device:
                 return torch.as_tensor(region, device=device)
             else:
-                region = cp.asnumpy(region)
-                return torch.from_numpy(region).to('cuda')
+                return torch.from_numpy(cp.asnumpy(region))
         elif read_as == 'numpy':
             return cp.asnumpy(region)
         elif read_as == 'pil':
