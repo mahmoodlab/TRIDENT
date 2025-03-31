@@ -8,24 +8,9 @@ from inspect import signature
 import geopandas as gpd
 
 from trident.IO import create_lock, remove_lock, is_locked, update_log
-from trident.wsi_objects.WSI import OpenSlideWSI
-
-
-def deprecated(func):
-    """This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used."""
-    import functools
-    import warnings
-    @functools.wraps(func)
-    def new_func(*args, **kwargs):
-        warnings.simplefilter('always', DeprecationWarning)  # turn off filter
-        warnings.warn("Call to deprecated function {}.".format(func.__name__),
-                      category=DeprecationWarning,
-                      stacklevel=2)
-        warnings.simplefilter('default', DeprecationWarning)  # reset filter
-        return func(*args, **kwargs)
-    return new_func
+# from trident.wsi_objects.WSI import OpenSlideWSI
+from trident import load_wsi
+from trident.Maintenance import deprecated
 
 
 class Processor:
@@ -151,7 +136,7 @@ class Processor:
             if not os.path.exists(tissue_seg_path):
                 tissue_seg_path = None
 
-            openslide_wsi = OpenSlideWSI(
+            slide = load_wsi(
                 slide_path=wsi_path,
                 name=wsi,
                 tissue_seg_path=tissue_seg_path,
@@ -159,7 +144,7 @@ class Processor:
                 mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
                 max_workers=self.max_workers
             )
-            self.wsis.append(openslide_wsi)
+            self.wsis.append(slide)
 
     def populate_cache(self) -> None:
         """
@@ -562,7 +547,7 @@ class Processor:
 
                 # under construction
                 wsi.extract_patch_features(
-                    patch_encoder,
+                    patch_encoder = patch_encoder,
                     coords_path = coords_path,
                     save_features=os.path.join(self.job_dir, saveto),
                     device=device,
