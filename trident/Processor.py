@@ -518,10 +518,15 @@ class Processor:
             ignore = ['patch_encoder', 'loop', 'valid_slides', 'wsis']
         )
 
-        # check if patch_encoder is a Pytorch model
+        # If patch_encoder is a Pytorch model, or a CustomInferenceEncoder that wraps
+        # a PyTorch model, we automatically set eval mode and move weights to specified device.
+        # In all other cases, the user must ensure data and weights reside on the same device.
         if isinstance(patch_encoder, torch.nn.Module):
             patch_encoder.eval()
             patch_encoder.to(device)
+        elif isinstance(patch_encoder.model, torch.nn.Module):
+            patch_encoder.model.eval()
+            patch_encoder.model.to(device)
 
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_feats_{patch_encoder.enc_name}.txt')
         self.loop = tqdm(self.wsis, desc=f'Extracting patch features from coords in {coords_dir}', total = len(self.wsis))
