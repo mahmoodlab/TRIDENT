@@ -1,5 +1,7 @@
 import traceback
 from abc import abstractmethod
+from typing import Callable
+import numpy as np
 import torch
 import os 
 
@@ -91,16 +93,21 @@ class BasePatchEncoder(torch.nn.Module):
         pass
 
 
-class CustomInferenceEncoder(BasePatchEncoder):
-    def __init__(self, enc_name, model, transforms, precision):
-        super().__init__()
+class CustomInferenceEncoder:
+    def __init__(
+        self,
+        enc_name: str,
+        model: Callable[..., np.ndarray],
+        transforms: Callable,
+        precision: torch.dtype,
+    ):
         self.enc_name = enc_name
         self.model = model
         self.eval_transforms = transforms
         self.precision = precision
-        
-    def _build(self):
-        return None, None, None
+
+    def __call__(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
 
 class MuskInferenceEncoder(BasePatchEncoder):
