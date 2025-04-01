@@ -241,3 +241,34 @@ class CuCIMWSI(WSI):
         (100000, 80000)
         """
         return self.dimensions
+
+    def segment_tissue(self, **kwargs):
+        out = super().segment_tissue(**kwargs)
+        self.close()
+        return out
+    
+    def extract_tissue_coords(self, **kwargs):
+        out = super().extract_tissue_coords(**kwargs)
+        self.close()
+        return out
+
+    def visualize_coords(self, **kwargs):
+        out = super().visualize_coords(**kwargs)
+        self.close()
+        return out
+
+    def extract_patch_features(self, **kwargs):
+        out = super().extract_patch_features(**kwargs)
+        self.close()
+        return out
+
+    def extract_slide_features(self, **kwargs):
+        out = super().extract_slide_features(**kwargs)
+        self.close()
+        return out
+
+    def close(self):
+        if self.img is not None:
+            self.img.close()
+            self.img = None
+            self.lazy_init = False

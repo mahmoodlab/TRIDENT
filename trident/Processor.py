@@ -8,7 +8,6 @@ from inspect import signature
 import geopandas as gpd
 
 from trident.IO import create_lock, remove_lock, is_locked, update_log
-# from trident.wsi_objects.WSI import OpenSlideWSI
 from trident import load_wsi
 from trident.Maintenance import deprecated
 

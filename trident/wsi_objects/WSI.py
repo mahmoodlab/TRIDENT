@@ -270,6 +270,7 @@ class WSI:
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size, max_workers=self.max_workers), pin_memory=True)
+        # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
         mpp_reduction_factor = self.mpp / destination_mpp
         width, height = self.get_dimensions()
@@ -493,6 +494,8 @@ class WSI:
         output_viz/sample_name.png
         """
 
+        self._lazy_initialize()
+
         try:
             coords_attrs, coords = read_coords(coords_path)  # Coords are ALWAYS wrt. level 0 of the slide.
             patch_size = coords_attrs.get('patch_size', None)
@@ -635,6 +638,7 @@ class WSI:
         )
         dataset = WSIPatcherDataset(patcher, patch_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=True)
+        # dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=0, pin_memory=True)
 
         features = []
         for imgs, _ in dataloader:
@@ -763,10 +767,3 @@ class WSI:
                     mode='w')
 
         return save_path
-
-
-
-class BioFormatWSI():
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)

@@ -5,6 +5,7 @@ from trident.wsi_objects.OpenSlideWSI import OpenSlideWSI
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.CuCIMWSI import CuCIMWSI
 
+ENABLE_CUCIM = False
 
 # Global variable for OpenSlide-supported extensions
 OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs'}
@@ -24,10 +25,11 @@ def load_wsi(slide_path: str, **kwargs):
     _, ext = os.path.splitext(slide_path)
     ext = ext.lower()
 
-    if ext == '.svs':
-        cucim_available = importlib.util.find_spec("cucim") is not None
-        if cucim_available:
-            return CuCIMWSI(slide_path=slide_path, **kwargs)
+    if ENABLE_CUCIM:
+        if ext == '.svs' or ext == '.tiff':
+            cucim_available = importlib.util.find_spec("cucim") is not None
+            if cucim_available:
+                return CuCIMWSI(slide_path=slide_path, **kwargs)
 
     if ext in OPENSLIDE_EXTENSIONS:
         return OpenSlideWSI(slide_path=slide_path, **kwargs)
