@@ -54,7 +54,8 @@ class OpenSlideWSI:
         tissue_seg_path: Optional[str] = None,
         custom_mpp_keys: Optional[List[str]] = None,
         lazy_init: bool = True,
-        mpp: Optional[float] = None
+        mpp: Optional[float] = None,
+        max_workers: Optional[int] = None,
     ):
         """
         Initialize the `OpenSlideWSI` object for working with a Whole Slide Image (WSI).
@@ -73,6 +74,7 @@ class OpenSlideWSI:
             If True, defer loading the WSI until required. Defaults to True.
         mpp: float, optional
             If not None, will be the reference micron per pixel (mpp). Handy when mpp is not provided in the WSI.
+        max_workers (Optional[int]): Maximum number of workers for data loading
 
         Example:
         --------
@@ -92,6 +94,7 @@ class OpenSlideWSI:
         self.mpp = mpp  # Placeholder microns per pixel. Defaults will be None unless specified in constructor. 
         self.mag = None  # Placeholder magnification
         self.lazy_init = lazy_init  # Initialize immediately if lazy_init is False
+        self.max_workers = max_workers
 
         if not self.lazy_init:
             self._lazy_initialize()
@@ -461,13 +464,14 @@ class OpenSlideWSI:
         patcher = self.create_patcher(
             patch_size = segmentation_model.input_size,
             src_pixel_size = self.mpp,
-            dst_pixel_size = destination_mpp
+            dst_pixel_size = destination_mpp,
+            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
         )
         precision = segmentation_model.precision
         device = segmentation_model.device
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size), pin_memory=True)
+        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size, max_workers=self.max_workers), pin_memory=True)
 
         mpp_reduction_factor = self.mpp / destination_mpp
         width, height = self.get_dimensions()
@@ -512,7 +516,7 @@ class OpenSlideWSI:
         os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
         gdf_contours = mask_to_gdf(
             mask=predicted_mask,
-            max_nb_holes=0 if holes_are_tissue else 5,
+            max_nb_holes=0 if holes_are_tissue else 20,
             min_contour_area=1000,
             pixel_size=self.mpp,
             contour_scale=1/mpp_reduction_factor
@@ -758,7 +762,7 @@ class OpenSlideWSI:
 
         # Save visualization
         os.makedirs(save_patch_viz, exist_ok=True)
-        viz_coords_path = os.path.join(save_patch_viz, f'{os.path.splitext(os.path.basename(self.name))[0]}.jpg')
+        viz_coords_path = os.path.join(save_patch_viz, f'{self.name}.jpg')
         Image.fromarray(canvas).save(viz_coords_path)
 
         return viz_coords_path
@@ -841,7 +845,7 @@ class OpenSlideWSI:
             pil=True
         )
         dataset = WSIPatcherDataset(patcher, patch_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit), pin_memory=pin_memory)
+        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=pin_memory)
         # run inference on all patches extracted from WSI
         features = inference_strategy.forward(dataloader, patch_encoder, device, precision)
 

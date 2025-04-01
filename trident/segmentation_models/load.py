@@ -104,6 +104,68 @@ class JpegCompressionTransform:
         return Image.fromarray(image)
 
 
+class GrandQCArtifactSegmenter(SegmentationModel):
+
+    def _build(self, checkpoint_dir, device):
+        """
+        Credit to https://www.nature.com/articles/s41467-024-54769-y
+        """
+
+        import segmentation_models_pytorch as smp
+
+        self.device = device
+        self.input_size = 512
+        self.precision = torch.float32
+        self.target_mag = 10
+
+        MODEL_TD_NAME = 'GrandQC_MPP1_state_dict.pth'
+        ENCODER_MODEL_TD = 'timm-efficientnet-b0'
+        ENCODER_MODEL_TD_WEIGHTS = 'imagenet'
+
+        # eval_transforms = smp.encoders.get_preprocessing_fn(ENCODER_MODEL_TD, ENCODER_MODEL_TD_WEIGHTS)  # to double check if same
+        eval_transforms = transforms.Compose([
+            transforms.ToTensor(),  
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+        model = smp.Unet(
+            encoder_name=ENCODER_MODEL_TD,
+            encoder_weights=ENCODER_MODEL_TD_WEIGHTS,
+            classes=8,
+            activation=None,
+        )
+
+        if not os.path.isfile(os.path.join(checkpoint_dir, MODEL_TD_NAME)):
+            try:
+                from huggingface_hub import snapshot_download
+            except:
+                raise Exception("Please install huggingface_hub (`pip install huggingface_hub`) to use this model")
+            snapshot_download(
+                repo_id="MahmoodLab/hest-tissue-seg",
+                repo_type='model',
+                local_dir=checkpoint_dir,
+                cache_dir=checkpoint_dir,
+                allow_patterns=["*MPP1_state_dict.pth"],
+            )
+
+        state_dict = torch.load(os.path.join(checkpoint_dir, MODEL_TD_NAME), weights_only=True, map_location='cpu')
+        model.load_state_dict(state_dict)
+        model.to(device)
+        model.eval()
+
+        return model, eval_transforms
+
+    def forward(self, batch):
+        '''
+        Custom forward pass.
+        '''
+        logits = self.model.predict(batch)
+        probs = torch.softmax(logits, dim=1)  
+        _, predicted_classes = torch.max(probs, dim=1)  
+        predictions = torch.where(predicted_classes > 1, 0, 1)
+        predictions = predictions.to(torch.uint8)
+        return predictions
+
 
 class GrandQCSegmenter(SegmentationModel):
 
@@ -146,7 +208,7 @@ class GrandQCSegmenter(SegmentationModel):
                 repo_type='model',
                 local_dir=checkpoint_dir,
                 cache_dir=checkpoint_dir,
-                allow_patterns=["*.pth"],
+                allow_patterns=["*MMP10.pth"],
             )
 
         model.load_state_dict(torch.load(os.path.join(checkpoint_dir, MODEL_TD_NAME), map_location='cpu'))
@@ -176,5 +238,7 @@ def segmentation_model_factory(model_name, confidence_thresh=0.5, device='cuda',
         return HESTSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'hest-tissue-seg/'), device=device)
     elif model_name == 'grandqc':
         return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'grandqc/'), device=device)
+    elif model_name == 'grandqc_artifact':
+        return GrandQCArtifactSegmenter(freeze, checkpoint_dir=os.path.join(current_dir, 'grandqc/'), device=device)
     else:
         raise ValueError(f"Model type {model_name} not supported")

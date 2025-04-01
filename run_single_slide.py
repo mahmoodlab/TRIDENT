@@ -41,6 +41,8 @@ def parse_arguments():
                     help='Custom keys used to store the resolution as MPP (micron per pixel) in your list of whole-slide image.')
     parser.add_argument('--overlap', type=int, default=0, 
                         help='Absolute overlap for patching in pixels. Defaults to 0. ')
+    parser.add_argument('--batch_size', type=int, default=32, 
+                        help='Batch size for feature extraction. Defaults to 32.')
     return parser.parse_args()
 
 
@@ -95,7 +97,8 @@ def process_slide(args):
         patch_encoder=encoder,
         coords_path=os.path.join(save_coords, 'patches', f'{slide.name}_patches.h5'),
         save_features=features_dir,
-        device=f"cuda:{args.gpu}"
+        device=f"cuda:{args.gpu}",
+        batch_limit=args.batch_size
     )
     print(f"Feature extraction completed. Results saved to {features_path}")
 
