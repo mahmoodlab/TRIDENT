@@ -7,8 +7,12 @@ import warnings
 import torch 
 from typing import List, Tuple, Optional
 from torch.utils.data import DataLoader
+import geopandas as gpd
+import cv2
 
-from trident.wsi_objects.WSIPatcher import *
+from trident.patch_encoder_models.load import BasePatchEncoder, CustomInferenceEncoder
+from trident.InferenceStrategy import InferenceStrategy, DefaultInferenceStrategy
+from trident.wsi_objects.WSIPatcher import OpenSlideWSIPatcher
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords, read_coords_legacy,
@@ -762,21 +766,23 @@ class OpenSlideWSI:
     @torch.inference_mode()
     def extract_patch_features(
         self,
-        patch_encoder: torch.nn.Module,
+        patch_encoder: BasePatchEncoder | CustomInferenceEncoder,
         coords_path: str,
         save_features: str,
         device: str = 'cuda:0',
         saveas: str = 'h5',
-        batch_limit: int = 512
+        batch_limit: int = 512,
+        inference_strategy: InferenceStrategy = DefaultInferenceStrategy(),
+        pin_memory: bool = True
     ) -> str:
         """
-        The `extract_features` function of the class `OpenSlideWSI` extracts feature embeddings 
-        from the WSI using a specified patch encoder. It processes the patches as specified 
+        The `extract_patch_features` function of the class `OpenSlideWSI` extracts feature embeddings
+        from the WSI using a specified patch encoder. It processes the patches as specified
         in the coordinates file and saves the features in the desired format.
 
         Args:
         -----
-        patch_encoder : torch.nn.Module
+        patch_encoder : BasePatchEncoder | CustomInferenceEncoder
             The model used for feature extraction.
         coords_path : str
             Path to the file containing patch coordinates.
@@ -788,6 +794,14 @@ class OpenSlideWSI:
             Format to save the features ('h5' or 'pt'). Defaults to 'h5'.
         batch_limit : int, optional
             Maximum batch size for feature extraction. Defaults to 512.
+        inference_strategy (InferenceStrategy, optional):
+            Allows you to provide arbitrary logic for running inference. Useful
+            for non-Pytorch models, or advanced needs such as model and data parallelism.
+            The default implementation assumes a Pytorch model running on a single
+            GPU, and enables automatic mixed precision when dtype != torch.float32.
+        pin_memory (bool, optional):
+            If True, the data loader will copy Tensors into device/CUDA pinned memory
+            before returning them. Defaults to True.
 
         Returns:
         --------
@@ -796,7 +810,7 @@ class OpenSlideWSI:
 
         Example:
         --------
-        >>> features_path = wsi.extract_features(patch_encoder, "output_coords/sample_name_patches.h5", "output_features")
+        >>> features_path = wsi.extract_patch_features(patch_encoder, "output_coords/sample_name_patches.h5", "output_features")
         >>> print(features_path)
         output_features/sample_name.h5
         """
@@ -827,17 +841,9 @@ class OpenSlideWSI:
             pil=True
         )
         dataset = WSIPatcherDataset(patcher, patch_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit), pin_memory=True)
-
-        features = []
-        for imgs, _ in dataloader:
-            imgs = imgs.to(device)
-            with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                batch_features = patch_encoder(imgs)  
-            features.append(batch_features.cpu().numpy())
-
-        # Concatenate features
-        features = np.concatenate(features, axis=0)
+        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit), pin_memory=pin_memory)
+        # run inference on all patches extracted from WSI
+        features = inference_strategy.forward(dataloader, patch_encoder, device, precision)
 
         # Save the features to disk
         os.makedirs(save_features, exist_ok=True)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import sys
+import torch
 from tqdm import tqdm
 import shutil
 from typing import Optional, List, Dict, Any
@@ -8,6 +9,8 @@ from inspect import signature
 import geopandas as gpd
 
 from trident.IO import create_lock, remove_lock, is_locked, update_log
+from trident.patch_encoder_models.load import BasePatchEncoder, CustomInferenceEncoder
+from trident.InferenceStrategy import InferenceStrategy, DefaultInferenceStrategy
 from trident.wsi_objects.WSI import OpenSlideWSI
 
 
@@ -137,7 +140,7 @@ class Processor:
             print(f'Using local cache at {wsi_cache}, which currently contains {len(os.listdir(wsi_cache))} files.')
 
         # Lazy-init WSI objects
-        self.wsis = []
+        self.wsis: List[OpenSlideWSI]  = []
         for wsi_idx, wsi in enumerate(valid_slides):
             wsi_path = os.path.join(self.wsi_cache, wsi) if self.wsi_cache is not None else os.path.join(self.wsi_source, wsi)
             
@@ -451,11 +454,13 @@ class Processor:
     def run_patch_feature_extraction_job(
         self, 
         coords_dir: str, 
-        patch_encoder: torch.nn.Module, 
+        patch_encoder: BasePatchEncoder | CustomInferenceEncoder, 
         device: str, 
         saveas: str = 'h5', 
         batch_limit: int = 512, 
-        saveto: str | None = None
+        saveto: str | None = None,
+        inference_strategy: InferenceStrategy = DefaultInferenceStrategy(),
+        pin_memory: bool = True
     ) -> str:
         """
         The `run_feature_extraction_job` function computes features from the patches generated during the 
@@ -465,8 +470,8 @@ class Processor:
         Parameters:
             coords_dir (str): 
                 Path to the directory containing patch coordinates, which are used to locate patches for feature extraction.
-            patch_encoder (torch.nn.Module): 
-                A pre-trained PyTorch model used to compute features from the extracted patches.
+            patch_encoder (BasePatchEncoder | CustomInferenceEncoder):
+                A pre-trained model used to compute features from the extracted patches.
             device (str): 
                 The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
             saveas (str, optional): 
@@ -476,6 +481,14 @@ class Processor:
             saveto (str, optional): 
                 Directory where the extracted features will be saved. If not provided, a directory name will 
                 be generated automatically. Defaults to None.
+            inference_strategy (InferenceStrategy, optional):
+                Allows you to provide arbitrary logic for running inference. Useful
+                for non-Pytorch models, or advanced needs such as model and data parallelism.
+                The default implementation assumes a Pytorch model running on a single
+                GPU, and enables automatic mixed precision when dtype != torch.float32.
+            pin_memory (bool, optional):
+                If True, the data loader will copy Tensors into device/CUDA pinned memory
+                before returning them. Defaults to True.
 
         Returns:
             str: The absolute path to where the features are saved.
@@ -505,15 +518,18 @@ class Processor:
             ignore = ['patch_encoder', 'loop', 'valid_slides', 'wsis']
         )
 
-        patch_encoder.eval()
-        patch_encoder.to(device)
+        # check if patch_encoder is a Pytorch model
+        if isinstance(patch_encoder, torch.nn.Module):
+            patch_encoder.eval()
+            patch_encoder.to(device)
+
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_feats_{patch_encoder.enc_name}.txt')
         self.loop = tqdm(self.wsis, desc=f'Extracting patch features from coords in {coords_dir}', total = len(self.wsis))
         for wsi in self.loop:    
             wsi_feats_fp = os.path.join(self.job_dir, saveto, f'{wsi.name}.{saveas}')
             # Check if features already exist
             if os.path.exists(wsi_feats_fp) and not is_locked(wsi_feats_fp):
-                self.loop.set_postfix_str(f'Features already extracted for {wsi}. Skipping...')
+                self.loop.set_postfix_str(f'Features already extracted for {wsi.name}. Skipping...')
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
                 self.cleanup(f'{wsi.name}{wsi.ext}')
                 continue
@@ -549,7 +565,9 @@ class Processor:
                     save_features=os.path.join(self.job_dir, saveto),
                     device=device,
                     saveas=saveas,
-                    batch_limit=batch_limit
+                    batch_limit=batch_limit,
+                    inference_strategy=inference_strategy,
+                    pin_memory=pin_memory
                 )
 
                 remove_lock(wsi_feats_fp)
