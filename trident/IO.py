@@ -33,12 +33,14 @@ def get_weights_path(encoder_type, encoder_name):
     registry_path = os.path.join(root, "local_ckpts.json")
     with open(registry_path, "r") as f:
         registry = json.load(f)
-    path = registry.get(encoder_name)
-    if not path:
-        raise ValueError(f"Please specify the weights path to '{encoder_name}' in '{registry_path}'")
-    path = path if os.path.isabs(path) else os.path.abspath(os.path.join(root, 'model_zoo', path)) # Make path absolute
-    if not os.path.exists(path):
-        print(f"WARNING: Path at '{path}' does not exist. Please double-check the registry in '{registry_path}'")
+
+    path = registry.get(encoder_name)    
+    if path:
+        path = path if os.path.isabs(path) else os.path.abspath(os.path.join(root, 'model_zoo', path)) # Make path absolute
+        if not os.path.exists(path):
+            print(f"WARNING: Path at '{path}' does not exist. Please double-check the registry in '{registry_path}'")
+            path = ""
+
     return path
 
 
