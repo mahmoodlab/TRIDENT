@@ -3,13 +3,56 @@ from __future__ import annotations
 import torch
 import os
 import json
-from typing import List
+from typing import List, Union
 import h5py
 import numpy as np
 import cv2
 import pandas as pd
 from geopandas import gpd
 from shapely import Polygon
+
+
+ENV_TRIDENT_HOME = "TRIDENT_HOME"
+ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
+DEFAULT_CACHE_DIR = "~/.cache"
+_cache_dir = ""
+
+
+def get_dir() -> str:
+    r"""
+    Get the Trident cache directory used for storing downloaded models & weights.
+
+    If :func:`~trident.hub.set_dir` is not called, default path is ``$TRIDENT_HOME`` where
+    environment variable ``$TRIDENT_HOME`` defaults to ``$XDG_CACHE_HOME/torch``.
+    ``$XDG_CACHE_HOME`` follows the X Design Group specification of the Linux
+    filesystem layout, with a default value ``~/.cache`` if the environment
+    variable is not set.
+    """
+
+    if _cache_dir is not None:
+        return _cache_dir
+    return _get_trident_home()
+
+
+def set_dir(d: Union[str, os.PathLike]) -> None:
+    r"""
+    Optionally set the Trident cache directory used to save downloaded models & weights.
+
+    Args:
+        d (str): path to a local folder to save downloaded models & weights.
+    """
+    global _cache_dir
+    _cache_dir = os.path.expanduser(d)
+
+
+def _get_trident_home():
+    trident_home = os.path.expanduser(
+        os.getenv(
+            ENV_TRIDENT_HOME,
+            os.path.join(os.getenv(ENV_XDG_CACHE_HOME, DEFAULT_CACHE_DIR), "trident"),
+        )
+    )
+    return trident_home
 
 
 def get_weights_path(encoder_type, encoder_name):
