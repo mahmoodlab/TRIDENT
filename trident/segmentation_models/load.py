@@ -3,8 +3,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms
+import traceback
 from abc import abstractmethod
-from trident.IO import get_dir
+from huggingface_hub import snapshot_download
+
+from trident.IO import get_dir, get_weights_path
 
 class SegmentationModel(torch.nn.Module):
     def __init__(self, freeze=True, confidence_thresh=0.5, **build_kwargs):
@@ -31,10 +34,25 @@ class SegmentationModel(torch.nn.Module):
 
 
 class HESTSegmenter(SegmentationModel):
+    def _build(self):
+        self.input_size = 512
+        self.precision = torch.float16
+        self.target_mag = 10
 
-    def _build(self, checkpoint_dir, device):
+        MODEL_TD_NAME = 'deeplabv3_seg_v4.ckpt'
+        weights_path = get_weights_path('seg', 'hest')
+        
+        try:
+            model = torch.hub.load('pytorch/vision:v0.10.0', 'deeplabv3_resnet50')
+        except:
+            traceback.print_exc()
+            raise Exception(
+                "Failed to download PyTorch Vision or load deeplabv3_resnet50 from cache.\n"
+                "Make sure you have internet access or you have pre-downloaded the files into the PyTorch cache directory.\n"
+                "Run `git clone --branch v0.10.0 --depth 1 https://github.com/pytorch/vision.git pytorch_vision_v0.10.0` and"
+                "place in the folder specified by the PyTorch cache directory, `torch.hub.get_dir()`"
+            )
 
-        model = torch.hub.load('pytorch/vision:v0.10.0', 'deeplabv3_resnet50')
         model.classifier[4] = nn.Conv2d(
             in_channels=256,
             out_channels=2,
@@ -42,23 +60,23 @@ class HESTSegmenter(SegmentationModel):
             stride=1
         )
 
-        # download is not prev. downloaded. 
-        if not os.path.isfile(os.path.join(checkpoint_dir, 'deeplabv3_seg_v4.ckpt')):
+        if weights_path != "":
+            pass
+        
+        else:
             try:
-                from huggingface_hub import snapshot_download
+                checkpoint_dir = snapshot_download(
+                    repo_id="MahmoodLab/hest-tissue-seg",
+                    repo_type='model'
+                )
+                weights_path = os.path.join(checkpoint_dir, MODEL_TD_NAME)
+                
             except:
-                raise Exception("Please install huggingface_hub (`pip install huggingface_hub`) to use this model")
-            
-            snapshot_download(
-                repo_id="MahmoodLab/hest-tissue-seg",
-                repo_type='model',
-                local_dir=checkpoint_dir,
-                cache_dir=checkpoint_dir,
-                allow_patterns=["*.ckpt"]
-            )
+                traceback.print_exc()
+                raise Exception("Failed to download HEST model, make sure that you were granted access and that you correctly registered your token")
 
-        checkpoint = torch.load(os.path.join(checkpoint_dir, 'deeplabv3_seg_v4.ckpt'), map_location=torch.device('cpu'), weights_only=False)
-            
+        checkpoint = torch.load(weights_path, map_location=torch.device('cpu'), weights_only=True)
+
         clean_state_dict = {}
         for key in checkpoint['state_dict']:
             if 'aux' in key:
@@ -66,11 +84,6 @@ class HESTSegmenter(SegmentationModel):
             new_key = key.replace('model.', '')
             clean_state_dict[new_key] = checkpoint['state_dict'][key]
         model.load_state_dict(clean_state_dict)
-        model.to(device)
-        self.device = device
-        self.input_size = 512
-        self.precision = torch.float16
-        self.target_mag = 10
 
         eval_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])
 
@@ -79,7 +92,7 @@ class HESTSegmenter(SegmentationModel):
     def forward(self, image):
         # input should be of shape (batch_size, C, H, W)
         assert len(image.shape) == 4, f"Input must be 4D image tensor (shape: batch_size, C, H, W), got {image.shape} instead"
-        logits = self.model(image.to(self.device))['out']
+        logits = self.model(image)['out']
         softmax_output = F.softmax(logits, dim=1)
         predictions = (softmax_output[:, 1, :, :] > self.confidence_thresh).to(torch.uint8)  # Shape: [bs, 512, 512]
         return predictions
@@ -106,14 +119,12 @@ class JpegCompressionTransform:
 
 class GrandQCArtifactSegmenter(SegmentationModel):
 
-    def _build(self, checkpoint_dir, device):
+    def _build(self):
         """
         Credit to https://www.nature.com/articles/s41467-024-54769-y
         """
-
         import segmentation_models_pytorch as smp
 
-        self.device = device
         self.input_size = 512
         self.precision = torch.float32
         self.target_mag = 10
@@ -122,11 +133,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         ENCODER_MODEL_TD = 'timm-efficientnet-b0'
         ENCODER_MODEL_TD_WEIGHTS = 'imagenet'
 
-        # eval_transforms = smp.encoders.get_preprocessing_fn(ENCODER_MODEL_TD, ENCODER_MODEL_TD_WEIGHTS)  # to double check if same
-        eval_transforms = transforms.Compose([
-            transforms.ToTensor(),  
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        weights_path = get_weights_path('seg', 'grandqc_remove_artifacts')
 
         model = smp.Unet(
             encoder_name=ENCODER_MODEL_TD,
@@ -135,23 +142,29 @@ class GrandQCArtifactSegmenter(SegmentationModel):
             activation=None,
         )
 
-        if not os.path.isfile(os.path.join(checkpoint_dir, MODEL_TD_NAME)):
+        if weights_path != "":
+            pass
+        
+        else:
             try:
-                from huggingface_hub import snapshot_download
+                checkpoint_dir = snapshot_download(
+                    repo_id="MahmoodLab/hest-tissue-seg",
+                    repo_type='model'
+                )
+                weights_path = os.path.join(checkpoint_dir, MODEL_TD_NAME)
+                
             except:
-                raise Exception("Please install huggingface_hub (`pip install huggingface_hub`) to use this model")
-            snapshot_download(
-                repo_id="MahmoodLab/hest-tissue-seg",
-                repo_type='model',
-                local_dir=checkpoint_dir,
-                cache_dir=checkpoint_dir,
-                allow_patterns=["*MPP1_state_dict.pth"],
-            )
+                traceback.print_exc()
+                raise Exception("Failed to download HEST model, make sure that you were granted access and that you correctly registered your token")
 
-        state_dict = torch.load(os.path.join(checkpoint_dir, MODEL_TD_NAME), weights_only=True, map_location='cpu')
+        state_dict = torch.load(weights_path, map_location='cpu', weights_only=True)
         model.load_state_dict(state_dict)
-        model.to(device)
-        model.eval()
+
+        # eval_transforms = smp.encoders.get_preprocessing_fn(ENCODER_MODEL_TD, ENCODER_MODEL_TD_WEIGHTS)  # to double check if same
+        eval_transforms = transforms.Compose([
+            transforms.ToTensor(),  
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
         return model, eval_transforms
 
@@ -169,13 +182,12 @@ class GrandQCArtifactSegmenter(SegmentationModel):
 
 class GrandQCSegmenter(SegmentationModel):
 
-    def _build(self, checkpoint_dir, device):
+    def _build(self):
         """
         Credit to https://www.nature.com/articles/s41467-024-54769-y
         """
         import segmentation_models_pytorch as smp
 
-        self.device = device
         self.input_size = 512
         self.precision = torch.float32
         self.target_mag = 1
@@ -184,12 +196,7 @@ class GrandQCSegmenter(SegmentationModel):
         ENCODER_MODEL_TD = 'timm-efficientnet-b0'
         ENCODER_MODEL_TD_WEIGHTS = 'imagenet'
 
-        # eval_transforms = smp.encoders.get_preprocessing_fn(ENCODER_MODEL_TD, ENCODER_MODEL_TD_WEIGHTS)
-        eval_transforms = transforms.Compose([
-            JpegCompressionTransform(quality=80),
-            transforms.ToTensor(),  # Converts to [0,1] range and moves channels to [C, H, W]
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        weights_path = get_weights_path('seg', 'grandqc')
 
         model = smp.UnetPlusPlus(
             encoder_name=ENCODER_MODEL_TD,
@@ -198,22 +205,29 @@ class GrandQCSegmenter(SegmentationModel):
             activation=None,
         )
 
-        if not os.path.isfile(os.path.join(checkpoint_dir, MODEL_TD_NAME)):
+        if weights_path != "":
+            pass
+        
+        else:
             try:
-                from huggingface_hub import snapshot_download
+                checkpoint_dir = snapshot_download(
+                    repo_id="MahmoodLab/hest-tissue-seg",
+                    repo_type='model'
+                )
+                weights_path = os.path.join(checkpoint_dir, MODEL_TD_NAME)
+                
             except:
-                raise Exception("Please install huggingface_hub (`pip install huggingface_hub`) to use this model")
-            snapshot_download(
-                repo_id="MahmoodLab/hest-tissue-seg",
-                repo_type='model',
-                local_dir=checkpoint_dir,
-                cache_dir=checkpoint_dir,
-                allow_patterns=["*MPP10.pth"],
-            )
+                traceback.print_exc()
+                raise Exception("Failed to download HEST model, make sure that you were granted access and that you correctly registered your token")
 
-        model.load_state_dict(torch.load(os.path.join(checkpoint_dir, MODEL_TD_NAME), map_location='cpu'))
-        model.to(device)
-        model.eval()
+        model.load_state_dict(torch.load(weights_path, map_location='cpu', weights_only=True))
+
+        # eval_transforms = smp.encoders.get_preprocessing_fn(ENCODER_MODEL_TD, ENCODER_MODEL_TD_WEIGHTS)
+        eval_transforms = transforms.Compose([
+            JpegCompressionTransform(quality=80),
+            transforms.ToTensor(),  # Converts to [0,1] range and moves channels to [C, H, W]
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
         return model, eval_transforms
 
@@ -230,7 +244,7 @@ class GrandQCSegmenter(SegmentationModel):
         return predictions
 
 
-def segmentation_model_factory(model_name, confidence_thresh=0.5, device='cuda', freeze=True):
+def segmentation_model_factory(model_name, freeze=True, confidence_thresh=0.5):
     '''
     Build a slide encoder based on model name.
     '''
@@ -238,10 +252,10 @@ def segmentation_model_factory(model_name, confidence_thresh=0.5, device='cuda',
     checkpoint_dir = get_dir()
     
     if model_name == 'hest':
-        return HESTSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(checkpoint_dir, 'hest-tissue-seg/'), device=device)
+        return HESTSegmenter(freeze, confidence_thresh=confidence_thresh)
     elif model_name == 'grandqc':
-        return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(checkpoint_dir, 'grandqc/'), device=device)
+        return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh)
     elif model_name == 'grandqc_artifact':
-        return GrandQCArtifactSegmenter(freeze, checkpoint_dir=os.path.join(checkpoint_dir, 'grandqc/'), device=device)
+        return GrandQCArtifactSegmenter(freeze)
     else:
         raise ValueError(f"Model type {model_name} not supported")

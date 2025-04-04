@@ -1,0 +1,5 @@
+{
+    "hest": "deeplabv3_seg_v4.ckpt",
+    "grandqc": "Tissue_Detection_MPP10.pth",
+    "grandqc_remove_artifacts": "GrandQC_MPP1_state_dict.pth"
+}

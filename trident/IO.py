@@ -55,7 +55,7 @@ def _get_trident_home():
     return trident_home
 
 
-def get_weights_path(encoder_type, encoder_name):
+def get_weights_path(model_type, encoder_name):
     """
     Retrieve the path to the weights file for a given model name.
 
@@ -71,8 +71,14 @@ def get_weights_path(encoder_type, encoder_name):
     Returns:
         str: The absolute path to the weights file.
     """
-    root = os.path.join(os.path.dirname(__file__), f"{encoder_type}_encoder_models")
-    assert encoder_type in ['patch', 'slide'], f"Encoder type must be 'patch' or 'slide', not '{encoder_type}'"
+    
+    assert model_type in ['patch', 'slide', 'seg'], f"Encoder type must be 'patch' or 'slide' or 'seg', not '{model_type}'"
+    
+    if model_type == 'patch' or model_type == 'slide':
+        root = os.path.join(os.path.dirname(__file__), f"{model_type}_encoder_models")
+    else:
+        root = os.path.join(os.path.dirname(__file__), "segmentation_models")
+
     registry_path = os.path.join(root, "local_ckpts.json")
     with open(registry_path, "r") as f:
         registry = json.load(f)
