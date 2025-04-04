@@ -3,8 +3,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms
-current_dir = os.path.dirname(os.path.abspath(__file__))
 from abc import abstractmethod
+from trident.IO import get_dir
 
 class SegmentationModel(torch.nn.Module):
     def __init__(self, freeze=True, confidence_thresh=0.5, **build_kwargs):
@@ -208,7 +208,7 @@ class GrandQCSegmenter(SegmentationModel):
                 repo_type='model',
                 local_dir=checkpoint_dir,
                 cache_dir=checkpoint_dir,
-                allow_patterns=["*MMP10.pth"],
+                allow_patterns=["*MPP10.pth"],
             )
 
         model.load_state_dict(torch.load(os.path.join(checkpoint_dir, MODEL_TD_NAME), map_location='cpu'))
@@ -234,11 +234,14 @@ def segmentation_model_factory(model_name, confidence_thresh=0.5, device='cuda',
     '''
     Build a slide encoder based on model name.
     '''
+
+    checkpoint_dir = get_dir()
+    
     if model_name == 'hest':
-        return HESTSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'hest-tissue-seg/'), device=device)
+        return HESTSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(checkpoint_dir, 'hest-tissue-seg/'), device=device)
     elif model_name == 'grandqc':
-        return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(current_dir, 'grandqc/'), device=device)
+        return GrandQCSegmenter(freeze, confidence_thresh=confidence_thresh, checkpoint_dir=os.path.join(checkpoint_dir, 'grandqc/'), device=device)
     elif model_name == 'grandqc_artifact':
-        return GrandQCArtifactSegmenter(freeze, checkpoint_dir=os.path.join(current_dir, 'grandqc/'), device=device)
+        return GrandQCArtifactSegmenter(freeze, checkpoint_dir=os.path.join(checkpoint_dir, 'grandqc/'), device=device)
     else:
         raise ValueError(f"Model type {model_name} not supported")
