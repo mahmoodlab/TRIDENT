@@ -204,6 +204,7 @@ class Processor:
         self, 
         segmentation_model: torch.nn.Module, 
         seg_mag: int = 10, 
+        device: str = 'cuda:0', 
         holes_are_tissue: bool = False,
         batch_size: int = 16,
         artifact_remover_model: torch.nn.Module = None
@@ -279,6 +280,7 @@ class Processor:
                 gdf_saveto = wsi.segment_tissue(
                     segmentation_model=segmentation_model,
                     target_mag=seg_mag,
+                    device=device,
                     holes_are_tissue=holes_are_tissue,
                     job_dir=self.job_dir,
                     batch_size=batch_size
@@ -289,6 +291,7 @@ class Processor:
                     gdf_saveto = wsi.segment_tissue(
                         segmentation_model=artifact_remover_model,
                         target_mag=artifact_remover_model.target_mag,
+                        device=device,
                         holes_are_tissue=False,
                         job_dir=self.job_dir
                     )

@@ -412,6 +412,7 @@ class OpenSlideWSI:
         self,
         segmentation_model: torch.nn.Module,
         target_mag: int = 10,
+        device: str = 'cuda:0',
         holes_are_tissue: bool = True,
         job_dir: str | None = None,
         batch_size: int = 16,
@@ -446,6 +447,11 @@ class OpenSlideWSI:
         """
 
         self._lazy_initialize()
+        
+        # Set the segmentation model to device and eval
+        segmentation_model.to(device)
+        segmentation_model.eval()
+
         max_dimension = 1000
         if self.width > self.height:
             thumbnail_width = max_dimension
@@ -464,7 +470,6 @@ class OpenSlideWSI:
             mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
         )
         precision = segmentation_model.precision
-        device = segmentation_model.device
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size, max_workers=self.max_workers), pin_memory=True)
@@ -805,6 +810,10 @@ class OpenSlideWSI:
         output_features/sample_name.h5
         """
         self._lazy_initialize()
+
+        # Set the patch encoder model to device and eval
+        patch_encoder.to(device)
+        patch_encoder.eval()
 
         precision = patch_encoder.precision
         patch_transforms = patch_encoder.eval_transforms
