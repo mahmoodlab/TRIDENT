@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 import os
 import json
-from typing import List, Union
+from typing import List, Optional, Union
 import h5py
 import numpy as np
 import cv2
@@ -15,7 +15,7 @@ from shapely import Polygon
 ENV_TRIDENT_HOME = "TRIDENT_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"
-_cache_dir = ""
+_cache_dir: Optional[str] = None
 
 
 def get_dir() -> str:
