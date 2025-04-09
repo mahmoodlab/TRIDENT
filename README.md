@@ -3,33 +3,13 @@
  [arXiv](https://arxiv.org/pdf/2502.06750) | [Blog](https://www.linkedin.com/pulse/announcing-new-open-source-tools-accelerate-ai-pathology-andrew-zhang-loape/?trackingId=pDkifo54SRuJ2QeGiGcXpQ%3D%3D) | [Cite](https://github.com/mahmoodlab/trident?tab=readme-ov-file#reference)
  | [License](https://github.com/mahmoodlab/trident?tab=License-1-ov-file)
  
-Trident is a toolkit for large-scale whole-slide image processing.
+Trident-Search is a toolkit histology slide feature extraction, simplified for federated histology slide search.
+
 This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard Medical School and Brigham and Women's Hospital. This work was funded by NIH NIGMS R35GM138216.
 
-> [!NOTE]
-> Contributions are welcome! Please report any issues. You may also contribute by opening a pull request.
-
-### Key Features:
-
-<img align="right" src="_readme/trident_crop.jpg" width="250px" />
-
-- **Tissue Segmentation**: Extract tissue from background (H&E, IHC, etc.).
-- **Patch Extraction**: Extract tissue patches of any size and magnification.
-- **Patch Feature Extraction**: Extract patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and more...
-- **Slide Feature Extraction**: Extract slide embeddings from 5+ slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w). 
-
-### Updates:
-- 04.25: Remove artifacts from the tissue segmentation with `--remove_artifacts`. Works well for H&E.  
-- 02.25: New image converter from `czi`, `png`, etc to `tiff`.
-- 02.25: Support for [GrandQC](https://www.nature.com/articles/s41467-024-54769-y) tissue vs. background segmentation.
-- 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models.
-
 ### 🔨 1. **Installation**:
-- Create an environment: `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
-- Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
+- Create an environment: `conda create -n "trident_search" python=3.10`, and activate it `conda activate trident`.
 - Local installation: `pip install -e .`.
-
-Additional packages may be required to load some pretrained models. Follow error messages for instructions.
 
 ### 🔨 2. **Running Trident for TITAN Inference**:
 
@@ -43,7 +23,7 @@ python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_pr
 
 Run this command to perform all processing steps for a **single** slide:
 ```
-python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder utitan --mag 20 --patch_size 512
+python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
 ```
 
 **Or follow step-by-step instructions:**
@@ -112,7 +92,7 @@ This deployment of TRIDENT (specialized for **TITAN** inference) supports the fo
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 512`: Patches are 512x512 pixels in size.
  - **Outputs**: 
-   - Features are saved as h5 files in `./trident_processed/20x_256px/slide_features_titan`. (Shape: `(feature_dim)`)
+   - Features are saved as h5 files in `./trident_processed/20x_512px/slide_features_titan`. (Shape: `(feature_dim)`)
 
 Please see the tutorials for more support, the `./docs/detailed_README.md` for additional features and usage, and the `./docs/FAQ.md` for additional questions and answers.
 
