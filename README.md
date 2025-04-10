@@ -28,7 +28,7 @@ OUTPUT_DIR=./trident_single_processed
 python run_single_slide.py \
  --slide_path $SLIDE_PATH \
  --job_dir $OUTPUT_DIR \
- --patch_encoder titan \
+ --slide_encoder titan \
  --mag 20 --patch_size 512
 ```
 
@@ -41,7 +41,7 @@ python run_batch_of_slides.py \
  --task all \
  --wsi_dir $SLIDE_DIR \
  --job_dir $OUTPUT_DIR \
- --patch_encoder titan \
+ --slide_encoder titan \
  --mag 20 --patch_size 512
 ```
 
