@@ -89,7 +89,7 @@ python run_batch_of_slides.py \
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 512`: Patches are 512x512 pixels in size.
  - **Outputs**: 
-   - Features are saved as h5 files in `./trident_processed/20x_256px/features_conch_v15`. (Shape: `(n_patches, feature_dim)`)
+   - Features are saved as h5 files in `./trident_processed/20x_256px/features_conch_v15`. (Shape: `(n_patches, 768)`)
 
 This deployment of TRIDENT (specialized for **TITAN** inference) supports the following patch encoders, loaded via `./trident/patch_encoder_models/load.py`. The **CONCHv1.5** model checkpoint is made available in the local path: `./trident/patch_encoder_models/model_zoo/conchv1_5/pytorch_model_vision.bin`. Other models can be made available upon request.
 
@@ -111,7 +111,7 @@ This deployment of TRIDENT (specialized for **TITAN** inference) supports the fo
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 512`: Patches are 512x512 pixels in size.
  - **Outputs**: 
-   - Features are saved as h5 files in `./trident_processed/20x_512px/slide_features_titan`. (Shape: `(feature_dim)`)
+   - Features are saved as h5 files in `./trident_processed/20x_512px/slide_features_titan`. (Shape: `(768)`)
 
 Please see the tutorial `./tutorial/TITAN-walkthrough.ipynb` for more support, the `./docs/detailed_README.md` for additional features and usage, and the `./docs/FAQ.md` for additional questions and answers.
 
