@@ -1,9 +1,6 @@
-# 🔱   Trident (for Federated Histology Slide Feature Extraction and Retrieval)
-
- [arXiv](https://arxiv.org/pdf/2502.06750) | [Blog](https://www.linkedin.com/pulse/announcing-new-open-source-tools-accelerate-ai-pathology-andrew-zhang-loape/?trackingId=pDkifo54SRuJ2QeGiGcXpQ%3D%3D) | [Cite](https://github.com/mahmoodlab/trident?tab=readme-ov-file#reference)
- | [License](https://github.com/mahmoodlab/trident?tab=License-1-ov-file)
+# 🔱   Trident-Search (for Federated Histology Slide Feature Extraction and Retrieval)
  
-Trident-Search is a toolkit histology slide feature extraction, simplified for federated histology slide search.
+Trident-Search is a toolkit based on the [original TRIDENT repository](https://github.com/mahmoodlab/TRIDENT), simplified for slide-level feature extraction and federated histology slide search.
 
 This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard Medical School and Brigham and Women's Hospital. This work was funded by NIH NIGMS R35GM138216.
 
@@ -19,14 +16,21 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
 ```
 
-**Feeling cautious?**
+**Using TITAN for a single slide**
 
-Run this command to perform all processing steps for a **single** slide:
+Run this command to perform segmentation, patching, and TITAN slide-level feature extraction for:
+
+1. A single slide
 ```
 python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
 ```
 
-**Or follow step-by-step instructions:**
+2. A directory of slides
+```
+python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
+```
+
+**Further Step-by-Step Instructions:**
 
 **Step 1: Tissue Segmentation:** Segments tissue vs. background from a dir of WSIs
  - **Command**:
@@ -94,7 +98,7 @@ This deployment of TRIDENT (specialized for **TITAN** inference) supports the fo
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_512px/slide_features_titan`. (Shape: `(feature_dim)`)
 
-Please see the tutorials for more support, the `./docs/detailed_README.md` for additional features and usage, and the `./docs/FAQ.md` for additional questions and answers.
+Please see the tutorial `./tutorial/TITAN-walkthrough.ipynb` for more support, the `./docs/detailed_README.md` for additional features and usage, and the `./docs/FAQ.md` for additional questions and answers.
 
 ## License and Terms of Use
 
