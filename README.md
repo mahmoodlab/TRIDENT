@@ -21,13 +21,28 @@ python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_pr
 Run this command to perform segmentation, patching, and TITAN slide-level feature extraction for:
 
 1. A single slide
-```
-python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
+```bash
+SLIDE_PATH=./wsis/xxxx.svs
+OUTPUT_DIR=./trident_single_processed
+
+python run_single_slide.py \
+ --slide_path $SLIDE_PATH \
+ --job_dir $OUTPUT_DIR \
+ --patch_encoder titan \
+ --mag 20 --patch_size 512
 ```
 
 2. A directory of slides
-```
-python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder titan --mag 20 --patch_size 512
+```bash
+SLIDE_DIR=./wsis
+OUTPUT_DIR=./trident_batch_processed
+
+python run_batch_of_slides.py \
+ --task all \
+ --wsi_dir $SLIDE_DIR \
+ --job_dir $OUTPUT_DIR \
+ --patch_encoder titan \
+ --mag 20 --patch_size 512
 ```
 
 **Further Step-by-Step Instructions:**
@@ -35,13 +50,13 @@ python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_pr
 **Step 1: Tissue Segmentation:** Segments tissue vs. background from a dir of WSIs
  - **Command**:
    ```bash
-   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpu 0 --segmenter hest
+   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpu 0 --segmenter grandqc
    ```
    - `--task seg`: Specifies that you want to do tissue segmentation.
    - `--wsi_dir ./wsis`: Path to dir with your WSIs.
    - `--job_dir ./trident_processed`: Output dir for processed results.
    - `--gpu 0`: Uses GPU with index 0.
-   - `--segmenter`: Segmentation model. Defaults to `hest`. Switch to `grandqc` for fast H&E segmentation. Add the option `--remove_artifacts` for additional artifact clean up.
+   - `--segmenter`: Segmentation model. Defaults to `grandqc` for fast H&E segmentation. Add the option `--remove_artifacts` for additional artifact clean up.
  - **Outputs**:
    - WSI thumbnails in `./trident_processed/thumbnails`.
    - WSI thumbnails with tissue contours in `./trident_processed/contours`.
