@@ -1,6 +1,7 @@
 import traceback
 from abc import abstractmethod
-from typing import Optional
+from typing import Optional, Callable
+import numpy as np
 import torch
 import os 
 
@@ -171,8 +172,14 @@ class BasePatchEncoder(torch.nn.Module):
         pass
 
 
-class CustomInferenceEncoder(BasePatchEncoder):
-    def __init__(self, enc_name, model, transforms, precision):
+class CustomInferenceEncoder:
+    def __init__(
+        self,
+        enc_name: str,
+        model: Callable[..., np.ndarray],
+        transforms: Callable,
+        precision: torch.dtype,
+    ):
         """
         Initialize a CustomInferenceEncoder from user-defined components.
 
@@ -182,8 +189,8 @@ class CustomInferenceEncoder(BasePatchEncoder):
         Args:
             enc_name (str): 
                 A unique name or identifier for the encoder (used for registry or logging).
-            model (torch.nn.Module): 
-                A PyTorch model instance to use for inference.
+            model Callable[..., np.ndarray]: 
+                A model instance to use for inference.
             transforms (Callable): 
                 A callable (e.g., torchvision or timm transform) to preprocess input images for evaluation.
             precision (torch.dtype): 
@@ -194,9 +201,9 @@ class CustomInferenceEncoder(BasePatchEncoder):
         self.model = model
         self.eval_transforms = transforms
         self.precision = precision
-        
-    def _build(self):
-        return None, None, None
+
+    def __call__(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
 
 class MuskInferenceEncoder(BasePatchEncoder):
