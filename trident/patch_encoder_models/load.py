@@ -1,6 +1,6 @@
 import traceback
 from abc import abstractmethod
-from typing import Optional
+from typing import Literal, Optional
 import torch
 import os 
 
@@ -99,6 +99,8 @@ def encoder_factory(model_name: str, **kwargs):
         enc = KaikoL14InferenceEncoder
     elif model_name == 'lunit-vits8':
         enc = LunitS8InferenceEncoder
+    elif model_name == 'midnight12k':
+        enc = Midnight12kInferenceEncoder
     else:
         raise ValueError(f"Unknown encoder name {model_name}")
 
@@ -1054,3 +1056,57 @@ class Conchv15InferenceEncoder(BasePatchEncoder):
 
         precision = torch.float16
         return model, eval_transform, precision
+
+
+class Midnight12kInferenceEncoder(BasePatchEncoder):
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+        from transformers import AutoModel
+        from .utils.constants import KAIKO_MEAN, KAIKO_STD
+        from torchvision import transforms
+
+        self.enc_name = "midnight12k"
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = os.path.dirname(weights_path)
+                model = AutoModel.from_pretrained(model_dir)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create Midnight-12k model from local checkpoint at '{weights_path}'. "
+                    "You can download the required `model.safetensors` and `config.json` from: https://huggingface.co/kaiko-ai/midnight."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = AutoModel.from_pretrained("kaiko-ai/midnight")
+            except:
+                traceback.print_exc()
+                raise Exception("Failed to download Midnight-12k model")
+
+        eval_transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=KAIKO_MEAN, std=KAIKO_STD),
+            ]
+        )
+
+        precision = torch.float32
+        self.return_type = return_type
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        out = self.model(x).last_hidden_state
+        cls_token = out[:, 0, :]
+        if self.return_type == "cls_token":
+            return cls_token
+        elif self.return_type == "cls+mean":
+            patch_embeddings = out[:, 1:, :]
+            return torch.cat([cls_token, patch_embeddings.mean(1)], dim=-1)
+        else:
+            raise ValueError(
+                f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
+            )

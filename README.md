@@ -107,6 +107,7 @@ Trident supports 21 patch encoders, loaded via a patch [`encoder_factory`](https
 - **H-Optimus-0**: [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0)  (`--patch_encoder hoptimus0 --patch_size 224 --mag 20`)
 - **H-Optimus-1**: [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1)  (`--patch_encoder hoptimus1 --patch_size 224 --mag 20`)
 - **MUSK**: [xiangjx/musk](https://huggingface.co/xiangjx/musk)  (`--patch_encoder musk --patch_size 384 --mag 20`)
+- **Midnight-12k**: [kaiko-ai/midnight](https://huggingface.co/kaiko-ai/midnight)  (`--patch_encoder midnight12k --patch_size 224 --mag 20`)
 - **Kaiko**: Hosted on TorchHub  (`--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20`)
 - **Lunit**: [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino)  (`--patch_encoder lunit-vits8 --patch_size 224 --mag 20`)
 - **Hibou**: [histai/hibou-L](https://huggingface.co/histai/hibou-L)  (`--patch_encoder hibou_l --patch_size 224 --mag 20`)
