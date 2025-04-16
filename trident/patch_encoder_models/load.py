@@ -43,6 +43,7 @@ def encoder_factory(model_name: str, **kwargs):
             - "kaiko-vits16"
             - "kaiko-vitl14"
             - "lunit-vits8"
+            - "midnight12k"
 
         **kwargs: Optional keyword arguments passed directly to the encoder constructor. These
             may include parameters such as:
