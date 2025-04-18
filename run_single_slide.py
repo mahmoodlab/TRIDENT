@@ -9,7 +9,7 @@ python run_single_slide.py --slide_path output/wsis/394140.svs --job_dir output/
 import argparse
 import os
 
-from trident import OpenSlideWSI
+from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
 
@@ -53,19 +53,19 @@ def process_slide(args):
 
     # Initialize the WSI
     print(f"Processing slide: {args.slide_path}")
-    slide = OpenSlideWSI(slide_path=args.slide_path, lazy_init=False, custom_mpp_keys=args.custom_mpp_keys)
+    slide = load_wsi(slide_path=args.slide_path, lazy_init=False, custom_mpp_keys=args.custom_mpp_keys)
 
     # Step 1: Tissue Segmentation
     print("Running tissue segmentation...")
     segmentation_model = segmentation_model_factory(
         model_name=args.segmenter,
         confidence_thresh=args.seg_conf_thresh,
-        device=f"cuda:{args.gpu}"
     )
     slide.segment_tissue(
         segmentation_model=segmentation_model,
         target_mag=segmentation_model.target_mag,
-        job_dir=args.job_dir
+        job_dir=args.job_dir,
+        device=f"cuda:{args.gpu}"
     )
     print(f"Tissue segmentation completed. Results saved to {args.job_dir}contours_geojson and {args.job_dir}contours")
 

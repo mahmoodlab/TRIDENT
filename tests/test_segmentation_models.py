@@ -23,13 +23,13 @@ class TestSegmentationModels(unittest.TestCase):
     def _test_forward(self, encoder_name):
         print("\033[95m" + f"Testing {encoder_name} forward pass" + "\033[0m")
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        encoder = segmentation_model_factory(encoder_name, device=device)
+        encoder = segmentation_model_factory(encoder_name).to(device)
 
         self.dummy_image = np.random.randint(0, 256, (encoder.input_size, encoder.input_size, 3), dtype=np.uint8)
         self.dummy_image = Image.fromarray(self.dummy_image)
 
         with torch.inference_mode():
-            dummy_input = encoder.eval_transforms(self.dummy_image).unsqueeze(dim=0)
+            dummy_input = encoder.eval_transforms(self.dummy_image).unsqueeze(dim=0).to(device)
             output = encoder(dummy_input)
 
         self.assertIsNotNone(output)
@@ -39,7 +39,8 @@ class TestSegmentationModels(unittest.TestCase):
     def test_hest(self):
         self._test_forward('hest')
         
-    # Add more segmentation models here
+    def test_grandqc(self):
+        self._test_forward('grandqc')
 
 if __name__ == '__main__':
     unittest.main()

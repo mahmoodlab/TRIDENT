@@ -3,7 +3,7 @@ import unittest
 import torch  # Check for CUDA availability
 
 import sys; sys.path.append('../')
-from trident import OpenSlideWSI
+from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
 
@@ -19,8 +19,8 @@ class TestOpenSlideWSI(unittest.TestCase):
     HF_REPO = "MahmoodLab/unit-testing"
     TEST_SLIDE_FILENAMES = [
         "394140.svs",
-        # "TCGA-AN-A0XW-01Z-00-DX1.811E11E7-FA67-46BB-9BC6-1FD0106B789D.svs",
-        # "TCGA-B6-A0IJ-01Z-00-DX1.BF2E062F-06DA-4CA8-86C4-36674C035CAA.svs"
+        "TCGA-AN-A0XW-01Z-00-DX1.811E11E7-FA67-46BB-9BC6-1FD0106B789D.svs",
+        "TCGA-B6-A0IJ-01Z-00-DX1.BF2E062F-06DA-4CA8-86C4-36674C035CAA.svs"
     ]
     TEST_OUTPUT_DIR = "test_single_slide_processing/"
     TEST_PATCH_ENCODER = "uni_v1"
@@ -50,11 +50,11 @@ class TestOpenSlideWSI(unittest.TestCase):
         for slide_filename in self.TEST_SLIDE_FILENAMES:
             with self.subTest(slide=slide_filename):
                 slide_path = os.path.join(self.local_wsi_dir, slide_filename)
-                slide = OpenSlideWSI(slide_path=slide_path, lazy_init=False)
+                slide = load_wsi(slide_path=slide_path, lazy_init=False)
 
                 # Step 1: Tissue segmentation
-                segmentation_model = segmentation_model_factory("hest", device=self.TEST_DEVICE)
-                slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR)
+                segmentation_model = segmentation_model_factory("hest")
+                slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR, device=self.TEST_DEVICE)
 
                 # Step 2: Tissue coordinate extraction
                 coords_path = slide.extract_tissue_coords(

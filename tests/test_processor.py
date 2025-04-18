@@ -86,10 +86,11 @@ class TestProcessor(unittest.TestCase):
             wsi_ext=self.TEST_WSI_EXT
         )
 
-        segmentation_model = segmentation_model_factory('hest', device=f'cuda:{self.TEST_GPU_INDEX}')
+        segmentation_model = segmentation_model_factory('hest')
         self.processor.run_segmentation_job(
             segmentation_model=segmentation_model,
-            seg_mag=5
+            seg_mag=5,
+            device=f'cuda:{self.TEST_GPU_INDEX}'
         )
         output_dirs = ["contours", "contours_geojson"]
         for dir_name in output_dirs:

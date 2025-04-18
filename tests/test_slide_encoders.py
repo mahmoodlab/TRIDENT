@@ -2,8 +2,6 @@ import unittest
 import torch
 
 import sys; sys.path.append('../')
-
-# New imports to test 
 from trident.slide_encoder_models import *
 
 """

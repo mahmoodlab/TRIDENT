@@ -16,6 +16,9 @@ BIOFORMAT_EXTENSIONS = {
 # PIL
 PIL_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 
+# OpenSlide
+OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.dcm', '.vms', '.vmu', '.ndpi', '.scn', '.mrxs', '.tiff', '.svslide', '.bif', '.czi'}
+
 # Combined with CZI 
 SUPPORTED_EXTENSIONS = BIOFORMAT_EXTENSIONS | PIL_EXTENSIONS | {'.czi'}
 

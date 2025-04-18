@@ -10,6 +10,7 @@ python run_batch_of_slides.py --task all --wsi_dir output/wsis --job_dir output 
 import argparse
 import torch
 from trident import Processor
+from trident import WSIReaderType
 
 
 def parse_arguments():
@@ -23,6 +24,15 @@ def parse_arguments():
                         choices=['cache', 'seg', 'coords', 'feat', 'all'], 
                         help='Task to run: cache, seg (segmentation), coords (save tissue coordinates), img (save tissue images), feat (extract features)')
     parser.add_argument('--job_dir', type=str, required=True, help='Directory to store outputs')
+    parser.add_argument('--wsi_cache', type=str, default=None, 
+                        help='Directory to copy slides to for local processing')
+    parser.add_argument('--clear_cache', action='store_true', default=False, 
+                        help='Delete slides from cache after processing')
+    parser.add_argument('--skip_errors', action='store_true', default=False, 
+                        help='Skip errored slides and continue processing')
+    parser.add_argument('--max_workers', type=int, default=None, help='Maximum number of workers. Set to 0 to use main process.')
+
+    # Slide-related arguments
     parser.add_argument('--wsi_dir', type=str, required=True, 
                         help='Directory containing WSI files (no nesting allowed)')
     parser.add_argument('--wsi_ext', type=str, nargs='+', default=None, 
@@ -31,12 +41,9 @@ def parse_arguments():
                     help='Custom keys used to store the resolution as MPP (micron per pixel) in your list of whole-slide image.')
     parser.add_argument('--custom_list_of_wsis', type=str, default=None,
                     help='Custom list of WSIs specified in a csv file.')
-    parser.add_argument('--wsi_cache', type=str, default=None, 
-                        help='Directory to copy slides to for local processing')
-    parser.add_argument('--clear_cache', action='store_true', default=False, 
-                        help='Delete slides from cache after processing')
-    parser.add_argument('--skip_errors', action='store_true', default=False, 
-                        help='Skip errored slides and continue processing')
+    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim'], default=None,
+                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim"]. Defaults to None (auto-determine which reader to use).')
+    
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
                         choices=['hest', 'grandqc'], 
@@ -46,7 +53,9 @@ def parse_arguments():
     parser.add_argument('--remove_holes', action='store_true', default=False, 
                         help='Do you want to remove holes?')
     parser.add_argument('--remove_artifacts', action='store_true', default=False, 
-                        help='Do you want to run an additional model to remove artifacts?')
+                        help='Do you want to run an additional model to remove artifacts (including penmarks, blurs, stains, etc.)?')
+    parser.add_argument('--remove_penmarks', action='store_true', default=False, 
+                        help='Do you want to run an additional model to remove penmarks?')
     # Patching arguments
     parser.add_argument('--mag', type=int, choices=[5, 10, 20, 40, 80], default=20, 
                         help='Magnification for coords/features extraction')
@@ -64,8 +73,18 @@ def parse_arguments():
                                  'resnet50', 'gigapath', 'virchow', 'virchow2', 
                                  'hoptimus0', 'hoptimus1', 'phikon_v2', 'conch_v15', 'musk', 'hibou_l',
                                  'kaiko-vits8', 'kaiko-vits16', 'kaiko-vitb8', 'kaiko-vitb16',
-                                 'kaiko-vitl14', 'lunit-vits8'],
+                                 'kaiko-vitl14', 'lunit-vits8', 'midnight12k'],
                         help='Patch encoder to use')
+    parser.add_argument(
+        '--patch_encoder_ckpt_path', type=str, default=None,
+        help=(
+            "Optional local path to a patch encoder checkpoint (.pt, .pth, .bin, or .safetensors). "
+            "This is only needed in offline environments (e.g., compute clusters without internet). "
+            "If not provided, models are downloaded automatically from Hugging Face. "
+            "You can also specify local paths via the model registry at "
+            "`./trident/patch_encoder_models/local_ckpts.json`."
+        )
+    )
     parser.add_argument('--slide_encoder', type=str, default=None, 
                         choices=['threads', 'titan', 'prism', 'gigapath', 'chief', 'madeleine',
                                  'mean-virchow', 'mean-virchow2', 'mean-conch_v1', 'mean-conch_v15', 'mean-ctranspath',
@@ -89,7 +108,9 @@ def initialize_processor(args):
         clear_cache=args.clear_cache,
         skip_errors=args.skip_errors,
         custom_mpp_keys=args.custom_mpp_keys,
-        custom_list_of_wsis=args.custom_list_of_wsis
+        custom_list_of_wsis=args.custom_list_of_wsis,
+        max_workers=args.max_workers,
+        reader_type=args.reader_type
     )
 
 def run_task(processor, args):
@@ -107,12 +128,11 @@ def run_task(processor, args):
         segmentation_model = segmentation_model_factory(
             args.segmenter,
             confidence_thresh=args.seg_conf_thresh,
-            device=f'cuda:{args.gpu}'
         )
-        if args.remove_artifacts:
+        if args.remove_artifacts or args.remove_penmarks:
             artifact_remover_model = segmentation_model_factory(
                 'grandqc_artifact',
-                device=f'cuda:{args.gpu}'
+                remove_penmarks_only=args.remove_penmarks and not args.remove_artifacts
             )
         else:
             artifact_remover_model = None
@@ -122,7 +142,8 @@ def run_task(processor, args):
             segmentation_model,
             seg_mag=segmentation_model.target_mag,
             holes_are_tissue= not args.remove_holes,
-            artifact_remover_model=artifact_remover_model
+            artifact_remover_model=artifact_remover_model,
+            device=f'cuda:{args.gpu}',
         )
     elif args.task == 'coords':
         # Minimal example for tissue patching:
@@ -139,7 +160,7 @@ def run_task(processor, args):
             # Minimal example for feature extraction:
             # python run_batch_of_slides.py --task feat --wsi_dir wsis --job_dir trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
             from trident.patch_encoder_models.load import encoder_factory
-            encoder = encoder_factory(args.patch_encoder)
+            encoder = encoder_factory(args.patch_encoder, weights_path=args.patch_encoder_ckpt_path)
             processor.run_patch_feature_extraction_job(
                 coords_dir=args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap',
                 patch_encoder=encoder,

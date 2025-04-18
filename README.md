@@ -1,7 +1,7 @@
 # 🔱   Trident
 
  [arXiv](https://arxiv.org/pdf/2502.06750) | [Blog](https://www.linkedin.com/pulse/announcing-new-open-source-tools-accelerate-ai-pathology-andrew-zhang-loape/?trackingId=pDkifo54SRuJ2QeGiGcXpQ%3D%3D) | [Cite](https://github.com/mahmoodlab/trident?tab=readme-ov-file#reference)
- | [License](https://github.com/mahmoodlab/trident?tab=License-1-ov-file)
+ | [Documentation](https://trident-docs.readthedocs.io/en/latest/) | [License](https://github.com/mahmoodlab/trident?tab=License-1-ov-file)
  
 Trident is a toolkit for large-scale whole-slide image processing.
 This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard Medical School and Brigham and Women's Hospital. This work was funded by NIH NIGMS R35GM138216.
@@ -19,6 +19,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **Slide Feature Extraction**: Extract slide embeddings from 5+ slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w). 
 
 ### Updates:
+- 04.25: Native support for PIL.Image and CuCIM (use `wsi = load_wsi(xxx.svs)`). Support for seg + patch encoding without Internet.
 - 04.25: Remove artifacts from the tissue segmentation with `--remove_artifacts`. Works well for H&E.  
 - 02.25: New image converter from `czi`, `png`, etc to `tiff`.
 - 02.25: Support for [GrandQC](https://www.nature.com/articles/s41467-024-54769-y) tissue vs. background segmentation.
@@ -106,6 +107,7 @@ Trident supports 21 patch encoders, loaded via a patch [`encoder_factory`](https
 - **H-Optimus-0**: [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0)  (`--patch_encoder hoptimus0 --patch_size 224 --mag 20`)
 - **H-Optimus-1**: [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1)  (`--patch_encoder hoptimus1 --patch_size 224 --mag 20`)
 - **MUSK**: [xiangjx/musk](https://huggingface.co/xiangjx/musk)  (`--patch_encoder musk --patch_size 384 --mag 20`)
+- **Midnight-12k**: [kaiko-ai/midnight](https://huggingface.co/kaiko-ai/midnight)  (`--patch_encoder midnight12k --patch_size 224 --mag 20`)
 - **Kaiko**: Hosted on TorchHub  (`--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20`)
 - **Lunit**: [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino)  (`--patch_encoder lunit-vits8 --patch_size 224 --mag 20`)
 - **Hibou**: [histai/hibou-L](https://huggingface.co/histai/hibou-L)  (`--patch_encoder hibou_l --patch_size 224 --mag 20`)

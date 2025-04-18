@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import torch
+import socket
 import os
 import json
-from typing import List
+from typing import List, Optional, Union
 import h5py
 import numpy as np
 import cv2
@@ -12,37 +13,97 @@ from geopandas import gpd
 from shapely import Polygon
 
 
-def get_weights_path(encoder_type, encoder_name):
+ENV_TRIDENT_HOME = "TRIDENT_HOME"
+ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
+DEFAULT_CACHE_DIR = "~/.cache"
+_cache_dir: Optional[str] = None
+
+
+def get_dir() -> str:
+    r"""
+    Get Trident cache directory used for storing downloaded models & weights.
+    If :func:`~trident.hub.set_dir` is not called, default path is ``$TRIDENT_HOME`` where
+    environment variable ``$TRIDENT_HOME`` defaults to ``$XDG_CACHE_HOME/torch``.
+    ``$XDG_CACHE_HOME`` follows the X Design Group specification of the Linux
+    filesystem layout, with a default value ``~/.cache`` if the environment
+    variable is not set.
+    """
+
+    if _cache_dir is not None:
+        return _cache_dir
+    return _get_trident_home()
+
+
+def set_dir(d: Union[str, os.PathLike]) -> None:
+    r"""
+    Optionally set the Trident cache directory used to save downloaded models & weights.
+    Args:
+        d (str): path to a local folder to save downloaded models & weights.
+    """
+    global _cache_dir
+    _cache_dir = os.path.expanduser(d)
+
+
+def _get_trident_home():
+    trident_home = os.path.expanduser(
+        os.getenv(
+            ENV_TRIDENT_HOME,
+            os.path.join(os.getenv(ENV_XDG_CACHE_HOME, DEFAULT_CACHE_DIR), "trident"),
+        )
+    )
+    return trident_home
+
+
+def has_internet_connection(timeout=3.0) -> bool:
+    try:
+        # Fast socket-level check
+        socket.create_connection(("huggingface.co", 443), timeout=timeout)
+        return True
+    except OSError:
+        pass
+
+    try:
+        # Fallback HTTP-level check (if requests is available)
+        import requests
+        r = requests.head("https://huggingface.co", timeout=timeout)
+        return r.status_code < 500
+    except Exception:
+        return False
+
+
+def get_weights_path(model_type, encoder_name):
     """
     Retrieve the path to the weights file for a given model name.
-
     This function looks up the path to the weights file in a local checkpoint
     registry (local_ckpts.json). If the path in the registry is absolute, it
     returns that path. If the path is relative, it joins the relative path with
     the provided weights_root directory.
-
     Args:
         weights_root (str): The root directory where weights files are stored.
         name (str): The name of the model whose weights path is to be retrieved.
-
     Returns:
         str: The absolute path to the weights file.
     """
-    root = os.path.join(os.path.dirname(__file__), f"{encoder_type}_encoder_models")
-    assert encoder_type in ['patch', 'slide'], f"Encoder type must be 'patch' or 'slide', not '{encoder_type}'"
+
+    assert model_type in ['patch', 'slide', 'seg'], f"Encoder type must be 'patch' or 'slide' or 'seg', not '{model_type}'"
+
+    if model_type == 'patch' or model_type == 'slide':
+        root = os.path.join(os.path.dirname(__file__), f"{model_type}_encoder_models")
+    else:
+        root = os.path.join(os.path.dirname(__file__), "segmentation_models")
+
     registry_path = os.path.join(root, "local_ckpts.json")
     with open(registry_path, "r") as f:
         registry = json.load(f)
-    path = registry.get(encoder_name)
-    if not path:
-        raise ValueError(f"Please specify the weights path to '{encoder_name}' in '{registry_path}'")
-    path = path if os.path.isabs(path) else os.path.abspath(os.path.join(root, 'model_zoo', path)) # Make path absolute
-    if not os.path.exists(path):
-        print(f"WARNING: Path at '{path}' does not exist. Please double-check the registry in '{registry_path}'")
+
+    path = registry.get(encoder_name)    
+    if path:
+        path = path if os.path.isabs(path) else os.path.abspath(os.path.join(root, 'model_zoo', path)) # Make path absolute
+        if not os.path.exists(path):
+            path = ""
+
     return path
 
-
-################################################################################
 
 def create_lock(path, suffix = None):
     """

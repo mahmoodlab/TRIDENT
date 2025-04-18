@@ -43,7 +43,7 @@ class ABMIL(nn.Module):
             self.condensing_layer = nn.Linear(n_heads * feature_dim, feature_dim)
         
     def forward(self, features, attn_mask = None):
-        '''
+        """
         Forward pass
 
         Args:
@@ -52,7 +52,7 @@ class ABMIL(nn.Module):
 
         Returns:
             aggregated_features (torch.Tensor): Attention-weighted features aggregated across heads. Shape: batch_size x n_branches x feature_dim
-        '''
+        """
 
         assert features.dim() == 3, f'Input features must be 3-dimensional (batch_size x num_images x feature_dim). Got {features.shape} instead.'
         if attn_mask is not None:

@@ -4,15 +4,16 @@ import torch
 import traceback
 from abc import abstractmethod
 from einops import rearrange
+from typing import Optional, Tuple
+
 from trident.IO import get_weights_path
-import warnings
 
 """
 This file contains an assortment of pretrained slide encoders, all loadable via the encoder_factory() function.
 """
 
-def encoder_factory(model_name, pretrained=True, freeze=True, **kwargs):
-        '''
+def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = True, **kwargs) -> torch.nn.Module:
+        """
         Build a slide encoder model.
 
         Args:
@@ -23,13 +24,12 @@ def encoder_factory(model_name, pretrained=True, freeze=True, **kwargs):
 
         Returns:
             torch.nn.Module: The slide encoder model.
-        '''
+        """
 
         if model_name.startswith('mean-'):
             enc = MeanSlideEncoder
             return enc(model_name = model_name)
         elif 'threads' in model_name:
-            # raise ValueError(f"threads is not public. Coming soon!")
             enc = ThreadsSlideEncoder
         elif 'titan' in model_name:
             enc = TitanSlideEncoder
@@ -46,8 +46,9 @@ def encoder_factory(model_name, pretrained=True, freeze=True, **kwargs):
         else:
             raise ValueError(f"Model type {model_name} not supported")
         
-        return enc(pretrained = pretrained, freeze = freeze, **kwargs)
-    
+        return enc(pretrained=pretrained, freeze=freeze, **kwargs)
+
+
 # Map from slide encoder to required patch encoder
 # Used in Processor.py to load the correct patch encoder for a given slide encoder
 slide_to_patch_encoder_name = {
@@ -60,14 +61,14 @@ slide_to_patch_encoder_name = {
     'madeleine': 'conch_v1',
 }
 
-####################################################################################################
+
 
 class BaseSlideEncoder(torch.nn.Module):
     
-    def __init__(self, freeze=True, **build_kwargs):
-        '''
+    def __init__(self, freeze: bool = True, **build_kwargs: dict) -> None:
+        """
         Parent class for all pretrained slide encoders.
-        '''
+        """
         super().__init__()
         self.enc_name = None
         self.model, self.precision, self.embedding_dim = self._build(**build_kwargs)
@@ -79,28 +80,77 @@ class BaseSlideEncoder(torch.nn.Module):
             self.model.eval()
         
     def forward(self, batch):
-        '''
+        """
         Can be overwritten if model requires special forward pass.
-        '''
+        """
         z = self.model(batch)
         return z
         
     @abstractmethod
     def _build(self, **build_kwargs):
-        '''
+        """
         Initialization method, must be defined in child class.
-        '''
+        """
         pass
 
 
-####################################################################################################
+class CustomSlideEncoder(BaseSlideEncoder):
+    def __init__(
+        self, 
+        enc_name: str, 
+        model: torch.nn.Module, 
+        precision: torch.dtype = torch.float32, 
+        embedding_dim: Optional[int] = None
+    ):
+        """
+        CustomSlideEncoder initialization.
+
+        This class is used when the model and precision are pre-instantiated externally 
+        and should be injected directly into the encoder wrapper.
+
+        Args:
+            enc_name (str): 
+                A unique name or identifier for the encoder.
+            model (torch.nn.Module): 
+                A PyTorch model instance to use for slide-level inference.
+            precision (torch.dtype, optional): 
+                The precision to use for inference (e.g., torch.float32, torch.float16).
+            embedding_dim (int, optional): 
+                The output embedding dimension. If not provided, will attempt to use 
+                `model.embedding_dim` if it exists.
+        """
+        super().__init__(freeze=False)  # Freezing should be handled externally
+        self.enc_name = enc_name
+        self.model = model
+        self.precision = precision
+        self.embedding_dim = embedding_dim or getattr(model, 'embedding_dim', None)
+
+    def _build(self, **build_kwargs):
+        return None, None, None
 
 
 class ABMILSlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        ABMIL initialization.
+        """
+        super().__init__(**build_kwargs)
     
-    def _build(self, input_feature_dim, n_heads, head_dim, dropout, gated, pretrained=False):
+    def _build(
+        self,
+        input_feature_dim: int,
+        n_heads: int,
+        head_dim: int,
+        dropout: float,
+        gated: bool,
+        pretrained: bool = False
+    ) -> Tuple[torch.nn.ModuleDict, torch.dtype, int]:
+        
         from trident.slide_encoder_models.model_zoo.reusable_blocks.ABMIL import ABMIL
         import torch.nn as nn
+
+        self.enc_name = 'abmil'
         
         assert pretrained is False, "ABMILSlideEncoder has no corresponding pretrained models. Please load with pretrained=False."
                                 
@@ -147,6 +197,12 @@ class ABMILSlideEncoder(BaseSlideEncoder):
 
 class PRISMSlideEncoder(BaseSlideEncoder):
 
+    def __init__(self, **build_kwargs):
+        """
+        PRISM initialization.
+        """
+        super().__init__(**build_kwargs)
+    
     def _build(self, pretrained=True):
         
         self.enc_name = 'prism'
@@ -183,6 +239,12 @@ class PRISMSlideEncoder(BaseSlideEncoder):
     
 
 class CHIEFSlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        CHIEF initialization.
+        """
+        super().__init__(**build_kwargs)
 
     def _build(self, pretrained=True):
         
@@ -257,6 +319,12 @@ class CHIEFSlideEncoder(BaseSlideEncoder):
 
 class GigaPathSlideEncoder(BaseSlideEncoder):
 
+    def __init__(self, **build_kwargs):
+        """
+        GigaPath initialization.
+        """
+        super().__init__(**build_kwargs)
+
     def _build(self, pretrained=True):
 
         self.enc_name = 'gigapath'
@@ -292,6 +360,12 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
 
 class MadeleineSlideEncoder(BaseSlideEncoder):
 
+    def __init__(self, **build_kwargs):
+        """
+        Madeleine initialization.
+        """
+        super().__init__(**build_kwargs)
+
     def _build(self, pretrained=True):
 
         assert pretrained, "MadeleineSlideEncoder has no non-pretrained models. Please load with pretrained=True."
@@ -317,6 +391,12 @@ class MadeleineSlideEncoder(BaseSlideEncoder):
 
 class ThreadsSlideEncoder(BaseSlideEncoder):
 
+    def __init__(self, **build_kwargs):
+        """
+        Threads initialization.
+        """
+        super().__init__(**build_kwargs)
+
     def _build(self, pretrained=True):
 
         self.enc_name = 'threads'
@@ -335,6 +415,12 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
 class TitanSlideEncoder(BaseSlideEncoder):
     
+    def __init__(self, **build_kwargs):
+        """
+        Titan initialization.
+        """
+        super().__init__(**build_kwargs)
+
     def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
@@ -350,6 +436,12 @@ class TitanSlideEncoder(BaseSlideEncoder):
 
 
 class MeanSlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        Mean pooling initialization.
+        """
+        super().__init__(**build_kwargs)
 
     def _build(self, model_name = 'mean-default'):
         self.enc_name = model_name

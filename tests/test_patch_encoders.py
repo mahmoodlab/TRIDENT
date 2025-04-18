@@ -95,7 +95,9 @@ class TestPatchEncoders(unittest.TestCase):
     def test_lunitvits8_forward(self):
         self._test_encoder_forward('lunit-vits8')
     
-    
+    def test_midnight12k_forward(self):
+        self._test_encoder_forward('midnight12k')
+        self._test_encoder_forward('midnight12k', return_type="cls+mean")
 
 if __name__ == '__main__':
     unittest.main()

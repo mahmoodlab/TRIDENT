@@ -1,11 +1,10 @@
 from __future__ import annotations
 import numpy as np
-import openslide
 from PIL import Image
 import os 
 import warnings
 import torch 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Literal
 from torch.utils.data import DataLoader
 
 from trident.wsi_objects.WSIPatcher import *
@@ -14,15 +13,19 @@ from trident.IO import (
     save_h5, read_coords, read_coords_legacy,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers
 )
-class OpenSlideWSI:
+
+ReadMode = Literal['pil', 'numpy']
+
+
+class WSI:
     """
-    The `OpenSlideWSI` class provides an interface to work with Whole Slide Images (WSIs) using OpenSlide. 
-    It supports lazy initialization, metadata extraction, patching, and advanced operations such as 
-    tissue segmentation and feature extraction. The class handles various WSI file formats and 
+    The `WSI` class provides an interface to work with Whole Slide Images (WSIs). 
+    It supports lazy initialization, metadata extraction, tissue segmentation,
+    patching, and feature extraction. The class handles various WSI file formats and 
     offers utilities for integration with AI models.
 
-    Attributes:
-    -----------
+    Attributes
+    ----------
     slide_path : str
         Path to the WSI file.
     name : str
@@ -34,13 +37,27 @@ class OpenSlideWSI:
     tissue_seg_path : str
         Path to a tissue segmentation mask (if available).
     width : int
-        Width of the WSI in pixels (lazy initialized).
+        Width of the WSI in pixels (set during lazy initialization).
     height : int
-        Height of the WSI in pixels (lazy initialized).
+        Height of the WSI in pixels (set during lazy initialization).
+    dimensions : Tuple[int, int]
+        (width, height) tuple of the WSI (set during lazy initialization).
     mpp : float
-        Microns per pixel (lazy initialized).
+        Microns per pixel (set during lazy initialization or inferred).
     mag : float
-        Magnification level (lazy initialized).
+        Estimated magnification level (set during lazy initialization or inferred).
+    level_count : int
+        Number of resolution levels in the WSI (set during lazy initialization).
+    level_downsamples : List[float]
+        Downsampling factors for each pyramid level (set during lazy initialization).
+    level_dimensions : List[Tuple[int, int]]
+        Dimensions of the WSI at each pyramid level (set during lazy initialization).
+    properties : dict
+        Metadata properties extracted from the image backend (set during lazy initialization).
+    img : Any
+        Backend-specific image object used for reading regions (set during lazy initialization).
+    gdf_contours : geopandas.GeoDataFrame
+        Tissue segmentation mask as a GeoDataFrame, if available (set during lazy initialization).
     """
 
     def __init__(
@@ -54,7 +71,7 @@ class OpenSlideWSI:
         max_workers: Optional[int] = None,
     ):
         """
-        Initialize the `OpenSlideWSI` object for working with a Whole Slide Image (WSI).
+        Initialize the `WSI` object for working with a Whole Slide Image (WSI).
 
         Args:
         -----
@@ -64,7 +81,7 @@ class OpenSlideWSI:
             Optional name for the WSI. Defaults to the filename (without extension).
         tissue_seg_path : str, optional
             Path to the tissue segmentation mask file. Defaults to None.
-        custom_mpp_keys : dict, optional
+        custom_mpp_keys : Optional[List[str]]
             Custom keys for extracting MPP and magnification metadata. Defaults to None.
         lazy_init : bool, optional
             If True, defer loading the WSI until required. Defaults to True.
@@ -72,11 +89,6 @@ class OpenSlideWSI:
             If not None, will be the reference micron per pixel (mpp). Handy when mpp is not provided in the WSI.
         max_workers (Optional[int]): Maximum number of workers for data loading
 
-        Example:
-        --------
-        >>> wsi = OpenSlideWSI("path/to/wsi.svs", lazy_init=False)
-        >>> print(wsi)
-        <width=100000, height=80000, backend=OpenSlideWSI, mpp=0.25, mag=40>
         """
         self.slide_path = slide_path
         if name is None:
@@ -97,168 +109,65 @@ class OpenSlideWSI:
         else: 
             self.lazy_init = not self.lazy_init
 
-    def _lazy_initialize(self) -> None:
-        """
-        The `_lazy_initialize` function from the class `OpenSlideWSI` Perform lazy initialization by loading the WSI file and its metadata.
-
-        Raises:
-        -------
-        FileNotFoundError:
-            If the WSI file or tissue segmentation mask cannot be found.
-        Exception:
-            If there is an error while initializing the WSI.
-
-        Notes:
-        ------
-        This method sets the following attributes after initialization:
-        - `width` and `height` of the WSI.
-        - `mpp` (microns per pixel) and `mag` (magnification level).
-        - `gdf_contours` if a tissue segmentation mask is provided.
-        """
-        if not self.lazy_init:
-            try:
-                self.img = openslide.OpenSlide(self.slide_path)
-                # set openslide attrs as self
-                self.dimensions = self.get_dimensions()
-                self.width, self.height = self.dimensions
-                self.level_count = self.img.level_count
-                self.level_downsamples = self.img.level_downsamples
-                self.level_dimensions = self.img.level_dimensions
-                self.properties = self.img.properties
-                if self.mpp is None:
-                    self.mpp = self._fetch_mpp(self.custom_mpp_keys)
-                self.mag = self._fetch_magnification(self.custom_mpp_keys)
-                self.lazy_init = True
-
-                if self.tissue_seg_path is not None:
-                    try:
-                        # self.mask = cv2.imread(self.tissue_seg_path, cv2.IMREAD_GRAYSCALE)
-                        self.gdf_contours = gpd.read_file(self.tissue_seg_path)
-                    except FileNotFoundError:
-                        raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
-            except Exception as e:
-                raise Exception(f"Error initializing WSI: {e}")
-
     def __repr__(self) -> str:
         if self.lazy_init:
             return f"<width={self.width}, height={self.height}, backend={self.__class__.__name__}, mpp={self.mpp}, mag={self.mag}>"
         else:
             return f"<name={self.name}>"
     
-    def get_dimensions(self) -> Tuple[int, int]:
+    def _lazy_initialize(self) -> None:
         """
-        The `get_dimensions` function from the class `OpenSlideWSI` Retrieve the dimensions of the WSI.
+        Perform lazy initialization of internal attributes for the WSI interface.
 
-        Returns:
-        --------
-        Tuple[int, int]:
-            A tuple containing the width and height of the WSI in pixels.
+        This method is intended to be called by subclasses of `WSI`, and should not be used directly.
+        It sets default values for key image attributes and optionally loads a tissue segmentation mask
+        if a path is provided. Subclasses must override this method to implement backend-specific behavior.
 
-        Example:
-        --------
-        >>> wsi.get_dimensions()
-        (100000, 80000)
-        """
-        return self.img.dimensions
+        Raises
+        ------
+        FileNotFoundError
+            If the tissue segmentation mask file is provided but cannot be found.
 
-    def read_region(
-        self, 
-        location: Tuple[int, int], 
-        level: int, 
-        size: Tuple[int, int]
-    ) -> np.ndarray:
-        """
-        The `read_region` function from the class `OpenSlideWSI` Extract a specific region from the WSI as a NumPy array.
-
-        Args:
+        Notes
         -----
-        location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            Width and height of the region.
-
-        Returns:
-        --------
-        np.ndarray:
-            The extracted region as a NumPy array.
-
-        Example:
-        --------
-        >>> region = wsi.read_region((0, 0), level=0, size=(512, 512))
-        >>> print(region.shape)
-        (512, 512, 3)
+        This method sets the following attributes:
+        - `img`, `dimensions`, `width`, `height`: placeholder image properties (set to None).
+        - `level_count`, `level_downsamples`, `level_dimensions`: multiresolution placeholders (None).
+        - `properties`, `mag`: metadata and magnification (None).
+        - `gdf_contours`: loaded from `tissue_seg_path` if available.
         """
-        return np.array(self.read_region_pil(location, level, size))
-    
-    def read_region_pil(
-        self, 
-        location: Tuple[int, int], 
-        level: int, 
-        size: Tuple[int, int]
-    ) -> Image.Image:
-        """
-        The `read_region_pil` function from the class `OpenSlideWSI` Extract a specific region from the WSI as a PIL Image.
 
-        Args:
-        -----
-        location : Tuple[int, int]
-            Coordinates (x, y) of the top-left corner of the region.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            Width and height of the region.
-
-        Returns:
-        --------
-        Image.Image:
-            The extracted region as a PIL Image in RGB format.
-
-        Example:
-        --------
-        >>> region = wsi.read_region_pil((0, 0), level=0, size=(512, 512))
-        >>> region.show()
-        """
-        return self.img.read_region(location, level, size).convert('RGB')
-
-    def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
-        """
-        Generate a thumbnail image of the WSI.
-
-        Args:
-        -----
-        size : tuple[int, int]
-            A tuple specifying the desired width and height of the thumbnail.
-
-        Returns:
-        --------
-        Image.Image:
-            The thumbnail as a PIL Image in RGB format.
-
-        Example:
-        --------
-        >>> thumbnail = wsi.get_thumbnail((256, 256))
-        >>> thumbnail.show()
-        """
-        return self.img.get_thumbnail(size).convert('RGB')
+        if not self.lazy_init:
+            self.img = None
+            self.dimensions = None
+            self.width, self.height = None, None
+            self.level_count = None
+            self.level_downsamples = None
+            self.level_dimensions = None
+            self.properties = None
+            self.mag = None
+            if self.tissue_seg_path is not None:
+                try:
+                    self.gdf_contours = gpd.read_file(self.tissue_seg_path)
+                except FileNotFoundError:
+                    raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
 
     def create_patcher(
         self, 
         patch_size: int, 
-        src_pixel_size: float | None = None, 
-        dst_pixel_size: float | None = None,
-        src_mag: int | None = None, 
-        dst_mag: int | None = None,
+        src_pixel_size: Optional[float] = None, 
+        dst_pixel_size: Optional[float] = None, 
+        src_mag: Optional[int] = None, 
+        dst_mag: Optional[int] = None, 
         overlap: int = 0, 
-        mask: gpd.GeoDataFrame | None = None, 
+        mask: Optional[gpd.GeoDataFrame] = None,
         coords_only: bool = False, 
-        custom_coords: np.ndarray | None = None,
+        custom_coords:  Optional[np.ndarray] = None,
         threshold: float = 0.15,
-        pil: bool = False
+        pil: bool = False,
     ) -> OpenSlideWSIPatcher:
         """
-        The `create_patcher` function from the class `OpenSlideWSI` Create a patcher object for extracting patches from the WSI.
+        The `create_patcher` function from the class `WSI` Create a patcher object for extracting patches from the WSI.
 
         Args:
         -----
@@ -272,7 +181,7 @@ class OpenSlideWSI:
 
         Returns:
         --------
-        WSIPatcher:
+        OpenSlideWSIPatcher:
             An object for extracting patches.
 
         Example:
@@ -286,78 +195,21 @@ class OpenSlideWSI:
             overlap, mask, coords_only, custom_coords, threshold, pil
         )
     
-    def _fetch_mpp(self, custom_mpp_keys: List[str] | None = None) -> float | None:
+    def _fetch_magnification(self, custom_mpp_keys: Optional[List[str]] = None) -> int:
         """
-        The `fetch_mpp` function from the class `OpenSlideWSI` retrieves the microns per pixel (MPP) value for the WSI.
-
-        Args:
-        -----
-        custom_mpp_keys : List[str], optional
-            Custom keys for extracting MPP. Defaults to common OpenSlide keys.
-
-        Returns:
-        --------
-        float | None:
-            The MPP value, or None if it cannot be determined.
-
-        Notes:
-        ------
-        If the MPP value is unavailable, this method attempts to calculate it 
-        from the slide's resolution metadata.
-        """
-        mpp_x = None
-        mpp_keys = [
-            openslide.PROPERTY_NAME_MPP_X,
-            'openslide.mirax.MPP',
-            'aperio.MPP',
-            'hamamatsu.XResolution',
-            'openslide.comment'
-        ]
-
-        if custom_mpp_keys:
-            mpp_keys.extend(custom_mpp_keys)
-
-        # Search for mpp_x in the available keys
-        for key in mpp_keys:
-            if key in self.img.properties:
-                try:
-                    mpp_x = float(self.img.properties[key])
-                    break
-                except ValueError:
-                    continue
-
-        # Convert pixel resolution to mpp 
-        if mpp_x is None:
-            x_resolution = self.img.properties.get('tiff.XResolution', None)
-            unit = self.img.properties.get('tiff.ResolutionUnit', None)
-            if not x_resolution or not unit:
-                return None
-            if unit == 'CENTIMETER' or unit == 'centimeter':
-                mpp_x = 10000 / float(x_resolution)  # 1 cm = 10,000 microns
-            elif unit == 'INCH':
-                mpp_x = 25400 / float(x_resolution)  # 1 inch = 25,400 microns
-            else:
-                return None  # Unsupported unit -- add more conditions is needed. 
-            
-        mpp_x = round(mpp_x, 4)
-
-        return mpp_x
-
-    def _fetch_magnification(self, custom_mpp_keys: List[str] | None = None) -> int | None:
-        """
-        The `_fetch_magnification` function of the class `OpenSlideWSI` calculates the magnification level 
+        The `_fetch_magnification` function of the class `WSI` calculates the magnification level 
         of the WSI based on the microns per pixel (MPP) value or other metadata. The magnification levels are 
         approximated to commonly used values such as 80x, 40x, 20x, etc. If the MPP is unavailable or insufficient 
         for calculation, it attempts to fallback to metadata-based values.
 
         Args:
         -----
-        custom_mpp_keys : List[str] | None, optional
+        custom_mpp_keys : Optional[List[str]], optional
             Custom keys to search for MPP values in the WSI properties. Defaults to None.
 
         Returns:
         --------
-        int | None:
+        Optional[int]]:
             The approximated magnification level, or None if the magnification could not be determined.
 
         Raises:
@@ -371,40 +223,26 @@ class OpenSlideWSI:
         >>> print(mag)
         40
         """
-        try:
-            if self.mpp is None:
-                mpp_x = self._fetch_mpp(custom_mpp_keys)
+        if self.mpp is None:
+            mpp_x = self._fetch_mpp(custom_mpp_keys)
+        else:
+            mpp_x = self.mpp
+
+        if mpp_x is not None:
+            if mpp_x < 0.16:
+                return 80
+            elif mpp_x < 0.2:
+                return 60
+            elif mpp_x < 0.3:
+                return 40
+            elif mpp_x < 0.6:
+                return 20
+            elif mpp_x < 1.2:
+                return 10
+            elif mpp_x < 2.4:
+                return 5
             else:
-                mpp_x = self.mpp
-
-            if mpp_x is not None:
-                if mpp_x < 0.16:
-                    return 80
-                elif mpp_x < 0.2:
-                    return 60
-                elif mpp_x < 0.3:
-                    return 40
-                elif mpp_x < 0.6:
-                    return 20
-                elif mpp_x < 1.2:
-                    return 10
-                elif mpp_x < 2.4:
-                    return 5
-                else:
-                    raise ValueError(f"Identified mpp is too low: mpp={mpp_x}")
-
-            # Use metadata-based magnification as a fallback if mpp_x is not available
-            magnification = self.img.properties.get(openslide.PROPERTY_NAME_OBJECTIVE_POWER)
-            if magnification is not None:
-                return int(magnification)
-
-        except openslide.OpenSlideError as e:
-            print(f"Error: Failed to process WSI properties. {e}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-
-        # Return None if magnification couldn't be determined
-        return None
+                raise ValueError(f"Identified mpp is very low: mpp={mpp_x}. Most WSIs are at 20x, 40x magnfication.")
 
     @torch.inference_mode()
     @torch.autocast(device_type="cuda", dtype=torch.float16)
@@ -413,11 +251,12 @@ class OpenSlideWSI:
         segmentation_model: torch.nn.Module,
         target_mag: int = 10,
         holes_are_tissue: bool = True,
-        job_dir: str | None = None,
+        job_dir: Optional[str] = None,
         batch_size: int = 16,
+        device: str = 'cuda:0',
     ) -> str:
         """
-        The `segment_tissue` function of the class `OpenSlideWSI` segments tissue regions in the WSI using 
+        The `segment_tissue` function of the class `WSI` segments tissue regions in the WSI using 
         a specified segmentation model. It processes the WSI at a target magnification level, optionally 
         treating holes in the mask as tissue. The segmented regions are saved as thumbnails and GeoJSON contours.
 
@@ -429,10 +268,13 @@ class OpenSlideWSI:
             Target magnification level for segmentation. Defaults to 10.
         holes_are_tissue : bool, optional
             Whether to treat holes in the mask as tissue. Defaults to True.
-        job_dir : str | None, optional
+        job_dir :  Optional[str], optional
             Directory to save the segmentation results. Defaults to None.
         batch_size : int, optional
             Batch size for processing patches. Defaults to 16.
+        device (str): 
+            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+
 
         Returns:
         --------
@@ -446,6 +288,7 @@ class OpenSlideWSI:
         """
 
         self._lazy_initialize()
+        segmentation_model.to(device)
         max_dimension = 1000
         if self.width > self.height:
             thumbnail_width = max_dimension
@@ -464,10 +307,10 @@ class OpenSlideWSI:
             mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
         )
         precision = segmentation_model.precision
-        device = segmentation_model.device
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size, max_workers=self.max_workers), pin_memory=True)
+        # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
         mpp_reduction_factor = self.mpp / destination_mpp
         width, height = self.get_dimensions()
@@ -535,7 +378,7 @@ class OpenSlideWSI:
         tolerance: float = 0.01
     ) -> Tuple[int, float]:
         """
-        The `get_best_level_and_custom_downsample` function of the class `OpenSlideWSI` determines the best level 
+        The `get_best_level_and_custom_downsample` function of the class `WSI` determines the best level 
         and custom downsample factor to approximate a desired downsample value. It identifies the most suitable 
         resolution level of the WSI and calculates any additional scaling required.
 
@@ -601,7 +444,7 @@ class OpenSlideWSI:
         min_tissue_proportion: float  = 0.,
     ) -> str:
         """
-        The `extract_tissue_coords` function of the class `OpenSlideWSI` extracts patch coordinates 
+        The `extract_tissue_coords` function of the class `WSI` extracts patch coordinates 
         from tissue regions in the WSI. It generates coordinates of patches at the specified 
         magnification and saves the results in an HDF5 file.
 
@@ -668,7 +511,7 @@ class OpenSlideWSI:
 
     def visualize_coords(self, coords_path: str, save_patch_viz: str) -> str:
         """
-        The `visualize_coords` function of the class `OpenSlideWSI` overlays patch coordinates 
+        The `visualize_coords` function of the class `WSI` overlays patch coordinates 
         onto a scaled thumbnail of the WSI. It creates a visualization of the extracted patches 
         and saves it as an image file.
 
@@ -690,6 +533,8 @@ class OpenSlideWSI:
         >>> print(viz_path)
         output_viz/sample_name.png
         """
+
+        self._lazy_initialize()
 
         try:
             coords_attrs, coords = read_coords(coords_path)  # Coords are ALWAYS wrt. level 0 of the slide.
@@ -774,7 +619,7 @@ class OpenSlideWSI:
         batch_limit: int = 512
     ) -> str:
         """
-        The `extract_features` function of the class `OpenSlideWSI` extracts feature embeddings 
+        The `extract_patch_features` function of the class `WSI` extracts feature embeddings 
         from the WSI using a specified patch encoder. It processes the patches as specified 
         in the coordinates file and saves the features in the desired format.
 
@@ -804,9 +649,11 @@ class OpenSlideWSI:
         >>> print(features_path)
         output_features/sample_name.h5
         """
-        self._lazy_initialize()
 
-        precision = patch_encoder.precision
+        self._lazy_initialize()
+        patch_encoder.to(device)
+        patch_encoder.eval()
+        precision = getattr(patch_encoder, 'precision', torch.float32)
         patch_transforms = patch_encoder.eval_transforms
 
         try:
@@ -828,10 +675,11 @@ class OpenSlideWSI:
             dst_mag=target_magnification,
             custom_coords=coords,
             coords_only=False,
-            pil=True
+            pil=True,
         )
         dataset = WSIPatcherDataset(patcher, patch_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=True)
+        # dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=0, pin_memory=True)
 
         features = []
         for imgs, _ in dataloader:

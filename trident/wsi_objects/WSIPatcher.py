@@ -22,7 +22,7 @@ class OpenSlideWSIPatcher:
         coords_only = False,
         custom_coords = None,
         threshold = 0.,
-        pil=False
+        pil=False,
     ):
         """ Initialize patcher, compute number of (masked) rows, columns.
 
@@ -194,14 +194,20 @@ class OpenSlideWSIPatcher:
         return self.cols, self.rows
       
     def get_tile_xy(self, x: int, y: int) -> Tuple[np.ndarray, int, int]:
-        if self.pil:
-            tile = self.wsi.read_region_pil(location=(x, y), level=self.level, size=(self.patch_size_level, self.patch_size_level))
-            if self.patch_size_target is not None:
+
+        tile = self.wsi.read_region(
+            location=(x, y),
+            level=self.level,
+            size=(self.patch_size_level, self.patch_size_level),
+            read_as='pil' if self.pil else 'numpy'
+        )
+
+        if self.patch_size_target is not None:
+            if self.pil:
                 tile = tile.resize((self.patch_size_target, self.patch_size_target))
-        else:
-            tile = self.wsi.read_region(location=(x, y), level=self.level, size=(self.patch_size_level, self.patch_size_level))
-            if self.patch_size_target is not None:
+            else:
                 tile = cv2.resize(tile, (self.patch_size_target, self.patch_size_target))[:, :, :3]
+
         assert x < self.width and y < self.height
         return tile, x, y
     

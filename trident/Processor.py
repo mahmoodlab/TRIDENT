@@ -8,24 +8,10 @@ from inspect import signature
 import geopandas as gpd
 
 from trident.IO import create_lock, remove_lock, is_locked, update_log
-from trident.wsi_objects.WSI import OpenSlideWSI
-
-
-def deprecated(func):
-    """This is a decorator which can be used to mark functions
-    as deprecated. It will result in a warning being emitted
-    when the function is used."""
-    import functools
-    import warnings
-    @functools.wraps(func)
-    def new_func(*args, **kwargs):
-        warnings.simplefilter('always', DeprecationWarning)  # turn off filter
-        warnings.warn("Call to deprecated function {}.".format(func.__name__),
-                      category=DeprecationWarning,
-                      stacklevel=2)
-        warnings.simplefilter('default', DeprecationWarning)  # reset filter
-        return func(*args, **kwargs)
-    return new_func
+from trident import load_wsi
+from trident.Maintenance import deprecated
+from trident.Converter import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS
+from trident import WSIReaderType
 
 
 class Processor:
@@ -40,6 +26,7 @@ class Processor:
         custom_mpp_keys: Optional[List[str]] = None,
         custom_list_of_wsis: Optional[str] = None,
         max_workers: Optional[int] = None,
+        reader_type: Optional[WSIReaderType] = None,
     ) -> None:
         """
         The `Processor` class handles all preprocessing steps starting from whole-slide images (WSIs). 
@@ -85,6 +72,9 @@ class Processor:
             max_workers (int, optional):
                 Maximum number of workers for data loading. If None, the default behavior will be used.
                 Defaults to None.
+            reader_type (WSIReaderType, optional):
+                Force the image reader engine to use. Options are are ["openslide", "image", "cucim"]. Defaults to None
+                (auto-determine the right engine based on image extension).
 
         Returns:
             None: This method initializes the class instance and sets up the environment for processing.
@@ -112,7 +102,7 @@ class Processor:
         self.job_dir = job_dir
         self.wsi_source = wsi_source
         self.wsi_cache = wsi_cache
-        self.wsi_ext = wsi_ext or ['.svs', '.tif', '.dcm', '.vms', '.vmu', '.ndpi', '.scn', '.mrxs', '.tiff', '.svslide', '.bif', '.czi']
+        self.wsi_ext = wsi_ext or (list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS))
         self.clear_cache = clear_cache
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
@@ -151,15 +141,16 @@ class Processor:
             if not os.path.exists(tissue_seg_path):
                 tissue_seg_path = None
 
-            openslide_wsi = OpenSlideWSI(
+            slide = load_wsi(
                 slide_path=wsi_path,
                 name=wsi,
                 tissue_seg_path=tissue_seg_path,
                 custom_mpp_keys=self.custom_mpp_keys,
                 mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
-                max_workers=self.max_workers
+                max_workers=self.max_workers,
+                reader_type=reader_type,
             )
-            self.wsis.append(openslide_wsi)
+            self.wsis.append(slide)
 
     def populate_cache(self) -> None:
         """
@@ -206,7 +197,8 @@ class Processor:
         seg_mag: int = 10, 
         holes_are_tissue: bool = False,
         batch_size: int = 16,
-        artifact_remover_model: torch.nn.Module = None
+        artifact_remover_model: torch.nn.Module = None,
+        device: str = 'cuda:0', 
     ) -> str:
         """
         The `run_segmentation_job` function performs tissue segmentation on all slides managed by the processor. 
@@ -226,6 +218,8 @@ class Processor:
                 The batch size for segmentation. Defaults to 16.
             artifact_remover_model (torch.nn.Module, optional): 
                 A pre-trained PyTorch model that can remove artifacts from an existing segmentation. Defaults to None.
+            device (str): 
+                The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
 
         Returns:
             str: Absolute path to where directory containing contours is saved.
@@ -281,7 +275,8 @@ class Processor:
                     target_mag=seg_mag,
                     holes_are_tissue=holes_are_tissue,
                     job_dir=self.job_dir,
-                    batch_size=batch_size
+                    batch_size=batch_size,
+                    device=device
                 )
 
                 # additionally remove artifacts for better segmentation.
@@ -523,8 +518,6 @@ class Processor:
             ignore = ['patch_encoder', 'loop', 'valid_slides', 'wsis']
         )
 
-        patch_encoder.eval()
-        patch_encoder.to(device)
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_feats_{patch_encoder.enc_name}.txt')
         self.loop = tqdm(self.wsis, desc=f'Extracting patch features from coords in {coords_dir}', total = len(self.wsis))
         for wsi in self.loop:    
@@ -545,7 +538,7 @@ class Processor:
 
             # Check if coords exist
             coords_path = os.path.join(self.job_dir, coords_dir, 'patches', f'{wsi.name}_patches.h5')
-            if not os.path.exists(coords_path) and not os.path.exists(coords_path):
+            if not os.path.exists(coords_path):
                 self.loop.set_postfix_str(f'Coords not found for {wsi.name}. Skipping...')
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Coords not found.')
                 continue
@@ -562,7 +555,7 @@ class Processor:
 
                 # under construction
                 wsi.extract_patch_features(
-                    patch_encoder,
+                    patch_encoder = patch_encoder,
                     coords_path = coords_path,
                     save_features=os.path.join(self.job_dir, saveto),
                     device=device,
