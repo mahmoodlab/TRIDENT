@@ -6,6 +6,7 @@ import warnings
 import torch 
 from typing import List, Tuple, Optional, Literal
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
@@ -165,7 +166,7 @@ class WSI:
         custom_coords:  Optional[np.ndarray] = None,
         threshold: float = 0.15,
         pil: bool = False,
-    ) -> OpenSlideWSIPatcher:
+    ) -> WSIPatcher:
         """
         The `create_patcher` function from the class `WSI` Create a patcher object for extracting patches from the WSI.
 
@@ -181,7 +182,7 @@ class WSI:
 
         Returns:
         --------
-        OpenSlideWSIPatcher:
+        WSIPatcher:
             An object for extracting patches.
 
         Example:
@@ -190,7 +191,7 @@ class WSI:
         >>> for patch in patcher:
         ...     process(patch)
         """
-        return OpenSlideWSIPatcher(
+        return WSIPatcher(
             self, patch_size, src_pixel_size, dst_pixel_size, src_mag, dst_mag,
             overlap, mask, coords_only, custom_coords, threshold, pil
         )
@@ -254,6 +255,7 @@ class WSI:
         job_dir: Optional[str] = None,
         batch_size: int = 16,
         device: str = 'cuda:0',
+        verbose=False
     ) -> str:
         """
         The `segment_tissue` function of the class `WSI` segments tissue regions in the WSI using 
@@ -274,6 +276,8 @@ class WSI:
             Batch size for processing patches. Defaults to 16.
         device (str): 
             The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+        verbose: bool, optional:
+            Whenever to print segmentation progress. Defaults to False.
 
 
         Returns:
@@ -316,6 +320,8 @@ class WSI:
         width, height = self.get_dimensions()
         width, height = int(round(width * mpp_reduction_factor)), int(round(height * mpp_reduction_factor))
         predicted_mask = np.zeros((height, width), dtype=np.uint8)
+
+        dataloader = tqdm(dataloader) if verbose else dataloader
 
         for imgs, (xcoords, ycoords) in dataloader:
 
@@ -559,53 +565,12 @@ class WSI:
             coords_only=True
         )
 
-        max_dimension = 1000
-        if self.width > self.height:
-            thumbnail_width = max_dimension
-            thumbnail_height = int(thumbnail_width * self.height / self.width)
-        else:
-            thumbnail_height = max_dimension
-            thumbnail_width = int(thumbnail_height * self.width / self.height)
-
-        downsample_factor = self.width / thumbnail_width
-
-        patch_size_src = round(patch_size * level0_magnification / target_magnification)
-        thumbnail_patch_size = max(1, int(patch_size_src / downsample_factor))
-
-        # Get thumbnail in right format
-        canvas = np.array(self.get_thumbnail((thumbnail_width, thumbnail_height))).astype(np.uint8)
-
-        # Draw rectangles for patches
-        for (x, y) in patcher:
-            x, y = int(x/downsample_factor), int(y/downsample_factor)
-            thickness = max(1, thumbnail_patch_size // 10)
-            canvas = cv2.rectangle(
-                canvas, 
-                (x, y), 
-                (x + thumbnail_patch_size, y + thumbnail_patch_size), 
-                (255, 0, 0), 
-                thickness
-            )
-
-        # Add annotations
-        text_area_height = 130
-        text_x_offset = int(thumbnail_width * 0.03)  # Offset as 3% of thumbnail width
-        text_y_spacing = 25  # Vertical spacing between lines of text
-
-        canvas[:text_area_height, :300] = (
-            canvas[:text_area_height, :300] * 0.5
-        ).astype(np.uint8)
-
-        cv2.putText(canvas, f'{len(coords)} patches', (text_x_offset, text_y_spacing), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1)
-        cv2.putText(canvas, f'width={self.width}, height={self.height}', (text_x_offset, text_y_spacing * 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(canvas, f'mpp={self.mpp}, mag={self.mag}', (text_x_offset, text_y_spacing * 3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(canvas, f'patch={patch_size} w. overlap={overlap} @ {target_magnification}x', (text_x_offset, text_y_spacing * 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        img =  patcher.visualize()
 
         # Save visualization
         os.makedirs(save_patch_viz, exist_ok=True)
         viz_coords_path = os.path.join(save_patch_viz, f'{self.name}.jpg')
-        Image.fromarray(canvas).save(viz_coords_path)
-
+        img.save(viz_coords_path)
         return viz_coords_path
 
     @torch.inference_mode()

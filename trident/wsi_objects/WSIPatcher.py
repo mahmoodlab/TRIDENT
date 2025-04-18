@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from typing import Tuple
+import warnings
 import cv2
 import numpy as np
 import geopandas as gpd
 from shapely import Polygon
+from PIL import Image
 
-class OpenSlideWSIPatcher:
+class WSIPatcher:
     """ Iterator class to handle patching, patch scaling and tissue mask intersection """
     
     def __init__(
@@ -49,6 +51,7 @@ class OpenSlideWSIPatcher:
         self.coords_only = coords_only
         self.custom_coords = custom_coords
         self.pil = pil
+        self.dst_mag = dst_mag
         
         # set src magnification and pixel size. 
         if src_pixel_size is not None:
@@ -241,3 +244,77 @@ class OpenSlideWSIPatcher:
         rows = row
         return cols, rows 
     
+
+    def visualize(self) -> Image.Image:
+        """ 
+        The `visualize` function of the class `WSI` overlays patch coordinates computed by the WSIPatcher
+        onto a scaled thumbnail of the WSI. It creates a visualization of the patcher coordinates 
+        and returns it as an image.
+
+        Returns
+        -------
+        Image.Image
+            Patch visualization
+
+        Example:
+        --------
+        >>> img = wsi_patcher.visualize()
+        >>> img.save('test_vis.jpg')
+        """
+        max_dimension = 1000
+        if self.width > self.height:
+            thumbnail_width = max_dimension
+            thumbnail_height = int(thumbnail_width * self.height / self.width)
+        else:
+            thumbnail_height = max_dimension
+            thumbnail_width = int(thumbnail_height * self.width / self.height)
+
+        downsample_factor = self.width / thumbnail_width
+
+        thumbnail_patch_size = max(1, int(self.patch_size_src / downsample_factor))
+
+        # Get thumbnail in right format
+        canvas = np.array(self.wsi.get_thumbnail((thumbnail_width, thumbnail_height))).astype(np.uint8)
+
+        tmp_coords = self.coords_only
+        self.coords_only = True
+        # Draw rectangles for patches
+        for (x, y) in self:
+            x, y = int(x/downsample_factor), int(y/downsample_factor)
+            thickness = max(1, thumbnail_patch_size // 10)
+            canvas = cv2.rectangle(
+                canvas, 
+                (x, y), 
+                (x + thumbnail_patch_size, y + thumbnail_patch_size), 
+                (255, 0, 0), 
+                thickness
+            )
+
+        self.coords_only = tmp_coords
+
+        # Add annotations
+        text_area_height = 130
+        text_x_offset = int(thumbnail_width * 0.03)  # Offset as 3% of thumbnail width
+        text_y_spacing = 25  # Vertical spacing between lines of text
+
+        canvas[:text_area_height, :300] = (
+            canvas[:text_area_height, :300] * 0.5
+        ).astype(np.uint8)
+
+        cv2.putText(canvas, f'{len(self)} patches', (text_x_offset, text_y_spacing), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1)
+        cv2.putText(canvas, f'width={self.width}, height={self.height}', (text_x_offset, text_y_spacing * 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        cv2.putText(canvas, f'mpp={self.wsi.mpp}, mag={self.wsi.mag}', (text_x_offset, text_y_spacing * 3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(canvas, f'patch={self.patch_size_target} w. overlap={self.overlap} @ {self.dst_mag}x', (text_x_offset, text_y_spacing * 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        return Image.fromarray(canvas)
+    
+class OpenSlideWSIPatcher(WSIPatcher):
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "OpenSlideWSIPatcher is deprecated and will be removed in a future release. "
+            "Please use WSIPatcher instead.",
+            category=DeprecationWarning,
+            stacklevel=2
+        )
+        super().__init__(*args, **kwargs)
