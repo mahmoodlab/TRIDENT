@@ -43,7 +43,11 @@ def parse_arguments():
                     help='Custom list of WSIs specified in a csv file.')
     parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim'], default=None,
                     help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim"]. Defaults to None (auto-determine which reader to use).')
-    
+    parser.add_argument("--search_nested", action="store_true",
+                        help=("If set, recursively search for whole-slide images (WSIs) within all subdirectories of "
+                              "`wsi_source`. Uses `os.walk` to include slides from nested folders. "
+                              "This allows processing of datasets organized in hierarchical structures. "
+                              "Defaults to False (only top-level slides are included)."))
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
                         choices=['hest', 'grandqc'], 
@@ -110,7 +114,8 @@ def initialize_processor(args):
         custom_mpp_keys=args.custom_mpp_keys,
         custom_list_of_wsis=args.custom_list_of_wsis,
         max_workers=args.max_workers,
-        reader_type=args.reader_type
+        reader_type=args.reader_type,
+        search_nested=args.search_nested,
     )
 
 def run_task(processor, args):

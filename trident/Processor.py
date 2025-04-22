@@ -15,18 +15,20 @@ from trident import WSIReaderType
 
 
 class Processor:
+
     def __init__(
-        self, 
-        job_dir: str, 
-        wsi_source: str, 
-        wsi_ext: List[str] = None, 
-        wsi_cache: Optional[str] = None, 
-        clear_cache: bool = False, 
+        self,
+        job_dir: str,
+        wsi_source: str,
+        wsi_ext: List[str] = None,
+        wsi_cache: Optional[str] = None,
+        clear_cache: bool = False,
         skip_errors: bool = False,
         custom_mpp_keys: Optional[List[str]] = None,
         custom_list_of_wsis: Optional[str] = None,
         max_workers: Optional[int] = None,
         reader_type: Optional[WSIReaderType] = None,
+        search_nested: bool = False, 
     ) -> None:
         """
         The `Processor` class handles all preprocessing steps starting from whole-slide images (WSIs). 
@@ -75,6 +77,14 @@ class Processor:
             reader_type (WSIReaderType, optional):
                 Force the image reader engine to use. Options are are ["openslide", "image", "cucim"]. Defaults to None
                 (auto-determine the right engine based on image extension).
+            search_nested (bool, optional):  
+                If True, the processor will recursively search for WSIs within all subdirectories of `wsi_source`.
+                All matching files (based on `wsi_ext`) found at any depth within the directory  
+                tree will be included. Each slide will be identified by its relative path to `wsi_source`, but only  
+                the filename (excluding directory structure) will be used for downstream outputs (e.g., segmentation filenames).  
+                If False, only files directly inside `wsi_source` will be considered.  
+                Defaults to False.
+
 
         Returns:
             None: This method initializes the class instance and sets up the environment for processing.
@@ -108,12 +118,20 @@ class Processor:
         self.custom_mpp_keys = custom_mpp_keys
         self.max_workers = max_workers
 
-        # Collect list of valid slides
-        assert isinstance(self.wsi_ext, list), f'wsi_ext must be a list of file extensions, got {self.wsi_ext} of type {type(self.wsi_ext)}'
-        valid_slides = []
+        assert isinstance(self.wsi_ext, list), f'wsi_ext must be a list, got {type(self.wsi_ext)}'
         for ext in self.wsi_ext:
-            assert ext.startswith('.'), 'Each extension in wsi_ext must start with a period.'
-            valid_slides.extend([name for name in os.listdir(wsi_source) if name.endswith(ext)])
+            assert ext.startswith('.'), f'Invalid extension: {ext} (must start with a period)'
+
+        # Collect slide paths
+        valid_slides = []
+        if search_nested:
+            for root, _, files in os.walk(wsi_source):
+                for f in files:
+                    if any(f.endswith(ext) for ext in self.wsi_ext):
+                        rel_path = os.path.relpath(os.path.join(root, f), wsi_source)
+                        valid_slides.append(rel_path)
+        else:
+            valid_slides = [f for f in os.listdir(wsi_source) if any(f.endswith(ext) for ext in self.wsi_ext)]
 
         if custom_list_of_wsis is not None:
             import pandas as pd
@@ -124,26 +142,26 @@ class Processor:
             valid_mpps = wsi_df['mpp'].dropna().tolist() if 'mpp' in wsi_df.columns else None
         else:
             valid_slides = sorted(valid_slides)
-            valid_mpps = None  # not provided -- will be read from the WSI itself later. 
+            valid_mpps = None
 
         print(f'Found {len(valid_slides)} valid slides in {wsi_source}.')
+
         if self.wsi_cache:
             os.makedirs(self.wsi_cache, exist_ok=True)
-            print(f'Using local cache at {wsi_cache}, which currently contains {len(os.listdir(wsi_cache))} files.')
+            print(f'Using local cache at {self.wsi_cache}, which currently contains {len(os.listdir(self.wsi_cache))} files.')
 
-        # Lazy-init WSI objects
+        # WSI initialization
         self.wsis = []
         for wsi_idx, wsi in enumerate(valid_slides):
-            wsi_path = os.path.join(self.wsi_cache, wsi) if self.wsi_cache is not None else os.path.join(self.wsi_source, wsi)
-            
-            # Get path to segmentation
-            tissue_seg_path = os.path.join(self.job_dir, 'contours_geojson', f'{os.path.splitext(wsi)[0]}.geojson')
+            wsi_path = os.path.join(self.wsi_cache or self.wsi_source, wsi)
+
+            tissue_seg_path = os.path.join(self.job_dir, 'contours_geojson', f'{os.path.splitext(os.path.basename(wsi))[0]}.geojson')
             if not os.path.exists(tissue_seg_path):
                 tissue_seg_path = None
 
             slide = load_wsi(
                 slide_path=wsi_path,
-                name=wsi,
+                name=os.path.basename(wsi),
                 tissue_seg_path=tissue_seg_path,
                 custom_mpp_keys=self.custom_mpp_keys,
                 mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
