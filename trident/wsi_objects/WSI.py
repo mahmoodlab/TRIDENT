@@ -4,7 +4,7 @@ from PIL import Image
 import os 
 import warnings
 import torch 
-from typing import List, Tuple, Optional, Literal
+from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -256,7 +256,7 @@ class WSI:
         batch_size: int = 16,
         device: str = 'cuda:0',
         verbose=False
-    ) -> str:
+    ) -> Union[str, gpd.GeoDataFrame]:
         """
         The `segment_tissue` function of the class `WSI` segments tissue regions in the WSI using 
         a specified segmentation model. It processes the WSI at a target magnification level, optionally 
@@ -271,7 +271,7 @@ class WSI:
         holes_are_tissue : bool, optional
             Whether to treat holes in the mask as tissue. Defaults to True.
         job_dir :  Optional[str], optional
-            Directory to save the segmentation results. Defaults to None.
+            Directory to save the segmentation results, if None, this method directly returns the contours as a GeoDataframe without saving files. Defaults to None.
         batch_size : int, optional
             Batch size for processing patches. Defaults to 16.
         device (str): 
@@ -282,9 +282,9 @@ class WSI:
 
         Returns:
         --------
-        str:
-            The absolute path to where the segmentation as GeoJSON is saved. 
-
+        Union[str, gpd.GeoDataFrame]:
+            The absolute path to where the segmentation as GeoJSON is saved if `job_dir` is not None, else, a GeoDataFrame object.
+            
         Example:
         --------
         >>> wsi.segment_tissue(segmentation_model, target_mag=10, job_dir="output_dir")
@@ -351,14 +351,6 @@ class WSI:
             for hole in holes:
                 cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
 
-        # Save thumbnail image
-        thumbnail_saveto = os.path.join(job_dir, 'thumbnails', f'{self.name}.jpg')
-        os.makedirs(os.path.dirname(thumbnail_saveto), exist_ok=True)
-        thumbnail.save(thumbnail_saveto)
-
-        # Save geopandas contours
-        gdf_saveto = os.path.join(job_dir, 'contours_geojson', f'{self.name}.geojson')
-        os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
         gdf_contours = mask_to_gdf(
             mask=predicted_mask,
             max_nb_holes=0 if holes_are_tissue else 20,
@@ -366,17 +358,29 @@ class WSI:
             pixel_size=self.mpp,
             contour_scale=1/mpp_reduction_factor
         )
-        gdf_contours.set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
-        gdf_contours.to_file(gdf_saveto, driver="GeoJSON")
-        self.gdf_contours = gdf_contours
-        self.tissue_seg_path = gdf_saveto
+        if job_dir is not None:
 
-        # Draw the contours on the thumbnail image
-        contours_saveto = os.path.join(job_dir, 'contours', f'{self.name}.jpg')
-        annotated = np.array(thumbnail)
-        overlay_gdf_on_thumbnail(gdf_contours, annotated, contours_saveto, thumbnail_width / self.width)
+            # Save thumbnail image
+            thumbnail_saveto = os.path.join(job_dir, 'thumbnails', f'{self.name}.jpg')
+            os.makedirs(os.path.dirname(thumbnail_saveto), exist_ok=True)
+            thumbnail.save(thumbnail_saveto)
 
-        return gdf_saveto
+            # Save geopandas contours
+            gdf_saveto = os.path.join(job_dir, 'contours_geojson', f'{self.name}.geojson')
+            os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
+            gdf_contours.set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
+            gdf_contours.to_file(gdf_saveto, driver="GeoJSON")
+            self.gdf_contours = gdf_contours
+            self.tissue_seg_path = gdf_saveto
+
+            # Draw the contours on the thumbnail image
+            contours_saveto = os.path.join(job_dir, 'contours', f'{self.name}.jpg')
+            annotated = np.array(thumbnail)
+            overlay_gdf_on_thumbnail(gdf_contours, annotated, contours_saveto, thumbnail_width / self.width)
+
+            return gdf_saveto
+        else:
+            return gdf_contours
 
     def get_best_level_and_custom_downsample(
         self,
