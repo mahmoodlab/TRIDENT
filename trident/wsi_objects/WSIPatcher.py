@@ -301,11 +301,13 @@ class WSIPatcher:
             canvas[:text_area_height, :300] * 0.5
         ).astype(np.uint8)
 
+        patch_mpp_mag = f"{self.dst_mag}x" if self.dst_mag is not None else f"{self.dst_pixel_size}um/px"
+
         cv2.putText(canvas, f'{len(self)} patches', (text_x_offset, text_y_spacing), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1)
         cv2.putText(canvas, f'width={self.width}, height={self.height}', (text_x_offset, text_y_spacing * 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         cv2.putText(canvas, f'mpp={self.wsi.mpp}, mag={self.wsi.mag}', (text_x_offset, text_y_spacing * 3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        cv2.putText(canvas, f'patch={self.patch_size_target} w. overlap={self.overlap} @ {self.dst_mag}x', (text_x_offset, text_y_spacing * 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.putText(canvas, f'patch={self.patch_size_target} w. overlap={self.overlap} @ {patch_mpp_mag}', (text_x_offset, text_y_spacing * 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return Image.fromarray(canvas)
     
