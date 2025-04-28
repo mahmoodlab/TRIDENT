@@ -255,7 +255,8 @@ class WSI:
         job_dir: Optional[str] = None,
         batch_size: int = 16,
         device: str = 'cuda:0',
-        verbose=False
+        verbose=False,
+        num_workers=None
     ) -> Union[str, gpd.GeoDataFrame]:
         """
         The `segment_tissue` function of the class `WSI` segments tissue regions in the WSI using 
@@ -278,6 +279,8 @@ class WSI:
             The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
         verbose: bool, optional:
             Whenever to print segmentation progress. Defaults to False.
+        num_workers: Optional[int], optional:
+            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
 
 
         Returns:
@@ -313,7 +316,12 @@ class WSI:
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=get_num_workers(batch_size, max_workers=self.max_workers), pin_memory=True)
+        dataloader = DataLoader(
+            dataset, 
+            batch_size=batch_size, 
+            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
+            pin_memory=True
+        )
         # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
         mpp_reduction_factor = self.mpp / destination_mpp
