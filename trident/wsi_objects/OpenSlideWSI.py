@@ -9,7 +9,7 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 
 class OpenSlideWSI(WSI):
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         """
         Initialize an OpenSlideWSI instance.
 
@@ -28,7 +28,7 @@ class OpenSlideWSI(WSI):
         >>> print(wsi)
         <width=100000, height=80000, backend=OpenSlideWSI, mpp=0.25, mag=40>
         """
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
 
     def _lazy_initialize(self) -> None:
         """

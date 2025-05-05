@@ -8,6 +8,8 @@ import geopandas as gpd
 from shapely import Polygon
 from PIL import Image
 
+from trident.IO import read_coords_legacy
+
 class WSIPatcher:
     """ Iterator class to handle patching, patch scaling and tissue mask intersection """
     
@@ -88,6 +90,36 @@ class WSIPatcher:
         else:
             self.valid_patches_nb, self.valid_coords = len(coords), coords
             
+    @classmethod
+    def from_legacy_coords(cls, wsi, src_patch_size, patch_level, custom_downsample, coords) -> WSIPatcher:
+        src_mpp, dst_mpp, src_mag, dst_mag = None, None, None, None
+        downsample_ratio = (wsi.level_downsamples[patch_level] * custom_downsample)
+        if wsi.mpp is not None:
+            src_mpp = wsi.mpp
+            dst_mpp = wsi.mpp / downsample_ratio
+            patch_size = src_patch_size / downsample_ratio
+        else:
+            src_mag = wsi.mag
+            dst_mag = int(wsi.mag / downsample_ratio)
+            patch_size = src_patch_size / downsample_ratio
+
+        return WSIPatcher(
+            patch_size=patch_size,
+            src_mag=src_mag,
+            dst_mag=dst_mag,
+            src_mpp=src_mpp,
+            dst_mpp=dst_mpp,
+            custom_coords=coords,
+            coords_only=True
+        )
+
+    @classmethod
+    def from_legacy_coords_file(cls, wsi, coords_path) -> WSIPatcher:
+        patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
+
+        return cls.from_legacy_coords(wsi, patch_size, patch_level, custom_downsample, coords)
+    
+
     def _colrow_to_xy(self, col, row):
         """ Convert col row of a tile to its top-left coordinates before rescaling (x, y) """
         x = col * (self.patch_size_src) - self.overlap_src * np.clip(col - 1, 0, None)

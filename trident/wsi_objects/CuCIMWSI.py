@@ -8,8 +8,8 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 
 class CuCIMWSI(WSI):
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
     def _lazy_initialize(self) -> None:
         """
