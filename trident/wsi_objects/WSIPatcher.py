@@ -96,19 +96,20 @@ class WSIPatcher:
         downsample_ratio = (wsi.level_downsamples[patch_level] * custom_downsample)
         if wsi.mpp is not None:
             src_mpp = wsi.mpp
-            dst_mpp = wsi.mpp / downsample_ratio
-            patch_size = src_patch_size / downsample_ratio
+            dst_mpp = wsi.mpp * downsample_ratio
+            patch_size = round(src_patch_size / downsample_ratio)
         else:
             src_mag = wsi.mag
             dst_mag = int(wsi.mag / downsample_ratio)
-            patch_size = src_patch_size / downsample_ratio
+            patch_size = round(src_patch_size / downsample_ratio)
 
         return WSIPatcher(
+            wsi,
             patch_size=patch_size,
             src_mag=src_mag,
             dst_mag=dst_mag,
-            src_mpp=src_mpp,
-            dst_mpp=dst_mpp,
+            src_pixel_size=src_mpp,
+            dst_pixel_size=dst_mpp,
             custom_coords=coords,
             coords_only=True
         )

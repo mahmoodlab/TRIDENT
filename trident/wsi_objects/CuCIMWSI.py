@@ -9,6 +9,25 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 class CuCIMWSI(WSI):
 
     def __init__(self, *args, **kwargs) -> None:
+        """
+        Initialize a WSI instance using CuCIM as a backend.
+
+        Parameters
+        ----------
+        slide_path : str
+            Path to the WSI file.
+        **kwargs : dict
+            Keyword arguments forwarded to the base `WSI` class. Most important key is:
+            - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
+
+        Please refer to WSI constructor for all parameters. 
+
+        Example
+        -------
+        >>> wsi = CuCIMWSI(slide_path="path/to/wsi.svs", lazy_init=False)
+        >>> print(wsi)
+        <width=100000, height=80000, backend=CuCIMWSI, mpp=0.25, mag=40>
+        """
         super().__init__(*args, **kwargs)
 
     def _lazy_initialize(self) -> None:
