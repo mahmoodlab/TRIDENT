@@ -91,7 +91,16 @@ class WSIPatcher:
             self.valid_patches_nb, self.valid_coords = len(coords), coords
             
     @classmethod
-    def from_legacy_coords(cls, wsi, src_patch_size, patch_level, custom_downsample, coords, coords_only=False) -> WSIPatcher:
+    def from_legacy_coords(
+        cls, 
+        wsi, 
+        src_patch_size, 
+        patch_level, 
+        custom_downsample, 
+        coords, 
+        coords_only=False,
+        pil=False
+    ) -> WSIPatcher:
         src_mpp, dst_mpp, src_mag, dst_mag = None, None, None, None
         downsample_ratio = (wsi.level_downsamples[patch_level] * custom_downsample)
         if wsi.mpp is not None:
@@ -111,14 +120,16 @@ class WSIPatcher:
             src_pixel_size=src_mpp,
             dst_pixel_size=dst_mpp,
             custom_coords=coords,
-            coords_only=coords_only
+            coords_only=coords_only,
+            pil=pil
         )
 
     @classmethod
-    def from_legacy_coords_file(cls, wsi, coords_path, coords_only=False) -> WSIPatcher:
+    def from_legacy_coords_file(cls, wsi, coords_path, coords_only=False, pil=False) -> WSIPatcher:
         patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
 
-        return cls.from_legacy_coords(wsi, patch_size, patch_level, custom_downsample, coords, coords_only=coords_only)
+        return cls.from_legacy_coords(
+            wsi, patch_size, patch_level, custom_downsample, coords, coords_only=coords_only, pil=pil)
     
 
     def _colrow_to_xy(self, col, row):
