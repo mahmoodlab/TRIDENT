@@ -2,37 +2,37 @@ from __future__ import annotations
 import os
 import sys
 from tqdm import tqdm
-import shutil
 from typing import Optional, List, Dict, Any
 from inspect import signature
 import geopandas as gpd
+import pandas as pd 
 
-from trident.IO import create_lock, remove_lock, is_locked, update_log
-from trident import load_wsi
+from trident import load_wsi, WSIReaderType
+from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides
 from trident.Maintenance import deprecated
 from trident.Converter import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS
-from trident import WSIReaderType
 
 
 class Processor:
+
     def __init__(
-        self, 
-        job_dir: str, 
-        wsi_source: str, 
-        wsi_ext: List[str] = None, 
-        wsi_cache: Optional[str] = None, 
-        clear_cache: bool = False, 
+        self,
+        job_dir: str,
+        wsi_source: str,
+        wsi_ext: List[str] = None,
+        wsi_cache: Optional[str] = None,
+        clear_cache: bool = False,
         skip_errors: bool = False,
         custom_mpp_keys: Optional[List[str]] = None,
         custom_list_of_wsis: Optional[str] = None,
         max_workers: Optional[int] = None,
         reader_type: Optional[WSIReaderType] = None,
+        search_nested: bool = False, 
     ) -> None:
         """
         The `Processor` class handles all preprocessing steps starting from whole-slide images (WSIs). 
     
         Available methods:
-            - `populate_cache`: Moves slides from the source directory to a local cache directory for faster downstream processing.
             - `run_segmentation_job`: Performs tissue segmentation on all slides managed by the processor.
             - `run_patching_job`: Extracts patch coordinates from the segmented tissue regions of slides.
             - `run_patch_feature_extraction_job`: Extracts patch-level features using a specified patch encoder.
@@ -52,12 +52,12 @@ class Processor:
                 filtering slides based on their format. If set to None, a default list of common extensions 
                 will be used. Defaults to None.
             wsi_cache (str, optional): 
-                An optional directory for caching WSIs locally. If specified, slides will be copied 
+                [DEPRECATED as of v0.2.0] An optional directory for caching WSIs locally. If specified, slides will be copied 
                 from the source directory to this local directory before processing, improving performance 
                 when the source is a network drive. Defaults to None.
-            clear_cache (bool, optional): 
-                A flag indicating whether slides in the cache should be deleted after processing. 
-                This helps manage storage space. Defaults to False.
+            clear_cache (str, optional):
+                [DEPRECATED as of v0.2.0] A flag indicating whether slides in the cache should be deleted after processing. 
+                This helps manage storage space. Defaults to False. 
             skip_errors (bool, optional): 
                 A flag specifying whether to continue processing if an error occurs on a slide. 
                 If set to False, the process will stop on the first error. Defaults to False.
@@ -75,6 +75,14 @@ class Processor:
             reader_type (WSIReaderType, optional):
                 Force the image reader engine to use. Options are are ["openslide", "image", "cucim"]. Defaults to None
                 (auto-determine the right engine based on image extension).
+            search_nested (bool, optional):  
+                If True, the processor will recursively search for WSIs within all subdirectories of `wsi_source`.
+                All matching files (based on `wsi_ext`) found at any depth within the directory  
+                tree will be included. Each slide will be identified by its relative path to `wsi_source`, but only  
+                the filename (excluding directory structure) will be used for downstream outputs (e.g., segmentation filenames).  
+                If False, only files directly inside `wsi_source` will be considered.  
+                Defaults to False.
+
 
         Returns:
             None: This method initializes the class instance and sets up the environment for processing.
@@ -87,8 +95,6 @@ class Processor:
         ...     job_dir="results/",
         ...     wsi_source="data/slides/",
         ...     wsi_ext=[".svs", ".ndpi"],
-        ...     wsi_cache="cache/",
-        ...     clear_cache=True
         ... )
         >>> print(f"Processor initialized for {len(processor.wsis)} slides.")
 
@@ -101,49 +107,54 @@ class Processor:
 
         self.job_dir = job_dir
         self.wsi_source = wsi_source
-        self.wsi_cache = wsi_cache
         self.wsi_ext = wsi_ext or (list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS))
-        self.clear_cache = clear_cache
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
         self.max_workers = max_workers
 
-        # Collect list of valid slides
-        assert isinstance(self.wsi_ext, list), f'wsi_ext must be a list of file extensions, got {self.wsi_ext} of type {type(self.wsi_ext)}'
-        valid_slides = []
+        # Validate extensions
+        assert isinstance(self.wsi_ext, list), f'wsi_ext must be a list, got {type(self.wsi_ext)}'
         for ext in self.wsi_ext:
-            assert ext.startswith('.'), 'Each extension in wsi_ext must start with a period.'
-            valid_slides.extend([name for name in os.listdir(wsi_source) if name.endswith(ext)])
+            assert ext.startswith('.'), f'Invalid extension: {ext} (must start with a period)'
 
+        # === Collect slide paths and relative paths ===
+        full_paths, rel_paths = collect_valid_slides(
+            wsi_dir=wsi_source,
+            custom_list_path=custom_list_of_wsis,
+            wsi_ext=self.wsi_ext,
+            search_nested=search_nested,
+            max_workers=max_workers,
+            return_relative_paths=True
+        )
+
+        self.wsi_rel_paths = rel_paths if custom_list_of_wsis else None
+
+        # === Extract mpp column if provided ===
         if custom_list_of_wsis is not None:
-            import pandas as pd
             wsi_df = pd.read_csv(custom_list_of_wsis)
-            if 'wsi' not in wsi_df.columns:
-                raise ValueError("CSV with custom list of WSIs must contain a column named 'wsi'.")
-            valid_slides = wsi_df['wsi'].dropna().astype(str).tolist()
-            valid_mpps = wsi_df['mpp'].dropna().tolist() if 'mpp' in wsi_df.columns else None
+            valid_mpps = (
+                wsi_df['mpp'].dropna().tolist()
+                if 'mpp' in wsi_df.columns else None
+            )
         else:
-            valid_slides = sorted(valid_slides)
-            valid_mpps = None  # not provided -- will be read from the WSI itself later. 
+            valid_mpps = None
 
-        print(f'Found {len(valid_slides)} valid slides in {wsi_source}.')
-        if self.wsi_cache:
-            os.makedirs(self.wsi_cache, exist_ok=True)
-            print(f'Using local cache at {wsi_cache}, which currently contains {len(os.listdir(wsi_cache))} files.')
+        print(f'[PROCESSOR] Found {len(full_paths)} valid slides in {wsi_source}.')
 
-        # Lazy-init WSI objects
+        # === Initialize WSIs ===
         self.wsis = []
-        for wsi_idx, wsi in enumerate(valid_slides):
-            wsi_path = os.path.join(self.wsi_cache, wsi) if self.wsi_cache is not None else os.path.join(self.wsi_source, wsi)
-            
-            # Get path to segmentation
-            tissue_seg_path = os.path.join(self.job_dir, 'contours_geojson', f'{os.path.splitext(wsi)[0]}.geojson')
+        for wsi_idx, abs_path in enumerate(full_paths):
+            name = os.path.basename(abs_path)
+            tissue_seg_path = os.path.join(
+                self.job_dir, 'contours_geojson',
+                f'{os.path.splitext(name)[0]}.geojson'
+            )
             if not os.path.exists(tissue_seg_path):
                 tissue_seg_path = None
 
             slide = load_wsi(
-                slide_path=wsi_path,
-                name=wsi,
+                slide_path=abs_path,
+                name=name,
                 tissue_seg_path=tissue_seg_path,
                 custom_mpp_keys=self.custom_mpp_keys,
                 mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
@@ -151,45 +162,6 @@ class Processor:
                 reader_type=reader_type,
             )
             self.wsis.append(slide)
-
-    def populate_cache(self) -> None:
-        """
-        The `populate_cache` function moves slides from the source directory to a local cache directory. 
-        This is particularly useful when the source directory is a network-mounted drive, as local caching 
-        significantly improves processing speed.
-
-        If a slide is already present in the cache, it is skipped. If the slide is currently being transferred 
-        by another process, the function waits for the lock on that slide to be released.
-
-        Returns:
-            None: This function modifies the file system by populating the cache directory with slides.
-
-        Example
-        -------
-        Populate the cache with slides from the source directory:
-
-        >>> processor.populate_cache()
-        """
-        self.loop = tqdm(self.wsis, desc='Populating cache', total = len(self.wsis))
-        for wsi in self.loop:
-            # Check if WSI is already in cache
-            if os.path.exists(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')) and not is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                self.loop.set_postfix_str(f'{wsi.name}{wsi.ext} already in cache. Skipping...')
-                update_log(os.path.join(self.wsi_cache, '_logs.txt'), f'{wsi.name}{wsi.ext}', 'In cache')
-                continue
-
-            # Check if another process has claimed this slide
-            if is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                self.loop.set_postfix_str(f'{wsi.name}{wsi.ext} is locked. Skipping...')
-                continue
-
-            else:
-                self.loop.set_postfix_str(f'Moving {wsi.name}{wsi.ext} to cache...')
-                create_lock(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}'))
-                update_log(os.path.join(self.wsi_cache, '_logs.txt'), f'{wsi.name}{wsi.ext}', 'LOCKED. Moving to cache...')
-                shutil.copy(os.path.join(self.wsi_source, f'{wsi.name}{wsi.ext}'), self.wsi_cache)
-                remove_lock(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}'))
-                update_log(os.path.join(self.wsi_cache, '_logs.txt'), f'{wsi.name}{wsi.ext}', 'Moved to cache.')           
 
     def run_segmentation_job(
         self, 
@@ -249,7 +221,6 @@ class Processor:
             if os.path.exists(os.path.join(saveto, f'{wsi.name}.jpg')) and not is_locked(os.path.join(saveto, f'{wsi.name}.jpg')):
                 self.loop.set_postfix_str(f'{wsi.name} already segmented. Skipping...')
                 update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'Tissue segmented.')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
                 continue
 
             # Check if another process has claimed this slide
@@ -257,13 +228,6 @@ class Processor:
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 continue
 
-            # Check if wsi is in cache
-            if self.wsi_cache is not None:
-                if is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')) or not os.path.exists(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                    self.loop.set_postfix_str(f'{wsi.name} not found in cache. Skipping...')
-                    update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'WSI not found in cache.')
-                    continue
-            
             try:
                 self.loop.set_postfix_str(f'Segmenting {wsi}')
                 create_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
@@ -297,7 +261,6 @@ class Processor:
                 else:
                     update_log(os.path.join(self.job_dir,  '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'Tissue segmented.')
 
-                self.cleanup(f'{wsi.name}{wsi.ext}')
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
@@ -378,7 +341,6 @@ class Processor:
             if os.path.exists(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5')):
                 self.loop.set_postfix_str(f'Patch coords already generated for {wsi.name}. Skipping...')
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
                 continue
             
             # Check if another process has claimed this slide
@@ -386,13 +348,6 @@ class Processor:
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 continue
 
-            # Check if WSI is available in cache
-            if self.wsi_cache is not None:
-                if is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')) or not os.path.exists(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                    self.loop.set_postfix_str(f'{wsi.name}{wsi.ext} not found in cache. Skipping...')
-                    update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'WSI not found in cache.')
-                    continue
-                        
             # Check if segmentation exists
             if wsi.tissue_seg_path is None or not os.path.exists(wsi.tissue_seg_path):
                 self.loop.set_postfix_str(f'GeoJSON not found for {wsi.name}. Skipping...')
@@ -429,7 +384,6 @@ class Processor:
 
                 remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
@@ -526,15 +480,7 @@ class Processor:
             if os.path.exists(wsi_feats_fp) and not is_locked(wsi_feats_fp):
                 self.loop.set_postfix_str(f'Features already extracted for {wsi}. Skipping...')
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
                 continue
-
-            # Check if WSI is available in cache
-            if self.wsi_cache is not None:
-                if is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')) or not os.path.exists(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                    self.loop.set_postfix_str(f'{wsi.name}{wsi.ext} not found in cache. Skipping...')
-                    update_log(log_fp, f'{wsi.name}{wsi.ext}', 'WSI not found in cache.')
-                    continue
 
             # Check if coords exist
             coords_path = os.path.join(self.job_dir, coords_dir, 'patches', f'{wsi.name}_patches.h5')
@@ -565,7 +511,6 @@ class Processor:
 
                 remove_lock(wsi_feats_fp)
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(wsi_feats_fp)
@@ -614,7 +559,6 @@ class Processor:
             2. Check if patch-level features are already extracted for all WSIs. If not, extract them.
             3. Save the configuration for slide feature extraction to maintain reproducibility.
             4. Process each WSI:
-                - Skip if slide features already exist or the WSI is not available in the cache.
                 - Skip if patch features required for the WSI are missing.
                 - Extract slide features, ensuring proper synchronization in multiprocessing setups.
             5. Log the progress and errors during processing.
@@ -647,7 +591,7 @@ class Processor:
             wsi_names = [slide.name for slide in self.wsis]
             already_processed = [x for x in already_processed if x in wsi_names]
         if len(already_processed) < len(self.wsis):
-            print(f"Some patch features haven't been extracted in {len(already_processed)}/{len(self.wsis)} WSIs. Starting extraction.")
+            print(f"[PROCESSOR] Some patch features haven't been extracted in {len(already_processed)}/{len(self.wsis)} WSIs. Starting extraction.")
             from trident.patch_encoder_models.load import encoder_factory
             patch_encoder = encoder_factory(slide_to_patch_encoder_name[slide_encoder.enc_name])
             self.run_patch_feature_extraction_job(
@@ -673,15 +617,7 @@ class Processor:
             if os.path.exists(slide_feature_path) and not is_locked(slide_feature_path):
                 self.loop.set_postfix_str(f'Slide features already extracted for {wsi.name}. Skipping...')
                 update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'Slide features extracted.')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
                 continue
-
-            # Check if WSI is available in cache
-            if self.wsi_cache is not None:
-                if is_locked(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')) or not os.path.exists(os.path.join(self.wsi_cache, f'{wsi.name}{wsi.ext}')):
-                    self.loop.set_postfix_str(f'{wsi.name}{wsi.ext} not found in cache. Skipping...')
-                    update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'WSI not found in cache.')
-                    continue
 
             # Check if patch features exist
             patch_features_path = os.path.join(self.job_dir, patch_features_dir, f'{wsi.name}.h5')
@@ -710,7 +646,6 @@ class Processor:
 
                 remove_lock(slide_feature_path)
                 update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'Slide features extracted.')
-                self.cleanup(f'{wsi.name}{wsi.ext}')
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(slide_feature_path)
@@ -721,34 +656,6 @@ class Processor:
                     raise e
         
         return os.path.join(self.job_dir, saveto)
-
-    def cleanup(self, filename: str) -> None:
-        """
-        The `cleanup` function is responsible for deleting a specified slide from the local cache directory, 
-        provided the `clear_cache` flag is set to `True`. This function is used to manage storage space by 
-        ensuring that processed slides do not remain in the cache unnecessarily.
-
-        This function checks whether the `wsi_cache` directory exists and whether the specified file exists 
-        within it. If both conditions are met, the file is removed. The function is typically called after 
-        processing a slide, ensuring that the cache remains clean and optimized for subsequent processing.
-
-        Parameters:
-            filename (str): 
-                The name of the slide file to be removed from the cache. This should include the file extension 
-                (e.g., "slide1.ndpi").
-
-        Returns:
-            None: The function performs an in-place modification of the file system by deleting the specified file.
-
-        Example
-        -------
-        Remove a slide from the cache after processing:
-
-        >>> processor.cleanup("slide1.ndpi")
-        """
-        if self.wsi_cache is not None and self.clear_cache and os.path.exists(os.path.join(self.wsi_cache, filename)):
-            self.loop.set_postfix_str(f'Deleting {filename} from cache...')
-            os.remove(os.path.join(self.wsi_cache, filename))
 
     def save_config(
         self,
@@ -809,3 +716,27 @@ class Processor:
         # Save the combined configuration to the specified file
         with open(saveto, 'w') as f:
             json.dump(config, f, indent=4, cls=JSONsaver)
+
+    def release(self) -> None:
+        """
+        Release all resources tied to the WSIs held by this Processor instance.
+        Frees memory, closes file handles, and clears GPU memory.
+        Should be called after processing is complete to avoid memory leaks.
+        """
+        if hasattr(self, "wsis"):
+            for wsi in self.wsis:
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+            self.wsis.clear()
+
+        # Also clear loop references (e.g., tqdm)
+        if hasattr(self, "loop"):
+            self.loop = None
+
+        # Explicit garbage collection and CUDA cache release
+        import gc
+        import torch
+        gc.collect()
+        torch.cuda.empty_cache()

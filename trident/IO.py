@@ -4,7 +4,7 @@ import torch
 import socket
 import os
 import json
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 import h5py
 import numpy as np
 import cv2
@@ -17,6 +17,90 @@ ENV_TRIDENT_HOME = "TRIDENT_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"
 _cache_dir: Optional[str] = None
+
+
+def collect_valid_slides(
+    wsi_dir: str,
+    custom_list_path: Optional[str] = None,
+    wsi_ext: Optional[List[str]] = None,
+    search_nested: bool = False,
+    max_workers: int = 8,
+    return_relative_paths: bool = False
+) -> Union[List[str], Tuple[List[str], List[str]]]:
+    """
+    Retrieve all valid WSI file paths from a directory, optionally filtered by a custom list.
+
+    Args:
+        wsi_dir (str): Path to the directory containing WSIs.
+        custom_list_path (Optional[str]): Path to a CSV file with 'wsi' column of relative slide paths.
+        wsi_ext (Optional[List[str]]): Allowed file extensions.
+        search_nested (bool): Whether to search subdirectories.
+        max_workers (int): Threads to use when checking file existence.
+        return_relative_paths (bool): Whether to also return relative paths.
+
+    Returns:
+        List[str]: Full paths to valid WSIs.
+        OR
+        Tuple[List[str], List[str]]: (full paths, relative paths)
+    
+    Raises:
+        ValueError: If custom CSV is invalid or files not found.
+    """
+    valid_rel_paths: List[str] = []
+
+    if custom_list_path is not None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        wsi_df = pd.read_csv(custom_list_path)
+        if 'wsi' not in wsi_df.columns:
+            raise ValueError("CSV must contain a column named 'wsi'.")
+
+        rel_paths = wsi_df['wsi'].dropna().astype(str).tolist()
+        if not rel_paths:
+            raise ValueError(f"No valid slides found in the custom list at {custom_list_path}.")
+
+        def exists_fn(rel_path: str) -> bool:
+            return os.path.exists(os.path.join(wsi_dir, rel_path))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(exists_fn, rel_paths))
+
+        for rel_path, exists in zip(rel_paths, results):
+            if not exists:
+                raise ValueError(
+                    f"Slide '{rel_path}' not found in '{wsi_dir}'. "
+                    "If the folder is nested, ensure 'wsi' column contains relative paths."
+                )
+
+        valid_rel_paths = rel_paths
+
+    else:
+        if wsi_ext is None:
+            from trident.Converter import PIL_EXTENSIONS, OPENSLIDE_EXTENSIONS
+            wsi_ext = list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS)
+
+        wsi_ext = [ext.lower() for ext in wsi_ext]
+
+        def matches_ext(filename: str) -> bool:
+            return any(filename.lower().endswith(ext) for ext in wsi_ext)
+
+        if search_nested:
+            for root, _, files in os.walk(wsi_dir):
+                for f in files:
+                    if matches_ext(f):
+                        rel_path = os.path.relpath(os.path.join(root, f), wsi_dir)
+                        valid_rel_paths.append(rel_path)
+        else:
+            valid_rel_paths = [
+                f for f in os.listdir(wsi_dir)
+                if matches_ext(f)
+            ]
+
+        valid_rel_paths.sort()
+
+    full_paths = [os.path.join(wsi_dir, rel) for rel in valid_rel_paths]
+
+    return (full_paths, valid_rel_paths) if return_relative_paths else full_paths
 
 
 def get_dir() -> str:
@@ -352,7 +436,7 @@ class JSONsaver(json.JSONEncoder):
             else:
                 return f'CALLABLE.{str(obj)}'
         else:
-            print(f"WARNING: Could not serialize object {obj}")
+            print(f"[WARNING] Could not serialize object {obj}")
             return super().default(obj)
         
 
@@ -495,7 +579,7 @@ def mask_to_gdf(
         foreground_contours, hole_contours = filter_contours(contours, hierarchy, filter_params, pixel_size)  # Necessary for filtering out artifacts
 
     if len(foreground_contours) == 0:
-        print(f"Warning: No contour were detected. Contour GeoJSON will be empty.")
+        print(f"[Warning] No contour were detected. Contour GeoJSON will be empty.")
         return gpd.GeoDataFrame(columns=['tissue_id', 'geometry'])
     else:
         contours_tissue = scale_contours(foreground_contours, contour_scale / scale, is_nested=False)

@@ -9,6 +9,7 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 class CuCIMWSI(WSI):
 
     def __init__(self, **kwargs) -> None:
+        self.img = None
         super().__init__(**kwargs)
 
     def _lazy_initialize(self) -> None:
