@@ -33,10 +33,11 @@ class WSIPatcher:
         Args:
             wsi (WSI): wsi to patch
             patch_size (int): patch width/height in pixel on the slide after rescaling
-            src_pixel_size (float, optional): pixel size in um/px of the slide before rescaling. Defaults to None.
-            dst_pixel_size (float, optional): pixel size in um/px of the slide after rescaling. Defaults to None.
-	    src_mag (int, optional): level0 magnification of the slide before rescaling. Defaults to None.
-            dst_mag (int, optional): target magnification of the slide after rescaling. Defaults to None.
+            src_pixel_size (float, optional): pixel size in um/px of the slide before rescaling. Defaults to None. Deprecated, this argument will be removed in the next major version and will default to wsi.mpp
+            dst_pixel_size (float, optional): pixel size in um/px of the slide after rescaling. Defaults to None. 
+                If both dst_mag and dst_pixel_size are not None, dst_pixel_size will be used.
+	        src_mag (int, optional): level0 magnification of the slide before rescaling. Defaults to None. Deprecated, this argument will be removed in the next major version and will default to wsi.mag
+            dst_mag (int, optional): target magnification of the slide after rescaling. Defaults to None. If both dst_mag and dst_pixel_size are not None, dst_pixel_size will be used.
             overlap (int, optional): Overlap between patches in pixels. Defaults to 0. 
             mask (gpd.GeoDataFrame, optional): geopandas dataframe of Polygons. Defaults to None.
             coords_only (bool, optional): whenever to extract only the coordinates insteaf of coordinates + tile. Default to False.
@@ -54,17 +55,21 @@ class WSIPatcher:
         self.custom_coords = custom_coords
         self.pil = pil
         self.dst_mag = dst_mag
-        
+
         # set src magnification and pixel size. 
         if src_pixel_size is not None:
             self.src_pixel_size = src_pixel_size
-        else:
+        elif src_mag is not None:
             self.src_pixel_size = 10 / src_mag
+        else:
+            raise ValueError("Either `src_pixel_size` or `src_mag` must be different than None in WSIPatcher.")
 
         if dst_pixel_size is not None:
             self.dst_pixel_size = dst_pixel_size
-        else:
+        elif dst_mag is not None:
             self.dst_pixel_size = 10 / dst_mag
+        else:
+            self.dst_pixel_size = self.src_pixel_size
 
         self.downsample = self.dst_pixel_size / self.src_pixel_size
         self.patch_size_src = round(patch_size * self.downsample)
@@ -354,6 +359,11 @@ class WSIPatcher:
         cv2.putText(canvas, f'patch={self.patch_size_target} w. overlap={self.overlap} @ {patch_mpp_mag}', (text_x_offset, text_y_spacing * 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         return Image.fromarray(canvas)
+    
+    def __repr__(self) -> str:
+        patch_mpp_mag = f"{self.dst_mag}x" if self.dst_mag is not None else f"{self.dst_pixel_size}um/px"
+        return f"<patch={self.patch_size_target}, overlap={self.overlap} @ {patch_mpp_mag}>"
+
     
 class OpenSlideWSIPatcher(WSIPatcher):
     def __init__(self, *args, **kwargs):

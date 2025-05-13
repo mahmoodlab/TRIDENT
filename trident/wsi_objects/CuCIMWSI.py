@@ -8,7 +8,7 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 
 class CuCIMWSI(WSI):
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, slide_path, **kwargs) -> None:
         """
         Initialize a WSI instance using CuCIM as a backend.
 
@@ -28,7 +28,7 @@ class CuCIMWSI(WSI):
         >>> print(wsi)
         <width=100000, height=80000, backend=CuCIMWSI, mpp=0.25, mag=40>
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(slide_path, **kwargs)
 
     def _lazy_initialize(self) -> None:
         """
