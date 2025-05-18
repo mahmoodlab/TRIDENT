@@ -326,7 +326,7 @@ class WSI:
         for imgs, (xcoords, ycoords) in dataloader:
 
             imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
-            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+            with torch.autocast(device_type=(device).split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
                 preds = segmentation_model(imgs).cpu().numpy()
 
             x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
