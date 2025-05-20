@@ -73,6 +73,8 @@ def visualize_heatmap(
     normalize: bool = True,
     num_top_patches_to_save: int = -1,
     output_dir: Optional[str] = "output",
+    blur: bool = False,
+    overlap: float = 0.5
 ) -> str:
     """
     Generate a heatmap visualization overlayed on a whole slide image (WSI).
@@ -87,6 +89,8 @@ def visualize_heatmap(
         normalize (bool): Whether to normalize the scores.
         num_top_patches_to_save (int): Number of high-score patches to save. If set to -1, do not save any. Defaults to -1.
         output_dir (Optional[str]): Directory to save heatmap and top-k patches.
+        blur (bool): Whether to apply Gaussian blur to the overlay.
+        overlap (float): Overlap factor (between 0 and 1) used to compute blur kernel size.
     
     Returns:
         str: Path to the saved heatmap image.
@@ -100,7 +104,13 @@ def visualize_heatmap(
     region_size = tuple((np.array(wsi.level_dimensions[0]) * scale).astype(int))
     
     overlay = create_overlay(scores, coords, patch_size_level0, scale, region_size)
-    
+
+    if blur:
+        patch_size_scaled = np.array(patch_size_level0 * scale)
+        kernel_size = (patch_size_scaled * (1 - overlap)).astype(int) * 2 + 1
+        kernel_size = tuple([max(3, k | 1) for k in kernel_size])
+        overlay = cv2.GaussianBlur(overlay, kernel_size, 0)
+
     img = wsi.read_region((0, 0), vis_level, wsi.level_dimensions[vis_level]).convert("RGB")
     img = img.resize(region_size, resample=Image.Resampling.BICUBIC)
     img = np.array(img)
