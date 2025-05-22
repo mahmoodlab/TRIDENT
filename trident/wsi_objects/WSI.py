@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from trident.segmentation_models.load import SegmentationModel
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
@@ -245,11 +246,82 @@ class WSI:
             else:
                 raise ValueError(f"Identified mpp is very low: mpp={mpp_x}. Most WSIs are at 20x, 40x magnfication.")
 
+    def _segment_semantic(
+        self, 
+        segmentation_model,
+        target_mag, 
+        verbose,
+        device,
+        batch_size,
+        collate_fn,
+        num_workers,
+        inference_fn
+    ):
+        # Get patch iterator
+        destination_mpp = 10 / target_mag
+        patcher = self.create_patcher(
+            patch_size = segmentation_model.input_size,
+            src_pixel_size = self.mpp,
+            dst_pixel_size = destination_mpp,
+            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
+        )
+        precision = segmentation_model.precision
+        eval_transforms = segmentation_model.eval_transforms
+        dataset = WSIPatcherDataset(patcher, eval_transforms)
+        dataloader = DataLoader(
+            dataset, 
+            batch_size=batch_size, 
+            collate_fn=collate_fn,
+            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
+            pin_memory=True
+        )
+
+        mpp_reduction_factor = self.mpp / destination_mpp
+        width, height = self.get_dimensions()
+        width, height = int(round(width * mpp_reduction_factor)), int(round(height * mpp_reduction_factor))
+        predicted_mask = np.zeros((height, width), dtype=np.uint8)
+
+        dataloader = tqdm(dataloader) if verbose else dataloader
+
+        for batch in dataloader:
+
+            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                if collate_fn is not None:
+                    if 'xcoords' not in batch or 'ycoords' not in batch:
+                        raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
+                    xcoords, ycoords = torch.tensor(batch['xcoords']), torch.tensor(batch['ycoords'])
+                    if inference_fn is None:
+                        if 'img' not in batch:
+                            raise ValueError(f"collate_fn must return the raw tile in 'img' if inference_fn is not provided.")
+                        imgs = batch['img']
+                else:
+                    imgs, (xcoords, ycoords) = batch
+
+                if inference_fn is not None:
+                    preds = inference_fn(segmentation_model, batch, device).cpu().numpy()
+                else:
+                    imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
+                    preds = segmentation_model(imgs).cpu().numpy()
+
+            x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
+            y_starts = np.clip(np.round(ycoords.numpy() * mpp_reduction_factor).astype(int), 0, height - 1)
+            x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
+            y_ends = np.clip(y_starts + segmentation_model.input_size, 0, height)
+            
+            for i in range(len(preds)):
+                x_start, x_end = x_starts[i], x_ends[i]
+                y_start, y_end = y_starts[i], y_ends[i]
+                if x_start >= x_end or y_start >= y_end: # invalid patch
+                    continue
+                patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
+                predicted_mask[y_start:y_end, x_start:x_end] += patch_pred
+        return predicted_mask, mpp_reduction_factor
+
     @torch.inference_mode()
     @torch.autocast(device_type="cuda", dtype=torch.float16)
     def segment_tissue(
         self,
-        segmentation_model: torch.nn.Module,
+        segmentation_model: SegmentationModel,
         target_mag: int = 10,
         holes_are_tissue: bool = True,
         job_dir: Optional[str] = None,
@@ -265,7 +337,7 @@ class WSI:
 
         Args:
         -----
-        segmentation_model : torch.nn.Module
+        segmentation_model : SegmentationModel
             The model used for tissue segmentation.
         target_mag : int, optional
             Target magnification level for segmentation. Defaults to 10.
@@ -305,50 +377,18 @@ class WSI:
             thumbnail_width = int(thumbnail_height * self.width / self.height)
         thumbnail = self.get_thumbnail((thumbnail_width, thumbnail_height))
 
-        # Get patch iterator
-        destination_mpp = 10 / target_mag
-        patcher = self.create_patcher(
-            patch_size = segmentation_model.input_size,
-            src_pixel_size = self.mpp,
-            dst_pixel_size = destination_mpp,
-            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
-        )
-        precision = segmentation_model.precision
-        eval_transforms = segmentation_model.eval_transforms
-        dataset = WSIPatcherDataset(patcher, eval_transforms)
-        dataloader = DataLoader(
-            dataset, 
-            batch_size=batch_size, 
-            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
-            pin_memory=True
-        )
         # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
-        mpp_reduction_factor = self.mpp / destination_mpp
-        width, height = self.get_dimensions()
-        width, height = int(round(width * mpp_reduction_factor)), int(round(height * mpp_reduction_factor))
-        predicted_mask = np.zeros((height, width), dtype=np.uint8)
-
-        dataloader = tqdm(dataloader) if verbose else dataloader
-
-        for imgs, (xcoords, ycoords) in dataloader:
-
-            imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
-            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
-                preds = segmentation_model(imgs).cpu().numpy()
-
-            x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
-            y_starts = np.clip(np.round(ycoords.numpy() * mpp_reduction_factor).astype(int), 0, height - 1)
-            x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
-            y_ends = np.clip(y_starts + segmentation_model.input_size, 0, height)
-            
-            for i in range(len(preds)):
-                x_start, x_end = x_starts[i], x_ends[i]
-                y_start, y_end = y_starts[i], y_ends[i]
-                if x_start >= x_end or y_start >= y_end: # invalid patch
-                    continue
-                patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
-                predicted_mask[y_start:y_end, x_start:x_end] += patch_pred
+        predicted_mask, mpp_reduction_factor = self._segment_semantic(
+            segmentation_model,
+            target_mag,
+            verbose,
+            device,
+            batch_size,
+            None,
+            num_workers,
+            None
+        )
         
         # Post-process the mask
         predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
@@ -389,6 +429,102 @@ class WSI:
             return gdf_saveto
         else:
             return gdf_contours
+
+    @torch.inference_mode()
+    @torch.autocast(device_type="cuda", dtype=torch.float16)
+    def segment_semantic(
+        self,
+        segmentation_model: SegmentationModel,
+        target_mag: int = 10,
+        batch_size: int = 16,
+        device: str = 'cuda:0',
+        verbose=False,
+        num_workers=None,
+        collate_fn=None,
+        inference_fn=None,
+        return_contours=False
+    ) -> Union[Tuple[np.ndarray, float], Tuple[np.ndarray, float, gpd.GeoDataFrame]]:
+        """
+        The `segment_semantic` function of the class `WSI` segments semantic regions in the WSI using 
+        a specified segmentation model.
+
+        Args:
+        -----
+        segmentation_model : SegmentationModel
+            The model used for tissue segmentation.
+        target_mag : int, optional
+            Target magnification level for segmentation. Defaults to 10.
+        batch_size : int, optional
+            Batch size for processing patches. Defaults to 16.
+        device (str): 
+            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+        verbose: bool, optional:
+            Whenever to print segmentation progress. Defaults to False.
+        num_workers: Optional[int], optional:
+            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
+        collate_fn: optional
+            Custom collate function used in the dataloader, it must return a dictionary containing at least 'xcoords' and 'ycoords' as keys (level 0 coordinates)
+            and 'img' if if inference_fn is not provided.
+        inference_fn: optional
+            function used during inference, it will be called like this internally: `inference_fn(model, batch, device)`
+            where batch is the batch returned by collate_fn if provided or img, (xcoords, ycoords) if not provided
+            this function must return a tensor with shape: (B, H, W) and dtype uint8
+        return_contours: bool, optional
+            Whenever to return the contours of each class in a GeoDataframe. Defaults to False
+            
+
+        Returns:
+        --------
+        Union[Tuple[np.ndarray, float], Tuple[np.ndarray, float, gpd.GeoDataFrame]]:
+            a downscaled H x W np.ndarray containing class predictions and its downscale factor. Also returns the contours of each class in a GeoDataframe if return_contours is provided.
+            
+        Example:
+        --------
+        >>> wsi.segment_tissue(segmentation_model, target_mag=10, job_dir="output_dir")
+        >>> # Results saved in "output_dir"
+        """
+        import pandas as pd
+        import geopandas as gpd
+
+        self._lazy_initialize()
+        segmentation_model.to(device)
+
+        predicted_mask, mpp_reduction_factor = self._segment_semantic(
+            segmentation_model,
+            target_mag,
+            verbose,
+            device,
+            batch_size,
+            collate_fn,
+            num_workers,
+            inference_fn
+        )
+
+        if not return_contours:
+            return predicted_mask, mpp_reduction_factor
+
+        gdfs = []
+        unique_labels = np.unique(predicted_mask)
+        for unique_label in unique_labels:
+            if unique_label == 0:
+                continue
+
+            gdf_contours = mask_to_gdf(
+                mask=(predicted_mask == unique_label).astype(np.uint8),
+                max_nb_holes=20,
+                min_contour_area=1000,
+                pixel_size=self.mpp,
+                contour_scale=1/mpp_reduction_factor
+            )
+            gdfs.append(gdf_contours)
+        
+        if len(gdfs) > 0:
+            gdf = pd.concat(gdfs)
+        else:
+            gdf = gpd.GeoDataFrame()
+
+        return predicted_mask, mpp_reduction_factor, gdf
+        
 
     def get_best_level_and_custom_downsample(
         self,
@@ -497,7 +633,7 @@ class WSI:
             patch_size=patch_size,
             src_mag=self.mag,
             dst_mag=target_mag,
-            mask=self.gdf_contours,
+            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None,
             coords_only=True,
             overlap=overlap,
             threshold=min_tissue_proportion,
@@ -514,7 +650,9 @@ class WSI:
             'target_magnification': target_mag,
             'overlap': overlap,
             'name': self.name,
-            'savetodir': save_coords
+            'savetodir': save_coords,
+            'level0_width': self.width,
+            'level0_height': self.height
         }
 
         # Save the assets and attributes to an hdf5 file
@@ -593,7 +731,8 @@ class WSI:
         save_features: str,
         device: str = 'cuda:0',
         saveas: str = 'h5',
-        batch_limit: int = 512
+        batch_limit: int = 512,
+        verbose: bool = False
     ) -> str:
         """
         The `extract_patch_features` function of the class `WSI` extracts feature embeddings 
@@ -614,6 +753,8 @@ class WSI:
             Format to save the features ('h5' or 'pt'). Defaults to 'h5'.
         batch_limit : int, optional
             Maximum batch size for feature extraction. Defaults to 512.
+        verbose: bool, optional:
+            Whenever to print patch embedding progress. Defaults to False.
 
         Returns:
         --------
@@ -655,8 +796,10 @@ class WSI:
             pil=True,
         )
         dataset = WSIPatcherDataset(patcher, patch_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=True)
+        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
         # dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=0, pin_memory=True)
+
+        dataloader = tqdm(dataloader) if verbose else dataloader
 
         features = []
         for imgs, _ in dataloader:
@@ -671,13 +814,14 @@ class WSI:
         # Save the features to disk
         os.makedirs(save_features, exist_ok=True)
         if saveas == 'h5':
+            model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
             save_h5(os.path.join(save_features, f'{self.name}.{saveas}'),
                     assets = {
                         'features' : features,
                         'coords': coords,
                     },
                     attributes = {
-                        'features': {'name': self.name, 'savetodir': save_features},
+                        'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
                         'coords': coords_attrs
                     },
                     mode='w')
