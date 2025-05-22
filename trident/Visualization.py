@@ -1,10 +1,10 @@
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
-from scipy.stats import rankdata
 from PIL import Image
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import os 
+from shapely import Polygon, MultiPolygon
 
 
 def create_overlay(
@@ -27,6 +27,7 @@ def create_overlay(
     Returns:
         np.ndarray: Heatmap overlay.
     """
+    
     patch_size = np.ceil(np.array([patch_size_level0, patch_size_level0]) * scale).astype(int)
     coords = np.ceil(coords * scale).astype(int)
     
@@ -62,6 +63,25 @@ def apply_colormap(overlay: np.ndarray, cmap_name: str) -> np.ndarray:
     overlay_colored[valid_mask] = colored_valid
     return overlay_colored
 
+def coords_to_cv_points(coords, scaling_factor=1):
+    coords = [[x * scaling_factor, y * scaling_factor] for x, y in coords]
+    return np.array(coords, dtype=np.int32).reshape((-1, 1, 2))
+
+def rasterize_polygons(array: np.ndarray, geom: Union[Polygon, MultiPolygon], scaling_factor):
+    if isinstance(geom, (Polygon, MultiPolygon)):
+        if isinstance(geom, Polygon):
+            polygons = [geom]
+        else:
+            polygons = geom.geoms
+
+        for poly in polygons:
+            exterior = coords_to_cv_points(poly.exterior.coords, scaling_factor)
+            cv2.fillPoly(array, [exterior], color=1)
+            for interior in poly.interiors:
+                hole = coords_to_cv_points(interior.coords, scaling_factor)
+                cv2.fillPoly(array, [hole], color=0)
+    else:
+        raise ValueError(f'tissue_contours, expects elements to be of type Polygon or MultiPolygon but got {type(geom)}')
 
 def visualize_heatmap(
     wsi,
@@ -73,6 +93,9 @@ def visualize_heatmap(
     normalize: bool = True,
     num_top_patches_to_save: int = -1,
     output_dir: Optional[str] = "output",
+    vis_mag: Optional[int] = None,
+    overlay_only = False,
+    filename = 'heatmap.png'
 ) -> str:
     """
     Generate a heatmap visualization overlayed on a whole slide image (WSI).
@@ -87,30 +110,44 @@ def visualize_heatmap(
         normalize (bool): Whether to normalize the scores.
         num_top_patches_to_save (int): Number of high-score patches to save. If set to -1, do not save any. Defaults to -1.
         output_dir (Optional[str]): Directory to save heatmap and top-k patches.
-    
+        vis_mag (Optional[int]): Visualization Magnification. This will overwrite vis_level
+        overlay_only bool: Whenever to save the overlay only. If set to True, save the overlay on top of downscaled version of the WSI. Defaults to False.
+        filename (str): file will be saved in `output_dir`/`filename`
+
     Returns:
         str: Path to the saved heatmap image.
     """
 
     if normalize:
+        from scipy.stats import rankdata
         scores = rankdata(scores, 'average') / len(scores) * 100 / 100
     
-    downsample = wsi.level_downsamples[vis_level]
+    if vis_mag is None:
+        downsample = wsi.level_downsamples[vis_level]
+    else:
+        src_mag = wsi.mag
+        downsample = src_mag / vis_mag
+        if not overlay_only:
+            vis_level, _ = wsi.get_best_level_and_custom_downsample(downsample)
+    
     scale = np.array([1 / downsample, 1 / downsample])
     region_size = tuple((np.array(wsi.level_dimensions[0]) * scale).astype(int))
-    
     overlay = create_overlay(scores, coords, patch_size_level0, scale, region_size)
-    
-    img = wsi.read_region_pil((0, 0), vis_level, wsi.level_dimensions[vis_level]).convert("RGB")
-    img = img.resize(region_size, resample=Image.Resampling.BICUBIC)
-    img = np.array(img)
-    
     overlay_colored = apply_colormap(overlay, cmap)
-    blended_img = cv2.addWeighted(img, 0.6, overlay_colored, 0.4, 0)
+    
+    if overlay_only:
+        blended_img = overlay_colored
+    else:
+        img = wsi.read_region((0, 0), vis_level, wsi.level_dimensions[vis_level]).convert("RGB")
+        img = img.resize(region_size, resample=Image.Resampling.BICUBIC)
+        img = np.array(img)
+        
+        blended_img = cv2.addWeighted(img, 0.6, overlay_colored, 0.4, 0)
+    
     blended_img = Image.fromarray(blended_img)
 
     os.makedirs(output_dir, exist_ok=True)
-    heatmap_path = os.path.join(output_dir, "heatmap.png")
+    heatmap_path = os.path.join(output_dir, filename)
     blended_img.save(heatmap_path)
 
     if num_top_patches_to_save > 0:
@@ -119,7 +156,7 @@ def visualize_heatmap(
         topk_indices = np.argsort(scores)[-num_top_patches_to_save:]
         for idx, i in enumerate(topk_indices):
             x, y = coords[i]
-            patch = wsi.read_region_pil((x, y), 0, (patch_size_level0, patch_size_level0))
+            patch = wsi.read_region((x, y), 0, (patch_size_level0, patch_size_level0))
             patch.save(os.path.join(topk_dir, f"top_{idx}_score_{scores[i]:.4f}.png"))
 
     return heatmap_path
