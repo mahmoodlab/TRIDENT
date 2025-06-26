@@ -13,7 +13,7 @@ from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords, read_coords_legacy,
-    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers
+    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5
 )
 
 ReadMode = Literal['pil', 'numpy']
@@ -641,28 +641,10 @@ class WSI:
 
         coords_to_keep = [(x, y) for x, y in patcher]
 
-        # Prepare assets for saving
-        assets = {'coords' : np.array(coords_to_keep)}
-        attributes = {
-            'patch_size': patch_size, # Reference frame: patch_level
-            'patch_size_level0': patch_size * self.mag // target_mag, # Reference frame: level0
-            'level0_magnification': self.mag,
-            'target_magnification': target_mag,
-            'overlap': overlap,
-            'name': self.name,
-            'savetodir': save_coords,
-            'level0_width': self.width,
-            'level0_height': self.height
-        }
-
-        # Save the assets and attributes to an hdf5 file
         os.makedirs(os.path.join(save_coords, 'patches'), exist_ok=True)
         out_fname = os.path.join(save_coords, 'patches', str(self.name) + '_patches.h5')
-        save_h5(out_fname,
-                assets = assets,
-                attributes = {'coords': attributes},
-                mode='w')
-        
+        coords_to_h5(coords_to_keep, out_fname, patch_size, self.mag, target_mag,
+                     save_coords, self.width, self.height, self.name, overlap)
         return out_fname
 
     def visualize_coords(self, coords_path: str, save_patch_viz: str) -> str:
@@ -732,7 +714,8 @@ class WSI:
         device: str = 'cuda:0',
         saveas: str = 'h5',
         batch_limit: int = 512,
-        verbose: bool = False
+        verbose: bool = False,
+        forward_kwargs: dict = {}
     ) -> str:
         """
         The `extract_patch_features` function of the class `WSI` extracts feature embeddings 
@@ -755,6 +738,8 @@ class WSI:
             Maximum batch size for feature extraction. Defaults to 512.
         verbose: bool, optional:
             Whenever to print patch embedding progress. Defaults to False.
+        forward_kwargs: dict, optional:
+            kwargs passed to the forward function of the patch encoder
 
         Returns:
         --------
@@ -805,7 +790,7 @@ class WSI:
         for imgs, _ in dataloader:
             imgs = imgs.to(device)
             with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                batch_features = patch_encoder(imgs)  
+                batch_features = patch_encoder(imgs, **forward_kwargs)  
             features.append(batch_features.cpu().numpy())
 
         # Concatenate features
