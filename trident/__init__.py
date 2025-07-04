@@ -1,4 +1,9 @@
-__version__ = "0.1.1"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("trident")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 from trident.wsi_objects.OpenSlideWSI import OpenSlideWSI
 from trident.wsi_objects.CuCIMWSI import CuCIMWSI

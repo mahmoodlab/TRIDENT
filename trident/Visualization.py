@@ -133,6 +133,7 @@ def visualize_heatmap(
     scale = np.array([1 / downsample, 1 / downsample])
     region_size = tuple((np.array(wsi.level_dimensions[0]) * scale).astype(int))
     overlay = create_overlay(scores, coords, patch_size_level0, scale, region_size)
+
     overlay_colored = apply_colormap(overlay, cmap)
     
     if overlay_only:

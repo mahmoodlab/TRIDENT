@@ -11,6 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import subprocess
 import sys
 sys.path.insert(0, os.path.abspath('./../'))
 
@@ -63,3 +64,18 @@ html_context = {
     "github_version": "docs",
     "conf_py_path": "/docs/",
 }
+
+# === Auto-generate CLI help files before building docs ===
+
+def run_cli_generate():
+    print("Auto-generating CLI help text...")
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    cli_generate_script = os.path.join(root_dir, 'docs', 'cli_helpers', 'cli_generate.py')
+    output_help_txt = os.path.join(root_dir, 'docs', 'generated', 'run_batch_of_slides_help.txt')
+
+    os.makedirs(os.path.dirname(output_help_txt), exist_ok=True)
+
+    with open(output_help_txt, 'w') as f:
+        subprocess.run(["python", cli_generate_script], stdout=f, check=True)
+
+run_cli_generate()

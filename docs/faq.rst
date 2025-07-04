@@ -33,6 +33,13 @@ Frequently Asked Questions
 
    By default, TRIDENT includes all tissue patches (including holes). Use `--remove_holes` to exclude them. Not recommended, as "holes" often help define the tissue microenvironment.
 
+.. dropdown:: **I don’t have enough local SSD storage and my WSIs are on a slow remote disk. How can I accelerate processing?**
+
+   When WSIs are stored on slow network or external drives, processing can be very slow. Use `--wsi_cache ./cache --cache_batch_size 32` to enable local caching. WSIs will be copied in batches to a local SSD, processed in parallel, and automatically cleaned up after use. This significantly reduces I/O bottlenecks.
+
+.. dropdown:: **My WSIs are in multiple subfolders. How can I process them all?**
+
+   By default, only the top-level directory is scanned. Use `--search_nested` to recursively search for WSIs in all nested folders and include them in processing.
 
 .. dropdown:: **I work on a cluster without Internet access. How can I use models offline?**
 

@@ -28,6 +28,7 @@ class CuCIMWSI(WSI):
         >>> print(wsi)
         <width=100000, height=80000, backend=CuCIMWSI, mpp=0.25, mag=40>
         """
+        self.img = None
         super().__init__(slide_path, **kwargs)
 
     def _lazy_initialize(self) -> None:

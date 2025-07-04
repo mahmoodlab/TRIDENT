@@ -393,11 +393,11 @@ class WSI:
         # Post-process the mask
         predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
-        # Fill holes if desired
-        if not holes_are_tissue:
-            holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-            for hole in holes:
-                cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
+        # # Fill holes if desired
+        # if not holes_are_tissue:
+        #     holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        #     for hole in holes:
+        #         cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
 
         gdf_contours = mask_to_gdf(
             mask=predicted_mask,
@@ -914,3 +914,31 @@ class WSI:
                     mode='w')
 
         return save_path
+
+    def release(self) -> None:
+        """
+        Release internal data (CPU/GPU/memory) and clear heavy references in the WSI instance.
+        Call this method after you're done processing to avoid memory/GPU leaks.
+        """
+        # Clear backend image object
+
+        if hasattr(self, "close"):
+            self.close()
+
+        if hasattr(self, "img"):
+            try:
+                if hasattr(self.img, "close"):
+                    self.img.close()
+            except Exception:
+                pass
+            self.img = None
+
+        # Clear segmentation results and coordinates
+        for attr in ["gdf_contours", "tissue_seg_path"]:
+            if hasattr(self, attr):
+                setattr(self, attr, None)
+
+        import gc
+        import torch
+        gc.collect()
+        torch.cuda.empty_cache()
