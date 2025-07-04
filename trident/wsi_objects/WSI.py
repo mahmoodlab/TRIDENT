@@ -12,7 +12,7 @@ from trident.segmentation_models.load import SegmentationModel
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
-    save_h5, read_coords, read_coords_legacy,
+    save_h5, read_coords,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5
 )
 
@@ -683,19 +683,19 @@ class WSI:
             
             if None in (patch_size, level0_magnification, target_magnification):
                 raise KeyError('Missing essential attributes in coords_attrs.')
+
         except (KeyError, FileNotFoundError, ValueError) as e:
             warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
-            level0_magnification = self.mag
-            target_magnification = int(self.mag / (self.level_downsamples[patch_level] * custom_downsample))
-
-        patcher = self.create_patcher(
-            patch_size=patch_size,
-            src_mag=level0_magnification,
-            dst_mag=target_magnification,
-            custom_coords=coords,
-            coords_only=True
-        )
+            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True)
+        
+        else:
+            patcher = self.create_patcher(
+                patch_size=patch_size,
+                src_mag=level0_magnification,
+                dst_mag=target_magnification,
+                custom_coords=coords,
+                coords_only=True
+            )
 
         img =  patcher.visualize()
 
@@ -765,24 +765,25 @@ class WSI:
             level0_magnification = coords_attrs.get('level0_magnification', None)
             target_magnification = coords_attrs.get('target_magnification', None)            
             if None in (patch_size, level0_magnification, target_magnification):
-                raise KeyError('Missing attributes in coords_attrs.')
+                raise KeyError('Missing attributes in coords_attrs.')         
+
         except (KeyError, FileNotFoundError, ValueError) as e:
             warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
-            level0_magnification = self.mag
-            target_magnification = int(self.mag / (self.level_downsamples[patch_level] * custom_downsample))
+            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
 
-        patcher = self.create_patcher(
-            patch_size=patch_size,
-            src_mag=level0_magnification,
-            dst_mag=target_magnification,
-            custom_coords=coords,
-            coords_only=False,
-            pil=True,
-        )
+        else:
+            patcher = self.create_patcher(
+                patch_size=patch_size,
+                src_mag=level0_magnification,
+                dst_mag=target_magnification,
+                custom_coords=coords,
+                coords_only=False,
+                pil=True,
+            )  
+
+
         dataset = WSIPatcherDataset(patcher, patch_transforms)
         dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
-        # dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=0, pin_memory=True)
 
         dataloader = tqdm(dataloader) if verbose else dataloader
 

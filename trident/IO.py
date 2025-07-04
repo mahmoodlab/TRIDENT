@@ -191,7 +191,6 @@ def get_weights_path(model_type, encoder_name):
     if path:
         path = path if os.path.isabs(path) else os.path.abspath(os.path.join(root, 'model_zoo', path)) # Make path absolute
         if not os.path.exists(path):
-            raise ValueError(f"{path} doesn't exist.")
             path = ""
 
     return path

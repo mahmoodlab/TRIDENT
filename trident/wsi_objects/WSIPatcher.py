@@ -99,23 +99,45 @@ class WSIPatcher:
     def from_legacy_coords(
         cls, 
         wsi, 
-        src_patch_size, 
+        patch_size, 
         patch_level, 
         custom_downsample, 
         coords, 
         coords_only=False,
         pil=False
     ) -> WSIPatcher:
+        """
+        The `from_legacy_coords` function creates a WSIPatcher from legacy coordinates parameters generated 
+        with CLAM or Fishing-Rod. These legacy coordinates parameters include: 
+        `custom_downsample` and `patch_level` instead of the new `patch_size` and `dst_mag`/`dst_mpp` format
+
+        Parameters:
+        -----------
+        wsi : WSI
+            WSI to patch
+        patch_size : int
+            The target patch size at the desired magnification.
+        patch_level : int
+            The patch level used when reading the slide.
+        custom_downsample : int
+            Any additional downsampling applied to the patches.
+        coords : np.array
+            An array of patch coordinates.
+            
+
+        Returns:
+        --------
+        WSIPatcher
+            WSIPatcher created from the given legacy coordinates
+        """
         src_mpp, dst_mpp, src_mag, dst_mag = None, None, None, None
         downsample_ratio = (wsi.level_downsamples[patch_level] * custom_downsample)
         if wsi.mpp is not None:
             src_mpp = wsi.mpp
             dst_mpp = wsi.mpp * downsample_ratio
-            patch_size = round(src_patch_size / downsample_ratio)
         else:
             src_mag = wsi.mag
             dst_mag = int(wsi.mag / downsample_ratio)
-            patch_size = round(src_patch_size / downsample_ratio)
 
         return WSIPatcher(
             wsi,
@@ -131,6 +153,27 @@ class WSIPatcher:
 
     @classmethod
     def from_legacy_coords_file(cls, wsi, coords_path, coords_only=False, pil=False) -> WSIPatcher:
+        """
+        The `from_legacy_coords_file` function creates a WSIPatcher from a legacy coordinates file generated 
+        with CLAM or Fishing-Rod.
+
+        Parameters:
+        -----------
+        wsi : WSI
+            WSI to patch
+        coords_path : str
+            Path to legacy coordinates stored as .h5
+        coords_only : bool
+            Whenever the legacy coordinates file only contain coordinates or if it also contains images
+        pil : bool
+            pil argument passed to the WSIPatcher constructor
+            
+
+        Returns:
+        --------
+        WSIPatcher
+            WSIPatcher created from the given legacy coordinates
+        """
         patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
 
         return cls.from_legacy_coords(
