@@ -37,6 +37,12 @@ def parse_arguments():
                         help='Type of tissue vs background segmenter. Options are HEST or GrandQC.')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
                     help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
+    parser.add_argument('--remove_holes', action='store_true', default=False, 
+                        help='Do you want to remove holes?')
+    parser.add_argument('--remove_artifacts', action='store_true', default=False, 
+                        help='Do you want to run an additional model to remove artifacts (including penmarks, blurs, stains, etc.)?')
+    parser.add_argument('--remove_penmarks', action='store_true', default=False, 
+                        help='Do you want to run an additional model to remove penmarks?')
     parser.add_argument('--custom_mpp_keys', type=str, nargs='+', default=None,
                     help='Custom keys used to store the resolution as MPP (micron per pixel) in your list of whole-slide image.')
     parser.add_argument('--overlap', type=int, default=0, 
@@ -61,13 +67,30 @@ def process_slide(args):
         model_name=args.segmenter,
         confidence_thresh=args.seg_conf_thresh,
     )
+    if args.remove_artifacts or args.remove_penmarks:
+        artifact_remover_model = segmentation_model_factory(
+            'grandqc_artifact',
+            remove_penmarks_only=args.remove_penmarks and not args.remove_artifacts
+        )
+    else:
+        artifact_remover_model = None
+
     slide.segment_tissue(
         segmentation_model=segmentation_model,
         target_mag=segmentation_model.target_mag,
         job_dir=args.job_dir,
-        device=f"cuda:{args.gpu}"
+        device=f"cuda:{args.gpu}",
+        holes_are_tissue=not args.remove_holes
     )
-    print(f"Tissue segmentation completed. Results saved to {args.job_dir}contours_geojson and {args.job_dir}contours")
+    # additionally remove artifacts for better segmentation.
+    if artifact_remover_model is not None:
+        slide.segment_tissue(
+            segmentation_model=artifact_remover_model,
+            target_mag=artifact_remover_model.target_mag,
+            holes_are_tissue=False,
+            job_dir=args.job_dir
+        )
+    print(f"Tissue segmentation completed. Results saved to {os.path.join(args.job_dir, 'contours_geojson')} and {os.path.join(args.job_dir, 'contours')}")
 
     # Step 2: Tissue Coordinate Extraction (Patching)
     print("Extracting tissue coordinates...")
