@@ -459,13 +459,12 @@ class FeatherSlideEncoder(BaseSlideEncoder):
         )
         model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
         precision = torch.float32
-        embedding_dim = 768
+        embedding_dim = 512
 
         return model, precision, embedding_dim
     
     def forward(self, batch, device='cuda'):
         z, _ = self.model.forward_features(batch['features'].to(device))
-        print(z.shape)
         return z
 
 
