@@ -1,4 +1,5 @@
 from __future__ import annotations
+from abc import abstractmethod
 import numpy as np
 from PIL import Image
 import os 
@@ -943,3 +944,8 @@ class WSI:
         import torch
         gc.collect()
         torch.cuda.empty_cache()
+
+
+    @abstractmethod
+    def get_channels(self) -> List[str]:
+        pass

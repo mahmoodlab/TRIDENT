@@ -1,7 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from PIL import Image
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 from trident.wsi_objects.WSI import WSI, ReadMode
 
@@ -177,28 +177,28 @@ class ImageWSI(WSI):
         else:
             raise ValueError(f"Invalid `read_as` value: {read_as}. Must be 'pil' or 'numpy'.")
 
-    def segment_tissue(self, **kwargs):
-        out = super().segment_tissue(**kwargs)
+    def segment_tissue(self, *args, **kwargs):
+        out = super().segment_tissue(*args, **kwargs)
         self.close()
         return out
     
-    def extract_tissue_coords(self, **kwargs):
-        out = super().extract_tissue_coords(**kwargs)
+    def extract_tissue_coords(self, *args, **kwargs):
+        out = super().extract_tissue_coords(*args, **kwargs)
         self.close()
         return out
 
-    def visualize_coords(self, **kwargs):
-        out = super().visualize_coords(**kwargs)
+    def visualize_coords(self, *args, **kwargs):
+        out = super().visualize_coords(*args, **kwargs)
         self.close()
         return out
 
-    def extract_patch_features(self, **kwargs):
-        out = super().extract_patch_features(**kwargs)
+    def extract_patch_features(self, *args, **kwargs):
+        out = super().extract_patch_features(*args, **kwargs)
         self.close()
         return out
 
-    def extract_slide_features(self, **kwargs):
-        out = super().extract_slide_features(**kwargs)
+    def extract_slide_features(self, *args, **kwargs):
+        out = super().extract_slide_features(*args, **kwargs)
         self.close()
         return out
 
@@ -209,3 +209,6 @@ class ImageWSI(WSI):
         if self.img is not None:
             self.img.close()
             self.img = None
+
+    def get_channels(self) -> List[str]:
+        return self.img.getbands()
