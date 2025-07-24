@@ -1,5 +1,10 @@
 from trident.patch_encoder_models.load import (
-    encoder_factory,
+    encoder_registry,
+    encoder_factory
+)
+
+
+from trident.patch_encoder_models.base import (
     CustomInferenceEncoder,
     MuskInferenceEncoder,
     Conchv1InferenceEncoder,
@@ -27,6 +32,7 @@ from trident.patch_encoder_models.load import (
 
 __all__ = [
     "encoder_factory",
+    "encoder_registry",
     "CustomInferenceEncoder",
     "MuskInferenceEncoder",
     "Conchv1InferenceEncoder",

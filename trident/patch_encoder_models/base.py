@@ -6,71 +6,102 @@ import os
 
 from trident.patch_encoder_models.utils.constants import get_constants
 from trident.patch_encoder_models.utils.transform_utils import get_eval_transforms
-from trident.patch_encoder_models.base import BasePatchEncoder,CustomInferenceEncoder
 from trident.IO import get_weights_path, has_internet_connection
-from trident.patch_encoder_models.base import encoder_registry as encoder_registry
-
-try:
-    from trident.patch_encoder_models.usermodels import encoder_registry as extra_models
-except ModuleNotFoundError as e:
-    extra_models = {}
-
-"""
-This file contains an assortment of pretrained patch encoders, all loadable via the encoder_factory() function.
-"""
 
 
-encoder_registry.update(extra_models)
+class BasePatchEncoder(torch.nn.Module):
 
-def encoder_factory(model_name: str, **kwargs):
-    """
-    Instantiate a patch encoder model by name.
+    _has_internet = has_internet_connection()
+    
+    def __init__(self, weights_path: Optional[str] = None, **build_kwargs):
+        """
+        Initialize BasePatchEncoder.
 
-    This factory function returns a pre-configured encoder model class based on the provided
-    `model_name`. Each encoder is designed for extracting representations from image patches
-    using specific backbones or pretraining strategies.
+        Args:
+            weights_path (Optional[str]): 
+                Optional path to local model weights. If None, the model is loaded from the model registry or downloaded from Hugging Face Hub.
+            **build_kwargs: 
+                Additional keyword arguments passed to the `_build()` method to customize model creation.
 
-    Args:
-        model_name (str): Name of the encoder to instantiate. Must be one of the following:
-            - "conch_v1"
-            - "conch_v15"
-            - "uni_v1"
-            - "uni_v2"
-            - "ctranspath"
-            - "phikon"
-            - "phikon_v2"
-            - "resnet50"
-            - "gigapath"
-            - "virchow"
-            - "virchow2"
-            - "hoptimus0"
-            - "hoptimus1"
-            - "musk"
-            - "hibou_l"
-            - "kaiko-vitb8"
-            - "kaiko-vitb16"
-            - "kaiko-vits8"
-            - "kaiko-vits16"
-            - "kaiko-vitl14"
-            - "lunit-vits8"
+        Attributes:
+            enc_name (Optional[str]): Name of the encoder architecture (set during `_build()`).
+            weights_path (Optional[str]): Path to local model weights (if provided).
+            model (nn.Module): The instantiated encoder model.
+            eval_transforms (Callable): Evaluation-time preprocessing transforms.
+            precision (torch.dtype): Precision used for inference.
+        """
 
-        **kwargs: Optional keyword arguments passed directly to the encoder constructor. These
-            may include parameters such as:
-            - weights_path (str): Path to a local checkpoint (optional)
-            - normalize (bool): Whether to normalize output embeddings (default: False)
-            - with_proj (bool): Whether to apply the projection head (default: True)
-            - any model-specific configuration parameters
+        super().__init__()
+        self.enc_name: Optional[str] = None
+        self.weights_path: Optional[str] = weights_path
+        self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
 
-    Returns:
-        torch.nn.Module: An instance of the specified encoder model.
+    def ensure_valid_weights_path(self, weights_path):
+        if weights_path and not os.path.isfile(weights_path):
+            raise FileNotFoundError(f"Expected checkpoint at '{weights_path}', but the file was not found.")
+    
+    def ensure_has_internet(self, enc_name):
+        if not BasePatchEncoder._has_internet:
+            raise FileNotFoundError(
+                f"Internet connection does seem not available. Auto checkpoint download is disabled."
+                f"To proceed, please manually download: {enc_name},\n"
+                f"and place it in the model registry in:\n`trident/patch_encoder_models/local_ckpts.json`"
+            )
+        
+    def _get_weights_path(self):
+        """
+        If self.weights_path is provided, use it. 
+        If not provided, check the model registry. 
+            If path in model registry is empty, auto-download from huggingface
+            else, use the path from the registry.
+        """
+        if self.weights_path:
+            self.ensure_valid_weights_path(self.weights_path)
+            return self.weights_path
+        else:
+            weights_path = get_weights_path('patch', self.enc_name)
+            self.ensure_valid_weights_path(weights_path)
+            return weights_path
 
-    Raises:
-        ValueError: If `model_name` is not among the recognized encoder names.
-    """
-    if model_name in encoder_registry:
-        return encoder_registry[model_name](**kwargs)
-    else:
-        raise ValueError(f"Unknown encoder name {model_name}")
+    def forward(self, x):
+        """
+        Can be overwritten if model requires special forward pass.
+        """
+        z = self.model(x)
+        return z
+        
+    @abstractmethod
+    def _build(self, **build_kwargs):
+        pass
+
+
+class CustomInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, enc_name, model, transforms, precision):
+        """
+        Initialize a CustomInferenceEncoder from user-defined components.
+
+        This class is used when the model, transforms, and precision are pre-instantiated externally 
+        and should be injected directly into the encoder wrapper.
+
+        Args:
+            enc_name (str): 
+                A unique name or identifier for the encoder (used for registry or logging).
+            model (torch.nn.Module): 
+                A PyTorch model instance to use for inference.
+            transforms (Callable): 
+                A callable (e.g., torchvision or timm transform) to preprocess input images for evaluation.
+            precision (torch.dtype): 
+                The precision to use for inference (e.g., torch.float32, torch.float16).
+        """
+        super().__init__()
+        self.enc_name = enc_name
+        self.model = model
+        self.eval_transforms = transforms
+        self.precision = precision
+        
+    def _build(self):
+        return None, None, None
 
 
 class MuskInferenceEncoder(BasePatchEncoder):
@@ -1124,3 +1155,26 @@ class Midnight12kInferenceEncoder(BasePatchEncoder):
             raise ValueError(
                 f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
             )
+
+encoder_registry = {
+    "conch_v1": Conchv1InferenceEncoder,
+    "conch_v15": Conchv15InferenceEncoder,
+    "uni_v1": UNIInferenceEncoder,
+    "uni_v2": UNIv2InferenceEncoder,
+    "ctranspath": CTransPathInferenceEncoder,
+    "phikon": PhikonInferenceEncoder,
+    "resnet50": ResNet50InferenceEncoder,
+    "gigapath": GigaPathInferenceEncoder,
+    "virchow": VirchowInferenceEncoder,
+    "virchow2": Virchow2InferenceEncoder,
+    "hoptimus0": HOptimus0InferenceEncoder,
+    "hoptimus1": HOptimus1InferenceEncoder,
+    "musk": MuskInferenceEncoder,
+    "hibou_l": HibouLInferenceEncoder,
+    "kaiko-vitb8": KaikoB8InferenceEncoder,
+    "kaiko-vitb16": KaikoB16InferenceEncoder,
+    "kaiko-vits8": KaikoS8InferenceEncoder,
+    "kaiko-vits16": KaikoS16InferenceEncoder,
+    "kaiko-vitl14": KaikoL14InferenceEncoder,
+    "lunit-vits8": LunitS8InferenceEncoder,
+}
