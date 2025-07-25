@@ -11,7 +11,7 @@ import argparse
 import torch
 
 from trident import Processor 
-
+from trident.patch_encoder_models.load import encoder_registry
 
 def build_parser():
     """
@@ -86,11 +86,7 @@ def build_parser():
                         help='Directory to save/restore tissue coordinates.')
     # Feature extraction arguments 
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
-                        choices=['conch_v1', 'uni_v1', 'uni_v2', 'ctranspath', 'phikon', 
-                                 'resnet50', 'gigapath', 'virchow', 'virchow2', 
-                                 'hoptimus0', 'hoptimus1', 'phikon_v2', 'conch_v15', 'musk', 'hibou_l',
-                                 'kaiko-vits8', 'kaiko-vits16', 'kaiko-vitb8', 'kaiko-vitb16',
-                                 'kaiko-vitl14', 'lunit-vits8', 'midnight12k'],
+                        choices=encoder_registry.keys(),
                         help='Patch encoder to use')
     parser.add_argument(
         '--patch_encoder_ckpt_path', type=str, default=None,
