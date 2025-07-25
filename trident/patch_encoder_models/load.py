@@ -8,19 +8,13 @@ from trident.patch_encoder_models.utils.constants import get_constants
 from trident.patch_encoder_models.utils.transform_utils import get_eval_transforms
 from trident.patch_encoder_models.base import BasePatchEncoder,CustomInferenceEncoder
 from trident.IO import get_weights_path, has_internet_connection
-from trident.patch_encoder_models.base import encoder_registry as encoder_registry
 
-try:
-    from trident.patch_encoder_models.usermodels import encoder_registry as extra_models
-except ModuleNotFoundError as e:
-    extra_models = {}
 
 """
 This file contains an assortment of pretrained patch encoders, all loadable via the encoder_factory() function.
 """
 
 
-encoder_registry.update(extra_models)
 
 def encoder_factory(model_name: str, **kwargs):
     """
@@ -1124,3 +1118,26 @@ class Midnight12kInferenceEncoder(BasePatchEncoder):
             raise ValueError(
                 f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
             )
+
+encoder_registry = {
+    "conch_v1": Conchv1InferenceEncoder,
+    "conch_v15": Conchv15InferenceEncoder,
+    "uni_v1": UNIInferenceEncoder,
+    "uni_v2": UNIv2InferenceEncoder,
+    "ctranspath": CTransPathInferenceEncoder,
+    "phikon": PhikonInferenceEncoder,
+    "resnet50": ResNet50InferenceEncoder,
+    "gigapath": GigaPathInferenceEncoder,
+    "virchow": VirchowInferenceEncoder,
+    "virchow2": Virchow2InferenceEncoder,
+    "hoptimus0": HOptimus0InferenceEncoder,
+    "hoptimus1": HOptimus1InferenceEncoder,
+    "musk": MuskInferenceEncoder,
+    "hibou_l": HibouLInferenceEncoder,
+    "kaiko-vitb8": KaikoB8InferenceEncoder,
+    "kaiko-vitb16": KaikoB16InferenceEncoder,
+    "kaiko-vits8": KaikoS8InferenceEncoder,
+    "kaiko-vits16": KaikoS16InferenceEncoder,
+    "kaiko-vitl14": KaikoL14InferenceEncoder,
+    "lunit-vits8": LunitS8InferenceEncoder,
+}
