@@ -11,7 +11,7 @@ import argparse
 import torch
 
 from trident import Processor 
-from trident.patch_encoder_models.load import encoder_registry
+from trident.patch_encoder_models import encoder_registry
 
 def build_parser():
     """
