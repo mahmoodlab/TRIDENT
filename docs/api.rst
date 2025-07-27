@@ -158,6 +158,10 @@ Factory for slide-level encoder models.
      - conch_v1
      - ``--slide_encoder madeleine --patch_size 256 --mag 10``
      - `MahmoodLab/madeleine <https://huggingface.co/MahmoodLab/madeleine>`__
+   * - **Feather**
+     - conch_v15
+     - ``--slide_encoder feather --patch_size 512 --mag 20``
+     - `MahmoodLab/feather <https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k>`__
 
 .. automodule:: trident.slide_encoder_models
    :members:

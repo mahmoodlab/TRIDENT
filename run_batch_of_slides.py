@@ -103,10 +103,10 @@ def build_parser():
         )
     )
     parser.add_argument('--slide_encoder', type=str, default=None, 
-                        choices=['threads', 'titan', 'prism', 'gigapath', 'chief', 'madeleine',
+                        choices=['threads', 'titan', 'prism', 'gigapath', 'chief', 'madeleine', 'feather',
                                  'mean-virchow', 'mean-virchow2', 'mean-conch_v1', 'mean-conch_v15', 'mean-ctranspath',
                                  'mean-gigapath', 'mean-resnet50', 'mean-hoptimus0', 'mean-phikon', 'mean-phikon_v2',
-                                 'mean-musk', 'mean-uni_v1', 'mean-uni_v2',  
+                                 'mean-musk', 'mean-uni_v1', 'mean-uni_v2', 
                                  ], 
                         help='Slide encoder to use')
     parser.add_argument('--feat_batch_size', type=int, default=None, 

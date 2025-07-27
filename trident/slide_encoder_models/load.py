@@ -41,6 +41,8 @@ def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = Tru
             enc = GigaPathSlideEncoder
         elif 'madeleine' in model_name:
             enc = MadeleineSlideEncoder
+        elif 'feather' in model_name:
+            enc = FeatherSlideEncoder
         elif 'abmil' in model_name:
             enc = ABMILSlideEncoder
         else:
@@ -59,6 +61,7 @@ slide_to_patch_encoder_name = {
     'chief': 'ctranspath',
     'gigapath': 'gigapath',
     'madeleine': 'conch_v1',
+    'feather': 'conch_v15'
 }
 
 
@@ -432,6 +435,36 @@ class TitanSlideEncoder(BaseSlideEncoder):
 
     def forward(self, batch, device='cuda'):
         z = self.model.encode_slide_from_patch_features(batch['features'].to(device), batch['coords'].to(device), batch['attributes']['patch_size_level0'])        
+        return z
+    
+class FeatherSlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        Feather initialization.
+        """
+        super().__init__(**build_kwargs)    
+
+    def _build(self, pretrained=True):
+        self.enc_name = 'feather'
+
+        assert pretrained, "FeatherSlideEncoder has no non-pretrained models. Please load with pretrained=True."
+        from transformers import AutoModel 
+        from huggingface_hub import snapshot_download
+
+        model_path = snapshot_download(
+            repo_id="MahmoodLab/abmil.base.conch_v15.pc108-24k",
+            revision="main",
+            allow_patterns=["*.py", "model.safetensors", "config.json"]
+        )
+        model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        precision = torch.float32
+        embedding_dim = 512
+
+        return model, precision, embedding_dim
+    
+    def forward(self, batch, device='cuda'):
+        z, _ = self.model.forward_features(batch['features'].to(device))
         return z
 
 
