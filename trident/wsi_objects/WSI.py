@@ -747,8 +747,7 @@ class WSI:
         device: str = 'cuda:0',
         saveas: str = 'h5',
         batch_limit: int = 512,
-        verbose: bool = False,
-        forward_kwargs: dict = {}
+        verbose: bool = False
     ) -> str:
         """
         The `extract_patch_features` function of the class `WSI` extracts feature embeddings 
@@ -771,8 +770,6 @@ class WSI:
             Maximum batch size for feature extraction. Defaults to 512.
         verbose: bool, optional:
             Whenever to print patch embedding progress. Defaults to False.
-        forward_kwargs: dict, optional:
-            kwargs passed to the forward function of the patch encoder
 
         Returns:
         --------
@@ -824,7 +821,7 @@ class WSI:
         for imgs, _ in dataloader:
             imgs = imgs.to(device)
             with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                batch_features = patch_encoder(imgs, **forward_kwargs)  
+                batch_features = patch_encoder(imgs)  
             features.append(batch_features.cpu().numpy())
 
         # Concatenate features
