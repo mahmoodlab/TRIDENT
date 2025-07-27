@@ -973,8 +973,3 @@ class WSI:
         import torch
         gc.collect()
         torch.cuda.empty_cache()
-
-
-    @abstractmethod
-    def get_channels(self) -> List[str]:
-        pass

@@ -209,6 +209,3 @@ class ImageWSI(WSI):
         if self.img is not None:
             self.img.close()
             self.img = None
-
-    def get_channels(self) -> List[str]:
-        return self.img.getbands()
