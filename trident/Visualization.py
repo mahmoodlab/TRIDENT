@@ -27,7 +27,6 @@ def create_overlay(
     Returns:
         np.ndarray: Heatmap overlay.
     """
-    
     patch_size = np.ceil(np.array([patch_size_level0, patch_size_level0]) * scale).astype(int)
     coords = np.ceil(coords * scale).astype(int)
     
@@ -63,25 +62,6 @@ def apply_colormap(overlay: np.ndarray, cmap_name: str) -> np.ndarray:
     overlay_colored[valid_mask] = colored_valid
     return overlay_colored
 
-def coords_to_cv_points(coords, scaling_factor=1):
-    coords = [[x * scaling_factor, y * scaling_factor] for x, y in coords]
-    return np.array(coords, dtype=np.int32).reshape((-1, 1, 2))
-
-def rasterize_polygons(array: np.ndarray, geom: Union[Polygon, MultiPolygon], scaling_factor):
-    if isinstance(geom, (Polygon, MultiPolygon)):
-        if isinstance(geom, Polygon):
-            polygons = [geom]
-        else:
-            polygons = geom.geoms
-
-        for poly in polygons:
-            exterior = coords_to_cv_points(poly.exterior.coords, scaling_factor)
-            cv2.fillPoly(array, [exterior], color=1)
-            for interior in poly.interiors:
-                hole = coords_to_cv_points(interior.coords, scaling_factor)
-                cv2.fillPoly(array, [hole], color=0)
-    else:
-        raise ValueError(f'tissue_contours, expects elements to be of type Polygon or MultiPolygon but got {type(geom)}')
 
 def visualize_heatmap(
     wsi,

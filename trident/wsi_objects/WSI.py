@@ -249,15 +249,47 @@ class WSI:
 
     def _segment_semantic(
         self, 
-        segmentation_model,
-        target_mag, 
-        verbose,
-        device,
-        batch_size,
+        segmentation_model: SegmentationModel,
+        target_mag: int, 
+        verbose: bool,
+        device: str,
+        batch_size: int,
         collate_fn,
-        num_workers,
+        num_workers: Optional[int],
         inference_fn
     ):
+        """
+        
+        The `segment_semantic` function of the class `WSI` segments semantic regions in the WSI using 
+        a specified segmentation model.
+
+        Args:
+        -----
+        segmentation_model: SegmentationModel
+            model to use for segmentation
+        target_mag: int
+            perform segmentation at this magnification
+        verbose: bool, optional:
+            Whenever to print segmentation progress. Defaults to False.
+        device (str): 
+            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+        batch_size : int, optional
+            Batch size for processing patches. Defaults to 16.
+        num_workers: Optional[int], optional:
+            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
+        collate_fn: optional
+            Custom collate function used in the dataloader, it must return a dictionary containing at least 'xcoords' and 'ycoords' as keys (level 0 coordinates)
+            and 'img' if if inference_fn is not provided.
+        inference_fn: optional
+            function used during inference, it will be called like this internally: `inference_fn(model, batch, device)`
+            where batch is the batch returned by collate_fn if provided or img, (xcoords, ycoords) if not provided
+            this function must return a tensor with shape: (B, H, W) and dtype uint8r
+
+        Returns:
+        --------
+        Tuple[np.ndarray, float]]:
+            a downscaled H x W np.ndarray containing class predictions and its downscale factor.
+        """
         # Get patch iterator
         destination_mpp = 10 / target_mag
         patcher = self.create_patcher(
