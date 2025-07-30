@@ -11,7 +11,9 @@ import argparse
 import torch
 
 from trident import Processor 
-from trident.patch_encoder_models import encoder_registry
+from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
+
 
 def build_parser():
     """
@@ -84,9 +86,10 @@ def build_parser():
                         help='Minimum proportion of the patch under tissue to be kept. Between 0. and 1.0. Defaults to 0.')
     parser.add_argument('--coords_dir', type=str, default=None, 
                         help='Directory to save/restore tissue coordinates.')
+    
     # Feature extraction arguments 
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
-                        choices=encoder_registry.keys(),
+                        choices=patch_encoder_registry.keys(),
                         help='Patch encoder to use')
     parser.add_argument(
         '--patch_encoder_ckpt_path', type=str, default=None,
@@ -99,11 +102,7 @@ def build_parser():
         )
     )
     parser.add_argument('--slide_encoder', type=str, default=None, 
-                        choices=['threads', 'titan', 'prism', 'gigapath', 'chief', 'madeleine', 'feather',
-                                 'mean-virchow', 'mean-virchow2', 'mean-conch_v1', 'mean-conch_v15', 'mean-ctranspath',
-                                 'mean-gigapath', 'mean-resnet50', 'mean-hoptimus0', 'mean-phikon', 'mean-phikon_v2',
-                                 'mean-musk', 'mean-uni_v1', 'mean-uni_v2', 
-                                 ], 
+                        choices=slide_encoder_registry.keys(), 
                         help='Slide encoder to use')
     parser.add_argument('--feat_batch_size', type=int, default=None, 
                         help='Batch size for feature extraction. Defaults to None (use `batch_size` argument instead).')

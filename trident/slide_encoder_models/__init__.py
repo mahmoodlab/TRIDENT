@@ -1,5 +1,6 @@
 # in submodule
 from trident.slide_encoder_models.load import (
+    encoder_registry,
     encoder_factory,
     MeanSlideEncoder,
     ABMILSlideEncoder,
@@ -13,6 +14,7 @@ from trident.slide_encoder_models.load import (
 )
 
 __all__ = [
+    "encoder_registry",
     "encoder_factory",
     "TitanSlideEncoder",
     "ThreadsSlideEncoder",

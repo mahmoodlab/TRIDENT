@@ -9,7 +9,7 @@ from trident.patch_encoder_models.utils.transform_utils import get_eval_transfor
 from trident.IO import get_weights_path, has_internet_connection
 
 """
-This file contains an assortment of pretrained patch encoders, all loadable via the encoder_factory() function.
+This file contains 20+ pretrained patch encoders, all loadable via the encoder_factory() function.
 """
 
 def encoder_factory(model_name: str, **kwargs):

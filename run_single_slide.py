@@ -11,7 +11,9 @@ import os
 
 from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
-from trident.patch_encoder_models import encoder_factory,encoder_registry
+from trident.patch_encoder_models import encoder_factory
+from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+
 
 def parse_arguments():
     """
@@ -22,7 +24,7 @@ def parse_arguments():
     parser.add_argument("--slide_path", type=str, required=True, help="Path to the WSI file to process")
     parser.add_argument("--job_dir", type=str, required=True, help="Directory to store outputs")
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
-                        choices=encoder_registry.keys(),
+                        choices=patch_encoder_registry.keys(),
                         help='Patch encoder to use')
     parser.add_argument("--mag", type=int, choices=[5, 10, 20, 40], default=20,
                         help="Magnification at which patches/features are extracted")

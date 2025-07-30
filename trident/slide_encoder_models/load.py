@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from trident.IO import get_weights_path
 
 """
-This file contains an assortment of pretrained slide encoders, all loadable via the encoder_factory() function.
+This file contains 10+ pretrained slide encoders, all loadable via the encoder_factory() function.
 """
 
 def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = True, **kwargs) -> torch.nn.Module:
@@ -27,28 +27,11 @@ def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = Tru
         """
 
         if model_name.startswith('mean-'):
-            enc = MeanSlideEncoder
-            return enc(model_name = model_name)
-        elif 'threads' in model_name:
-            enc = ThreadsSlideEncoder
-        elif 'titan' in model_name:
-            enc = TitanSlideEncoder
-        elif 'prism' in model_name:
-            enc = PRISMSlideEncoder
-        elif 'chief' in model_name:
-            enc = CHIEFSlideEncoder
-        elif 'gigapath' in model_name:
-            enc = GigaPathSlideEncoder
-        elif 'madeleine' in model_name:
-            enc = MadeleineSlideEncoder
-        elif 'feather' in model_name:
-            enc = FeatherSlideEncoder
-        elif 'abmil' in model_name:
-            enc = ABMILSlideEncoder
+            return encoder_registry[model_name](model_name=model_name)
+        elif model_name in encoder_registry:
+            return encoder_registry[model_name](pretrained=pretrained, freeze=freeze, **kwargs)
         else:
-            raise ValueError(f"Model type {model_name} not supported")
-        
-        return enc(pretrained=pretrained, freeze=freeze, **kwargs)
+            raise ValueError(f"Unknown encoder name {model_name}")
 
 
 # Map from slide encoder to required patch encoder
@@ -528,3 +511,37 @@ class MeanSlideEncoder(BaseSlideEncoder):
     def forward(self, batch, device='cuda'):
         z = batch['features'].to(device).mean(dim=1) # Just mean pooling
         return z
+
+encoder_registry = {
+
+    # Slide-level models
+    'threads': ThreadsSlideEncoder,
+    'titan': TitanSlideEncoder,
+    'prism': PRISMSlideEncoder,
+    'chief': CHIEFSlideEncoder,
+    'gigapath': GigaPathSlideEncoder,
+    'madeleine': MadeleineSlideEncoder,
+    'feather': FeatherSlideEncoder,
+    'abmil': ABMILSlideEncoder,
+
+    # Mean encoders
+    'mean-conch_v1': MeanSlideEncoder,
+    'mean-conch_v15': MeanSlideEncoder,
+    'mean-uni_v1': MeanSlideEncoder,
+    'mean-uni_v2': MeanSlideEncoder,
+    'mean-ctranspath': MeanSlideEncoder,
+    'mean-phikon': MeanSlideEncoder,
+    'mean-resnet50': MeanSlideEncoder,
+    'mean-gigapath': MeanSlideEncoder,
+    'mean-virchow': MeanSlideEncoder,
+    'mean-virchow2': MeanSlideEncoder,
+    'mean-hoptimus0': MeanSlideEncoder,
+    'mean-phikon_v2': MeanSlideEncoder,
+    'mean-musk': MeanSlideEncoder,
+    'mean-hibou_l': MeanSlideEncoder,
+    'mean-kaiko-vit8s': MeanSlideEncoder,
+    'mean-kaiko-vit16s': MeanSlideEncoder,
+    'mean-kaiko-vit8b': MeanSlideEncoder,
+    'mean-kaiko-vit16b': MeanSlideEncoder,
+    'mean-kaiko-vit14l': MeanSlideEncoder,
+}

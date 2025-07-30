@@ -27,6 +27,7 @@ from trident.patch_encoder_models.load import (
 )
 
 __all__ = [
+    "encoder_registry",
     "encoder_factory",
     "CustomInferenceEncoder",
     "MuskInferenceEncoder",
