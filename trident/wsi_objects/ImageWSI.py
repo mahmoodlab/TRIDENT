@@ -1,14 +1,14 @@
 from __future__ import annotations
 import numpy as np
 from PIL import Image
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 from trident.wsi_objects.WSI import WSI, ReadMode
 
 
 class ImageWSI(WSI):
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, slide_path, **kwargs) -> None:
         """
         Initialize a WSI object from a standard image file (e.g., PNG, JPEG, etc.).
 
@@ -30,7 +30,7 @@ class ImageWSI(WSI):
 
         Example
         -------
-        >>> wsi = ImageWSI(slide_path="path/to/image.png", lazy_init=False, mpp=0.51)
+        >>> wsi = ImageWSI("path/to/image.png", lazy_init=False, mpp=0.51)
         >>> print(wsi)
         <width=5120, height=3840, backend=ImageWSI, mpp=0.51, mag=20>
         """
@@ -48,7 +48,7 @@ class ImageWSI(WSI):
         PngImagePlugin.MAX_IMAGE_PIXELS = None  # Optional: disables large image warning
 
         self.img = None
-        super().__init__(**kwargs)
+        super().__init__(slide_path, **kwargs)
 
     def _lazy_initialize(self) -> None:
         """
@@ -177,28 +177,28 @@ class ImageWSI(WSI):
         else:
             raise ValueError(f"Invalid `read_as` value: {read_as}. Must be 'pil' or 'numpy'.")
 
-    def segment_tissue(self, **kwargs):
-        out = super().segment_tissue(**kwargs)
+    def segment_tissue(self, *args, **kwargs):
+        out = super().segment_tissue(*args, **kwargs)
         self.close()
         return out
     
-    def extract_tissue_coords(self, **kwargs):
-        out = super().extract_tissue_coords(**kwargs)
+    def extract_tissue_coords(self, *args, **kwargs):
+        out = super().extract_tissue_coords(*args, **kwargs)
         self.close()
         return out
 
-    def visualize_coords(self, **kwargs):
-        out = super().visualize_coords(**kwargs)
+    def visualize_coords(self, *args, **kwargs):
+        out = super().visualize_coords(*args, **kwargs)
         self.close()
         return out
 
-    def extract_patch_features(self, **kwargs):
-        out = super().extract_patch_features(**kwargs)
+    def extract_patch_features(self, *args, **kwargs):
+        out = super().extract_patch_features(*args, **kwargs)
         self.close()
         return out
 
-    def extract_slide_features(self, **kwargs):
-        out = super().extract_slide_features(**kwargs)
+    def extract_slide_features(self, *args, **kwargs):
+        out = super().extract_slide_features(*args, **kwargs)
         self.close()
         return out
 

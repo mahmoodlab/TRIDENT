@@ -9,15 +9,16 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 
 class OpenSlideWSI(WSI):
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, slide_path, **kwargs) -> None:
         """
         Initialize an OpenSlideWSI instance.
 
         Parameters
         ----------
+        slide_path : str
+            Path to the WSI file.
         **kwargs : dict
             Keyword arguments forwarded to the base `WSI` class. Most important key is:
-            - slide_path (str): Path to the WSI.
             - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
 
         Please refer to WSI constructor for all parameters. 
@@ -28,7 +29,7 @@ class OpenSlideWSI(WSI):
         >>> print(wsi)
         <width=100000, height=80000, backend=OpenSlideWSI, mpp=0.25, mag=40>
         """
-        super().__init__(**kwargs)
+        super().__init__(slide_path, **kwargs)
 
     def _lazy_initialize(self) -> None:
         """

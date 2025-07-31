@@ -14,20 +14,22 @@ repository = "https://github.com/mahmoodlab/TRIDENT"
 python = "^3.10"  # Specify the Python version compatibility.
 ipywidgets = "*"
 torch = "*"
-transformers = "*"
 tqdm = "*"
 h5py = "*"
 matplotlib = "*"
-segmentation-models-pytorch = "*"
 opencv-python = "*"
 openslide-python = "*"
 Pillow = "*"
-timm = "0.9.16"
-einops_exts = "*"
 geopandas = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
+
+# Optional dependencies (can be marked as optional in later versions)
+transformers = "*"
+timm = "0.9.16"
+einops_exts = "*"
 scipy = "*"
+segmentation-models-pytorch = "*"
 
 [tool.poetry.dev-dependencies]
 # Optional development dependencies 

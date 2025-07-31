@@ -517,6 +517,40 @@ def read_coords_legacy(coords_path):
     return patch_size, patch_level, custom_downsample, coords
 
 
+def coords_to_h5(
+    coords: List[List[int]], 
+    save_path, 
+    patch_size, 
+    src_mag, 
+    target_mag, 
+    save_coords, 
+    width, 
+    height, 
+    name,
+    overlap
+):
+    """ Save tissue coordinates to .h5 """
+    # Prepare assets for saving
+    assets = {'coords' : np.array(coords)}
+    attributes = {
+        'patch_size': patch_size, # Reference frame: patch_level
+        'patch_size_level0': patch_size * src_mag // target_mag, # Reference frame: level0
+        'level0_magnification': src_mag,
+        'target_magnification': target_mag,
+        'overlap': overlap,
+        'name': name,
+        'savetodir': save_coords,
+        'level0_width': width,
+        'level0_height': height
+    }
+
+    # Save the assets and attributes to an hdf5 file
+    save_h5(save_path,
+            assets = assets,
+            attributes = {'coords': attributes},
+            mode='w')
+
+
 def mask_to_gdf(
     mask: np.ndarray,
     keep_ids: List[int] = [],
