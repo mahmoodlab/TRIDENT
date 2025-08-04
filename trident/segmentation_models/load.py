@@ -186,7 +186,6 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         self.remove_penmarks_only = remove_penmarks_only  # ignore all other artifacts than penmakrs.
         model_ckpt_name = 'GrandQC_MPP1_state_dict.pth'
         encoder_name = 'timm-efficientnet-b0'
-        encoder_weights = 'imagenet'
         weights_path = get_weights_path('seg', 'grandqc_artifact')
 
         # Verify that user-provided weights_path is valid
@@ -198,7 +197,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         # Initialize model
         model = smp.Unet(
             encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
+            encoder_weights=None,
             classes=8,
             activation=None,
         )
@@ -275,7 +274,6 @@ class GrandQCSegmenter(SegmentationModel):
 
         model_ckpt_name = 'Tissue_Detection_MPP10.pth'
         encoder_name = 'timm-efficientnet-b0'
-        encoder_weights = 'imagenet'
         weights_path = get_weights_path('seg', 'grandqc') 
 
         # Verify that user-provided weights_path is valid
@@ -307,7 +305,7 @@ class GrandQCSegmenter(SegmentationModel):
         # Initialize model
         model = smp.UnetPlusPlus(
             encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
+            encoder_weights=None,
             classes=2,
             activation=None,
         )
