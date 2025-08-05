@@ -70,7 +70,7 @@ class TestProcessor(unittest.TestCase):
 
         self.processor = Processor(
             job_dir=self.TEST_OUTPUT_DIR,
-            wsi_source=os.path.join(TestProcessor.TEST_OUTPUT_DIR),
+            wsi_source=os.path.join(TestProcessor.TEST_OUTPUT_DIR, 'wsis'),
             wsi_ext=self.TEST_WSI_EXT,
             custom_list_of_wsis=os.path.join(self.custom_list_of_wsis, 'valid_list_of_wsis.csv')
         )
