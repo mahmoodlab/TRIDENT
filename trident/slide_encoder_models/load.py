@@ -438,8 +438,14 @@ class TitanSlideEncoder(BaseSlideEncoder):
     def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
-        from transformers import AutoModel 
-        model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
+        from transformers import AutoModel
+
+        weights_path = self._get_weights_path()
+        if weights_path:
+            model = AutoModel.from_pretrained(weights_path, trust_remote_code=True)
+        else:
+            self.ensure_has_internet(self.enc_name)
+            model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
         precision = torch.float16
         embedding_dim = 768
         return model, precision, embedding_dim
