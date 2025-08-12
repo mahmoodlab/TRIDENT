@@ -463,7 +463,7 @@ class MeanSlideEncoder(BaseSlideEncoder):
         self.enc_name = model_name
         
         if model_name == 'mean-conch_v1':
-            embedding_dim = 768
+            embedding_dim = 512
         elif model_name == 'mean-conch_v15':
             embedding_dim = 768
         elif model_name == 'mean-uni_v1':
