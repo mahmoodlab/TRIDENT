@@ -1217,6 +1217,7 @@ encoder_registry = {
     "uni_v2": UNIv2InferenceEncoder,
     "ctranspath": CTransPathInferenceEncoder,
     "phikon": PhikonInferenceEncoder,
+    "phikon_v2": Phikonv2InferenceEncoder,
     "resnet50": ResNet50InferenceEncoder,
     "gigapath": GigaPathInferenceEncoder,
     "virchow": VirchowInferenceEncoder,
@@ -1231,4 +1232,5 @@ encoder_registry = {
     "kaiko-vits16": KaikoS16InferenceEncoder,
     "kaiko-vitl14": KaikoL14InferenceEncoder,
     "lunit-vits8": LunitS8InferenceEncoder,
+    "midnight12k": Midnight12kInferenceEncoder,
 }
