@@ -52,6 +52,9 @@ class TestPatchEncoders(unittest.TestCase):
     def test_uni_v2_forward(self):
         self._test_encoder_forward('uni_v2')
 
+    def test_dino_v3_forward(self):
+        self._test_encoder_forward('dino_v3')
+
     def test_ctranspath_forward(self):
         self._test_encoder_forward('ctranspath')
 

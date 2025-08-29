@@ -26,6 +26,7 @@ def encoder_factory(model_name: str, **kwargs):
             - "conch_v15"
             - "uni_v1"
             - "uni_v2"
+            - "dino_v3"
             - "ctranspath"
             - "phikon"
             - "phikon_v2"
@@ -1114,6 +1115,50 @@ class Phikonv2InferenceEncoder(BasePatchEncoder):
         out = out.last_hidden_state[:, 0, :]
         return out
 
+class DINOv3InferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        DINOv3 initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from .utils.constants import IMAGENET_MEAN, IMAGENET_STD
+        from transformers import AutoModel
+        from torchvision import transforms
+
+        self.enc_name = 'dino_v3'
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            raise NotImplementedError("DINOv3 doesn't support local model loading. PR welcome!")
+        else:   
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                pretrained_model_name = "facebook/dinov3-vit7b16-pretrain-lvd1689m"
+                model = AutoModel.from_pretrained(pretrained_model_name)
+            except:
+                traceback.print_exc()
+                raise Exception("Failed to download DINO v3 model, make sure that you were granted access and that you correctly registered your token")
+
+        eval_transform = transforms.Compose(
+            [   transforms.ToTensor(),
+                transforms.Resize(224, antialias=True),                
+                transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ])
+        
+        precision = torch.float32
+
+        return model, eval_transform, precision
+        
+
+    def forward(self, x):
+        out = self.model(x)
+        out = out.last_hidden_state[:, 0, :] # CLS token
+        return out
+
 
 class Conchv15InferenceEncoder(BasePatchEncoder):
 
@@ -1215,6 +1260,7 @@ encoder_registry = {
     "conch_v15": Conchv15InferenceEncoder,
     "uni_v1": UNIInferenceEncoder,
     "uni_v2": UNIv2InferenceEncoder,
+    "dino_v3": DINOv3InferenceEncoder,
     "ctranspath": CTransPathInferenceEncoder,
     "phikon": PhikonInferenceEncoder,
     "phikon_v2": Phikonv2InferenceEncoder,
