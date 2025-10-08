@@ -107,6 +107,7 @@ class Processor:
 
         self.job_dir = job_dir
         self.wsi_source = wsi_source
+        # TODO: should I add DICOM here as well?
         self.wsi_ext = wsi_ext or (list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS) + list(SDPC_EXTENSIONS))
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
