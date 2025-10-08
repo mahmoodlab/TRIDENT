@@ -315,8 +315,13 @@ class DICOMWebWSI(WSI):
             image_type = raw_json.get('00080008', {}).get('Value', [])
             image_type_str = ' '.join(str(t) for t in image_type)
 
-            # Exclude LABEL, OVERVIEW, THUMBNAIL
-            if any(keyword in image_type_str.upper() for keyword in ['LABEL', 'OVERVIEW', 'THUMBNAIL']):
+            # Find THE thumbnail
+            if 'THUMBNAIL' in image_type:
+                self.thumbnail_instance = instance
+                continue
+
+            # Skip LABEL and OVERVIEW (we don't need them)
+            if any(val in image_type for val in ['LABEL', 'OVERVIEW']):
                 continue
 
             pyramid_instances.append(instance)
@@ -707,6 +712,9 @@ class DICOMWebWSI(WSI):
         tile_height = instance['tile_rows']
         num_frames = instance['num_frames']
 
+        total_cols = instance['cols']  # WIDTH
+        total_rows = instance['rows']  # HEIGHT
+
         x, y = location
         req_width, req_height = size
 
@@ -831,7 +839,11 @@ class DICOMWebWSI(WSI):
                     except Exception as e:
                         print(f"\n⚠ Unexpected error fetching frame {frame_number}: {e}")
                         tiles_failed += 1
-                        continue
+                        print(f"  ⚠ Frame {frame_number} fetch failed: HTTP {e.response.status_code}")
+
+                        if e.response.status_code in [400, 404, 406]:
+                            continue  # Skip this frame
+
                 else:
                     tile_img = self.frame_cache[cache_key]
                     tiles_fetched += 1
@@ -870,101 +882,22 @@ class DICOMWebWSI(WSI):
             raise ValueError(f"Invalid read_as: {read_as}")
 
     def get_thumbnail(self, size: Tuple[int, int]) -> Image.Image:
-        """
-        Generate thumbnail from an appropriate resolution level.
+        """Get the pre-rendered DICOM thumbnail."""
 
-        Avoids lowest levels which may have sparse tiling issues.
-        Uses a level with good coverage and reasonable performance.
-        """
-        target_width, target_height = size
+        if self.thumbnail_instance is None:
+            raise ValueError("No THUMBNAIL instance found in this DICOM series")
 
-        # For DICOMweb with potentially sparse tiling at low levels,
-        # explicitly avoid the lowest 2 levels which often have issues
-        max_level_to_use = min(3, self.level_count - 1)
+        sop_uid = self.thumbnail_instance['sop_instance_uid']
+        instance_url = f"{self.dicomweb_url}/instances/{sop_uid}"
+        rendered_url = f"{instance_url}/frames/1/rendered"
 
-        # Find a level that's reasonable for thumbnail generation
-        # Target: 2-4x the thumbnail size for good quality
-        best_level = None
+        response = self.session.get(rendered_url, headers={'Accept': 'image/jpeg, image/png'})
+        response.raise_for_status()
 
-        for level in range(max_level_to_use, -1, -1):
-            level_width, level_height = self.level_dimensions[level]
+        thumb = Image.open(BytesIO(response.content))
+        thumb.thumbnail(size, Image.Resampling.LANCZOS)
 
-            # Skip if this level is too small (< 200 pixels in any dimension)
-            if level_width < 200 or level_height < 200:
-                continue
-
-            # Check if this level is suitable
-            # We want something 2-4x larger than thumbnail size
-            width_ratio = level_width / target_width
-            height_ratio = level_height / target_height
-
-            if width_ratio >= 2 or height_ratio >= 2:
-                best_level = level
-                break
-
-        # Fallback: if no suitable level found, use level with most tiles
-        if best_level is None:
-            # Use the level with the most coverage (avoid single-tile levels)
-            best_level = 0
-            for level in range(1, min(4, self.level_count)):
-                if self.instances[level]['num_frames'] > 10:
-                    best_level = level
-                    break
-
-        print(f"Generating thumbnail from level {best_level} ({self.level_dimensions[best_level]})")
-
-        # Read the full image at this level
-        level_width, level_height = self.level_dimensions[best_level]
-
-        try:
-            # Read entire level
-            region = self.read_region(
-                (0, 0),
-                best_level,
-                (level_width, level_height),
-                read_as='pil'
-            )
-
-            # Resize to requested thumbnail size while preserving aspect ratio
-            # Calculate scaling to fit within target size
-            width_scale = target_width / level_width
-            height_scale = target_height / level_height
-            scale = min(width_scale, height_scale)
-
-            new_width = int(level_width * scale)
-            new_height = int(level_height * scale)
-
-            thumbnail = region.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-            # If not square thumbnail requested, return as-is
-            if target_width == target_height:
-                # Create square canvas and paste (for segmentation which expects square)
-                canvas = Image.new('RGB', (target_width, target_height), (255, 255, 255))
-
-                # Center the thumbnail
-                x_offset = (target_width - new_width) // 2
-                y_offset = (target_height - new_height) // 2
-                canvas.paste(thumbnail, (x_offset, y_offset))
-
-                return canvas
-            else:
-                return thumbnail
-
-        except Exception as e:
-            print(f"Failed to generate thumbnail from level {best_level}: {e}")
-
-            # Fallback: try level 2 or 3 (usually safe)
-            fallback_level = min(2, self.level_count - 1)
-            print(f"Falling back to level {fallback_level}")
-
-            level_width, level_height = self.level_dimensions[fallback_level]
-            region = self.read_region(
-                (0, 0),
-                fallback_level,
-                (level_width, level_height),
-                read_as='pil'
-            )
-            return region.resize(size, Image.Resampling.LANCZOS)
+        return thumb
 
     def get_dimensions(self) -> Tuple[int, int]:
         """Return dimensions of the highest resolution level."""
