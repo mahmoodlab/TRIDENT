@@ -6,6 +6,7 @@ from typing import Tuple, Optional, Union, Any
 import requests
 from io import BytesIO
 import os
+import numpy as np
 import threading
 import inspect
 import multiprocessing
@@ -240,9 +241,14 @@ class DICOMWebWSI(WSI):
                 self._organize_pyramid_levels()
 
                 # Get dimensions from highest resolution instance AFTER organizing
-                self.width = self.instances[0]['cols']
-                self.height = self.instances[0]['rows']
-                self.dimensions = (self.width, self.height)
+                # IMPORTANT: self.instances stores dimensions as:
+                #   'cols' = WIDTH (x-axis, horizontal)
+                #   'rows' = HEIGHT (y-axis, vertical)
+                self.width = self.instances[0]['cols']  # WIDTH
+                self.height = self.instances[0]['rows']  # HEIGHT
+                self.dimensions = (self.width, self.height)  # (WIDTH, HEIGHT)
+
+                print(f"\n✓ Final dimensions: {self.width} (width) × {self.height} (height)")
 
                 # Extract pixel spacing for MPP calculation
                 if self.mpp is None:
@@ -258,51 +264,6 @@ class DICOMWebWSI(WSI):
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize DICOMweb WSI: {e}") from e
-
-    def _fetch_series_metadata(self) -> None:
-        """Fetch metadata for all instances in the series."""
-        metadata_url = f"{self.dicomweb_url}/metadata"
-        response = self.session.get(metadata_url)
-        response.raise_for_status()
-
-        # Parse DICOM JSON metadata for all instances
-        metadata_list = response.json()
-
-        for instance_json in metadata_list:
-            parsed = self._parse_dicom_json(instance_json)
-
-            # Get SOP Instance UID
-            sop_uid = parsed.get('SOPInstanceUID', '')
-
-            # For tiled DICOM WSI, use TotalPixelMatrix dimensions, not tile dimensions
-            # TotalPixelMatrixRows (0048,0006) and TotalPixelMatrixColumns (0048,0007)
-            total_rows = instance_json.get('00480006', {}).get('Value', [0])[0] if '00480006' in instance_json else 0
-            total_cols = instance_json.get('00480007', {}).get('Value', [0])[0] if '00480007' in instance_json else 0
-
-            # Fallback to regular Rows/Columns if TotalPixelMatrix not available
-            if total_rows == 0:
-                total_rows = instance_json.get('00280010', {}).get('Value', [0])[0]
-            if total_cols == 0:
-                total_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
-
-            # Get tile dimensions
-            tile_rows = instance_json.get('00280010', {}).get('Value', [0])[0]
-            tile_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
-
-            # Get number of frames
-            num_frames = instance_json.get('00280008', {}).get('Value', [1])[0]
-
-            self.instances.append({
-                'sop_instance_uid': sop_uid,
-                'rows': int(total_rows),
-                'cols': int(total_cols),
-                'tile_rows': int(tile_rows),
-                'tile_cols': int(tile_cols),
-                'num_frames': int(num_frames),
-                'pixels': int(total_rows) * int(total_cols),
-                'metadata': parsed,
-                'raw_json': instance_json
-            })
 
     def _parse_dicom_json(self, json_data: dict) -> dict:
         """Parse DICOM JSON format to simple dictionary."""
@@ -443,6 +404,39 @@ class DICOMWebWSI(WSI):
         # Fall back to parent class method
         return super()._fetch_magnification(custom_mpp_keys)
 
+    def _fetch_frame_google_cloud(self, instance_url: str, frame_number: int) -> Optional[Image.Image]:
+        """
+        Fetch a frame from Google Cloud Healthcare API using the rendered endpoint.
+
+        This is simpler than parsing multipart responses - Google's rendered
+        endpoint returns standard image formats (JPEG/PNG).
+        """
+        # Try rendered endpoint first (simpler, returns JPEG/PNG)
+        rendered_url = f"{instance_url}/frames/{frame_number}/rendered"
+        headers = {'Accept': 'image/jpeg, image/png'}
+
+        try:
+            response = self.session.get(rendered_url, headers=headers)
+            response.raise_for_status()
+            return Image.open(BytesIO(response.content))
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code in [404, 406]:
+                # Frame doesn't exist (edge case)
+                return None
+
+            # If rendered fails, try multipart format
+            frame_url = f"{instance_url}/frames/{frame_number}"
+            headers = {
+                'Accept': 'multipart/related; transfer-syntax=1.2.840.10008.1.2.1; type="application/octet-stream"'
+            }
+
+            try:
+                response = self.session.get(frame_url, headers=headers)
+                response.raise_for_status()
+                return self._parse_multipart_frame(response)
+            except:
+                raise e  # Re-raise original error
+
     def _fetch_mpp_from_dicom(self) -> float:
         """
         Extract microns per pixel from highest resolution DICOM instance.
@@ -492,6 +486,93 @@ class DICOMWebWSI(WSI):
             return mpp
 
         raise ValueError(f"Unable to extract MPP from DICOM metadata")
+
+    def _fetch_series_metadata(self) -> None:
+        """Fetch metadata for all instances in the series."""
+        metadata_url = f"{self.dicomweb_url}/metadata"
+        response = self.session.get(metadata_url)
+        response.raise_for_status()
+
+        metadata_list = response.json()
+
+        print(f"\n📊 Parsing {len(metadata_list)} DICOM instances...")
+
+        for idx, instance_json in enumerate(metadata_list):
+            parsed = self._parse_dicom_json(instance_json)
+
+            # Get SOP Instance UID
+            sop_uid = parsed.get('SOPInstanceUID', '')
+
+            # Get dimensions - DICOM standard tags
+            # 00480006 = TotalPixelMatrixRows (HEIGHT)
+            # 00480007 = TotalPixelMatrixColumns (WIDTH)
+            # 00280010 = Rows (tile HEIGHT)
+            # 00280011 = Columns (tile WIDTH)
+
+            total_rows = instance_json.get('00480006', {}).get('Value', [0])[0] if '00480006' in instance_json else 0
+            total_cols = instance_json.get('00480007', {}).get('Value', [0])[0] if '00480007' in instance_json else 0
+
+            # Fallback to regular Rows/Columns if TotalPixelMatrix not available
+            if total_rows == 0:
+                total_rows = instance_json.get('00280010', {}).get('Value', [0])[0]
+            if total_cols == 0:
+                total_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
+
+            # Get tile dimensions
+            tile_rows = instance_json.get('00280010', {}).get('Value', [0])[0]
+            tile_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
+
+            # Get number of frames
+            num_frames = instance_json.get('00280008', {}).get('Value', [1])[0]
+
+            # VALIDATION: Tile dimensions should not exceed total dimensions
+            # If they do, the metadata is likely swapped
+            swapped = False
+            if tile_cols > total_cols or tile_rows > total_rows:
+                print(f"\n  ⚠️  Instance {idx}: Detected dimension swap!")
+                print(f"      Before: total={total_cols}×{total_rows}, tile={tile_cols}×{tile_rows}")
+
+                # Try swapping tile dimensions
+                tile_rows, tile_cols = tile_cols, tile_rows
+
+                # If still invalid, swap total dimensions too
+                if tile_cols > total_cols or tile_rows > total_rows:
+                    total_rows, total_cols = total_cols, total_rows
+
+                print(f"      After:  total={total_cols}×{total_rows}, tile={tile_cols}×{tile_rows}")
+                swapped = True
+
+            # Calculate expected grid size
+            if tile_cols > 0 and tile_rows > 0:
+                expected_tiles_h = (int(total_cols) + int(tile_cols) - 1) // int(tile_cols)
+                expected_tiles_v = (int(total_rows) + int(tile_rows) - 1) // int(tile_rows)
+                expected_total = expected_tiles_h * expected_tiles_v
+            else:
+                expected_total = 1
+
+            print(f"\n  Instance {idx} (Level {idx}):")
+            print(f"    SOP UID: {sop_uid}")
+            print(f"    Total dimensions: {total_cols} × {total_rows}")
+            print(f"    Tile size: {tile_cols} × {tile_rows}")
+            print(f"    Frames in DICOM: {num_frames}")
+            print(f"    Expected grid: {expected_tiles_h} × {expected_tiles_v} = {expected_total} tiles")
+            if swapped:
+                print(f"    ⚠️  Dimensions were auto-corrected")
+
+            if num_frames != expected_total:
+                print(f"    ⚠️  MISMATCH: DICOM has {num_frames} frames but grid expects {expected_total}")
+
+            self.instances.append({
+                'sop_instance_uid': sop_uid,
+                'rows': int(total_rows),  # HEIGHT
+                'cols': int(total_cols),  # WIDTH
+                'tile_rows': int(tile_rows),  # Tile HEIGHT
+                'tile_cols': int(tile_cols),  # Tile WIDTH
+                'num_frames': int(num_frames),
+                'pixels': int(total_rows) * int(total_cols),
+                'metadata': parsed,
+                'raw_json': instance_json
+            })
 
     def get_best_level_for_mag(self, target_mag: float, tolerance: float = 0.1) -> int:
         """
@@ -581,29 +662,41 @@ class DICOMWebWSI(WSI):
 
     def print_pyramid_info(self) -> None:
         """Print detailed pyramid information including magnifications."""
-        print(f"\nWSI Pyramid Information:")
-        print(f"  Full dimensions (level 0): {self.dimensions}")
+        print(f"\n{'=' * 70}")
+        print(f"WSI Pyramid Information:")
+        print(f"{'=' * 70}")
+        print(f"  Full dimensions (level 0): {self.dimensions[0]} (w) × {self.dimensions[1]} (h)")
         print(f"  Base MPP: {self.mpp:.4f} µm/pixel")
         print(f"  Base magnification: {self.mag:.1f}x")
         print(f"  Number of levels: {self.level_count}")
         print(f"\nPyramid levels:")
-        print(f"  {'Level':<7} {'Dimensions':<20} {'Downsample':<12} {'MPP':<15} {'Mag':<10} {'Tiles':<10}")
-        print(f"  {'-' * 7} {'-' * 20} {'-' * 12} {'-' * 15} {'-' * 10} {'-' * 10}")
+        print(f"  {'Level':<7} {'Width':<8} {'Height':<8} {'Downsample':<12} {'MPP':<15} {'Mag':<10} {'Tiles':<10}")
+        print(f"  {'-' * 7} {'-' * 8} {'-' * 8} {'-' * 12} {'-' * 15} {'-' * 10} {'-' * 10}")
 
         for level in range(self.level_count):
-            dims = self.level_dimensions[level]
+            width, height = self.level_dimensions[level]
             downsample = self.level_downsamples[level]
             mpp = self.get_mpp_for_level(level)
             mag = self.get_mag_for_level(level)
             tiles = self.instances[level]['num_frames']
 
-            print(f"  {level:<7} {dims[0]:6d} × {dims[1]:6d}     {downsample:6.2f}×      "
+            print(f"  {level:<7} {width:<8} {height:<8} {downsample:6.2f}×      "
                   f"{mpp:6.4f} µm/px   {mag:6.1f}×    {tiles:6d}")
 
-    def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int], read_as: ReadMode = 'pil',) -> Union[Image.Image, np.ndarray]:
+        # Sanity check: width should generally be close to height for typical slides
+        aspect_ratio = self.width / self.height
+        if aspect_ratio > 3 or aspect_ratio < 0.33:
+            print(f"\n⚠️  WARNING: Unusual aspect ratio ({aspect_ratio:.2f})")
+            print(f"    This might indicate swapped dimensions.")
+            print(f"    If thumbnail looks rotated, dimensions may need correction.")
+
+        print(f"{'=' * 70}\n")
+
+    def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int], read_as: ReadMode = 'pil', ) -> \
+    Union[Image.Image, np.ndarray]:
         """
         Extract a region from the DICOM image via DICOMweb.
-        Handles tiled DICOM by fetching and compositing multiple tiles if needed.
+        Handles both tiled and non-tiled DICOM instances.
         """
         if level >= self.level_count:
             raise ValueError(f"Invalid level {level}, max is {self.level_count - 1}")
@@ -612,18 +705,57 @@ class DICOMWebWSI(WSI):
         sop_uid = instance['sop_instance_uid']
         tile_width = instance['tile_cols']
         tile_height = instance['tile_rows']
+        num_frames = instance['num_frames']
 
         x, y = location
         req_width, req_height = size
 
+        # Build instance-specific URL
+        instance_url = f"{self.dicomweb_url}/instances/{sop_uid}"
+
+        # Detect if we're using Google Cloud Healthcare API
+        is_google_cloud = 'healthcare.googleapis.com' in self.dicomweb_url
+
+        # SPECIAL CASE: Single-frame levels (non-tiled)
+        # If there's only 1 frame, it contains the entire level image
+        if num_frames == 1:
+            frame_url = f"{instance_url}/frames/1"
+            if is_google_cloud:
+                frame_url = f"{instance_url}/frames/1/rendered"
+
+            headers = {'Accept': 'image/jpeg, image/png'}
+
+            try:
+                response = self.session.get(frame_url, headers=headers)
+                response.raise_for_status()
+
+                # Get the full level image
+                full_image = Image.open(BytesIO(response.content))
+
+                # Crop to requested region
+                cropped = full_image.crop((x, y, x + req_width, y + req_height))
+
+                if read_as == 'pil':
+                    return cropped.convert('RGB')
+                elif read_as == 'numpy':
+                    return np.array(cropped)
+                else:
+                    raise ValueError(f"Invalid read_as: {read_as}")
+
+            except Exception as e:
+                print(f"\n⚠ Failed to read single-frame level {level}: {e}")
+                # Fall back to white canvas
+                if read_as == 'pil':
+                    return Image.new('RGB', size, (255, 255, 255))
+                else:
+                    return np.ones((req_height, req_width, 3), dtype=np.uint8) * 255
+
+        # MULTI-FRAME CASE: Standard tiled DICOM
         # Calculate which tiles we need
         start_tile_col = x // tile_width
         start_tile_row = y // tile_height
         end_tile_col = (x + req_width - 1) // tile_width
         end_tile_row = (y + req_height - 1) // tile_height
-
-        # Build instance-specific URL
-        instance_url = f"{self.dicomweb_url}/instances/{sop_uid}"
 
         # Calculate tiles per row
         total_cols = instance['cols']
@@ -632,33 +764,77 @@ class DICOMWebWSI(WSI):
         # Create canvas for the result
         canvas = Image.new('RGB', size, (255, 255, 255))
 
+        # Track success/failure
+        tiles_fetched = 0
+        tiles_failed = 0
+
         # Fetch and composite tiles
         for tile_row in range(start_tile_row, end_tile_row + 1):
             for tile_col in range(start_tile_col, end_tile_col + 1):
                 # Calculate frame number (1-based)
                 frame_number = tile_row * tiles_per_row + tile_col + 1
 
+                # Skip if frame number exceeds available frames
+                if frame_number > num_frames:
+                    tiles_failed += 1
+                    continue
+
                 # Check cache
                 cache_key = (sop_uid, frame_number)
 
                 if cache_key not in self.frame_cache:
-                    # Fetch frame
-                    frame_url = f"{instance_url}/frames/{frame_number}"
-                    headers = {'Accept': 'image/jpeg, image/png, application/octet-stream'}
+                    # Build frame URL based on server type
+                    if is_google_cloud:
+                        frame_url = f"{instance_url}/frames/{frame_number}/rendered"
+                        headers = {'Accept': 'image/jpeg, image/png'}
+                    else:
+                        frame_url = f"{instance_url}/frames/{frame_number}"
+                        headers = {'Accept': 'image/jpeg, image/png, application/octet-stream'}
 
                     try:
                         response = self.session.get(frame_url, headers=headers)
                         response.raise_for_status()
 
                         tile_img = Image.open(BytesIO(response.content))
+
+                        # VALIDATION: Check if tile is valid
+                        tile_array = np.array(tile_img)
+                        if tile_array.size > 0:
+                            mean_val = tile_array.mean()
+
+                            # Skip suspiciously dark tiles (likely corrupt)
+                            if mean_val < 20:
+                                if tiles_failed <= 3:
+                                    print(f"  Frame {frame_number} is black/corrupt (mean={mean_val:.1f}), skipping")
+                                tiles_failed += 1
+                                continue
+
                         self.frame_cache[cache_key] = tile_img
+                        tiles_fetched += 1
+
                     except requests.exceptions.HTTPError as e:
-                        # If frame doesn't exist (edge tiles), skip
-                        if e.response.status_code in [404, 406]:
+                        tiles_failed += 1
+
+                        # If frame doesn't exist, skip silently
+                        if e.response.status_code in [400, 404, 406]:
+                            if tiles_failed <= 3:
+                                print(f"  Frame {frame_number} unavailable (status {e.response.status_code})")
                             continue
+
+                        # For other errors, print and raise
+                        print(f"\n⚠ Frame fetch failed:")
+                        print(f"  Frame: {frame_number}")
+                        print(f"  Status: {e.response.status_code}")
+                        print(f"  Response: {e.response.text[:200]}")
                         raise
+
+                    except Exception as e:
+                        print(f"\n⚠ Unexpected error fetching frame {frame_number}: {e}")
+                        tiles_failed += 1
+                        continue
                 else:
                     tile_img = self.frame_cache[cache_key]
+                    tiles_fetched += 1
 
                 # Calculate where this tile goes in our canvas
                 tile_x = tile_col * tile_width
@@ -678,6 +854,14 @@ class DICOMWebWSI(WSI):
                 tile_crop = tile_img.crop((src_x, src_y, src_x2, src_y2))
                 canvas.paste(tile_crop, (dst_x, dst_y))
 
+        # Warn if no tiles were fetched
+        total_tiles = (end_tile_row - start_tile_row + 1) * (end_tile_col - start_tile_col + 1)
+        if tiles_fetched == 0:
+            print(f"\n⚠ WARNING: Failed to fetch any tiles!")
+            print(f"  Level: {level}")
+            print(f"  Tiles requested: {total_tiles}")
+            print(f"  Available frames: {num_frames}")
+
         if read_as == 'pil':
             return canvas.convert('RGB')
         elif read_as == 'numpy':
@@ -686,16 +870,101 @@ class DICOMWebWSI(WSI):
             raise ValueError(f"Invalid read_as: {read_as}")
 
     def get_thumbnail(self, size: Tuple[int, int]) -> Image.Image:
-        """Generate thumbnail from lowest resolution level."""
-        # Use the lowest resolution level
-        lowest_level = self.level_count - 1
-        region = self.read_region(
-            (0, 0),
-            lowest_level,
-            self.level_dimensions[lowest_level],
-            read_as='pil'
-        )
-        return region.resize(size, Image.LANCZOS)
+        """
+        Generate thumbnail from an appropriate resolution level.
+
+        Avoids lowest levels which may have sparse tiling issues.
+        Uses a level with good coverage and reasonable performance.
+        """
+        target_width, target_height = size
+
+        # For DICOMweb with potentially sparse tiling at low levels,
+        # explicitly avoid the lowest 2 levels which often have issues
+        max_level_to_use = min(3, self.level_count - 1)
+
+        # Find a level that's reasonable for thumbnail generation
+        # Target: 2-4x the thumbnail size for good quality
+        best_level = None
+
+        for level in range(max_level_to_use, -1, -1):
+            level_width, level_height = self.level_dimensions[level]
+
+            # Skip if this level is too small (< 200 pixels in any dimension)
+            if level_width < 200 or level_height < 200:
+                continue
+
+            # Check if this level is suitable
+            # We want something 2-4x larger than thumbnail size
+            width_ratio = level_width / target_width
+            height_ratio = level_height / target_height
+
+            if width_ratio >= 2 or height_ratio >= 2:
+                best_level = level
+                break
+
+        # Fallback: if no suitable level found, use level with most tiles
+        if best_level is None:
+            # Use the level with the most coverage (avoid single-tile levels)
+            best_level = 0
+            for level in range(1, min(4, self.level_count)):
+                if self.instances[level]['num_frames'] > 10:
+                    best_level = level
+                    break
+
+        print(f"Generating thumbnail from level {best_level} ({self.level_dimensions[best_level]})")
+
+        # Read the full image at this level
+        level_width, level_height = self.level_dimensions[best_level]
+
+        try:
+            # Read entire level
+            region = self.read_region(
+                (0, 0),
+                best_level,
+                (level_width, level_height),
+                read_as='pil'
+            )
+
+            # Resize to requested thumbnail size while preserving aspect ratio
+            # Calculate scaling to fit within target size
+            width_scale = target_width / level_width
+            height_scale = target_height / level_height
+            scale = min(width_scale, height_scale)
+
+            new_width = int(level_width * scale)
+            new_height = int(level_height * scale)
+
+            thumbnail = region.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # If not square thumbnail requested, return as-is
+            if target_width == target_height:
+                # Create square canvas and paste (for segmentation which expects square)
+                canvas = Image.new('RGB', (target_width, target_height), (255, 255, 255))
+
+                # Center the thumbnail
+                x_offset = (target_width - new_width) // 2
+                y_offset = (target_height - new_height) // 2
+                canvas.paste(thumbnail, (x_offset, y_offset))
+
+                return canvas
+            else:
+                return thumbnail
+
+        except Exception as e:
+            print(f"Failed to generate thumbnail from level {best_level}: {e}")
+
+            # Fallback: try level 2 or 3 (usually safe)
+            fallback_level = min(2, self.level_count - 1)
+            print(f"Falling back to level {fallback_level}")
+
+            level_width, level_height = self.level_dimensions[fallback_level]
+            region = self.read_region(
+                (0, 0),
+                fallback_level,
+                (level_width, level_height),
+                read_as='pil'
+            )
+            return region.resize(size, Image.Resampling.LANCZOS)
 
     def get_dimensions(self) -> Tuple[int, int]:
         """Return dimensions of the highest resolution level."""

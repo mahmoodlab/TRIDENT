@@ -152,9 +152,12 @@ class WSIPatcher:
             ])
             coords = np.array([self._colrow_to_xy(xy[0], xy[1]) for xy in col_rows])
         else:
-            if round(custom_coords[0][0]) != custom_coords[0][0]:
-                raise ValueError("custom_coords must be a (N, 2) array of int")
-            coords = custom_coords
+            if len(custom_coords) == 0:
+                coords = np.array([]).reshape(0, 2)
+            else:
+                if round(custom_coords[0][0]) != custom_coords[0][0]:
+                    raise ValueError("custom_coords must be a (N, 2) array of int")
+                coords = custom_coords
         if self.mask is not None:
             self.valid_patches_nb, self.valid_coords = self._compute_masked(coords, threshold)
         else:
