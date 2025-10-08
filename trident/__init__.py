@@ -12,6 +12,7 @@ from trident.wsi_objects.SDPCWSI import SDPCWSI
 from trident.wsi_objects.WSIFactory import load_wsi, WSIReaderType
 from trident.wsi_objects.WSIPatcher import OpenSlideWSIPatcher, WSIPatcher
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
+from trident.wsi_objects.DICOMWebWSI import DICOMWebWSI
 
 from trident.Visualization import visualize_heatmap
 
@@ -35,4 +36,5 @@ __all__ = [
     "AnyToTiffConverter",
     "deprecated",
     "WSIReaderType",
+    "DICOMWebWSI"
 ]

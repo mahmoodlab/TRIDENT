@@ -30,6 +30,11 @@ timm = "0.9.16"
 einops_exts = "*"
 scipy = "*"
 segmentation-models-pytorch = "*"
+pydicom = "^2.3.0"
+requests = "^2.28.0"
+python-dotenv = "*"
+google-auth = "*"
+google-auth-httplib2 = "*"
 
 [tool.poetry.dev-dependencies]
 # Optional development dependencies 
