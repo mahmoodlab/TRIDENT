@@ -10,6 +10,7 @@ import numpy as np
 import threading
 import inspect
 import multiprocessing
+import logging
 
 from trident.wsi_objects.WSI import WSI, ReadMode
 
@@ -23,6 +24,7 @@ class DICOMWebWSI(WSI):
     - Google Cloud Healthcare API (uses Application Default Credentials)
     - Other DICOMweb servers (basic auth via environment variables)
     """
+    logger = logging.getLogger(__name__)
 
     def __init__(self, slide_path: str, **kwargs: Any) -> None:
         """Initialize a DICOMWebWSI instance."""
@@ -88,11 +90,47 @@ class DICOMWebWSI(WSI):
 
         return self._session
 
+    def _lazy_initialize(self) -> None:
+        """Lazily initialize DICOMweb connection and fetch metadata."""
+        super()._lazy_initialize()
+
+        if not self.lazy_init:
+            try:
+                # Fetch all instances in the series
+                self._fetch_series_metadata()
+
+                # Sort instances by size to create pyramid (largest = level 0)
+                self._organize_pyramid_levels()
+
+                # Get dimensions from highest resolution instance
+                self.width = self.instances[0]['rows']  # WIDTH
+                self.height = self.instances[0]['cols']  # HEIGHT
+                # Fix tile indexing
+                for i in range(len(self.instances)):
+                    self.instances[i]['cols'], self.instances[i]['rows'] = \
+                        self.instances[i]['rows'], self.instances[i]['cols']
+                self.dimensions = (self.width, self.height)
+
+                self.logger.info(f"✓ Final dimensions: {self.width} (width) × {self.height} (height)")
+
+                # Extract pixel spacing for MPP calculation
+                if self.mpp is None:
+                    self.mpp = self._fetch_mpp_from_dicom()
+
+                # Extract or calculate magnification
+                self.mag = self._fetch_magnification(self.custom_mpp_keys)
+
+                # Log detailed pyramid info
+                self.print_pyramid_info()
+
+                self.lazy_init = True
+
+            except Exception as e:
+                self.logger.error(f"Failed to initialize DICOMweb WSI: {e}")
+                raise RuntimeError(f"Failed to initialize DICOMweb WSI: {e}") from e
+
     def _setup_authentication(self, url: str) -> Optional[Any]:
-        """
-        Auto-detect and setup authentication based on URL.
-        Returns auth config (class or tuple) that can be recreated in workers.
-        """
+        """Auto-detect and setup authentication based on URL."""
         # Check if this is a GCP Healthcare API URL
         if 'healthcare.googleapis.com' in url:
             return self._get_gcp_auth_class()
@@ -101,7 +139,7 @@ class DICOMWebWSI(WSI):
         username = os.getenv('DICOMWEB_USERNAME')
         password = os.getenv('DICOMWEB_PASSWORD')
         if username and password:
-            print(f"Using basic authentication from environment variables")
+            self.logger.info("Using basic authentication from environment variables")
             return (username, password)
 
         # No authentication needed
@@ -225,45 +263,6 @@ class DICOMWebWSI(WSI):
                 )
 
         return path
-
-    def _lazy_initialize(self) -> None:
-        """
-        Lazily initialize DICOMweb connection and fetch metadata.
-        """
-        super()._lazy_initialize()
-
-        if not self.lazy_init:
-            try:
-                # Fetch all instances in the series
-                self._fetch_series_metadata()
-
-                # Sort instances by size to create pyramid (largest = level 0)
-                self._organize_pyramid_levels()
-
-                # Get dimensions from highest resolution instance AFTER organizing
-                # IMPORTANT: self.instances stores dimensions as:
-                #   'cols' = WIDTH (x-axis, horizontal)
-                #   'rows' = HEIGHT (y-axis, vertical)
-                self.width = self.instances[0]['cols']  # WIDTH
-                self.height = self.instances[0]['rows']  # HEIGHT
-                self.dimensions = (self.width, self.height)  # (WIDTH, HEIGHT)
-
-                print(f"\n✓ Final dimensions: {self.width} (width) × {self.height} (height)")
-
-                # Extract pixel spacing for MPP calculation
-                if self.mpp is None:
-                    self.mpp = self._fetch_mpp_from_dicom()
-
-                # Extract or calculate magnification
-                self.mag = self._fetch_magnification(self.custom_mpp_keys)
-
-                # Print detailed pyramid info
-                self.print_pyramid_info()
-
-                self.lazy_init = True
-
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize DICOMweb WSI: {e}") from e
 
     def _parse_dicom_json(self, json_data: dict) -> dict:
         """Parse DICOM JSON format to simple dictionary."""
@@ -500,7 +499,7 @@ class DICOMWebWSI(WSI):
 
         metadata_list = response.json()
 
-        print(f"\n📊 Parsing {len(metadata_list)} DICOM instances...")
+        self.logger.info(f"📊 Parsing {len(metadata_list)} DICOM instances...")
 
         for idx, instance_json in enumerate(metadata_list):
             parsed = self._parse_dicom_json(instance_json)
@@ -509,11 +508,13 @@ class DICOMWebWSI(WSI):
             sop_uid = parsed.get('SOPInstanceUID', '')
 
             # Get dimensions - DICOM standard tags
+            # IMPORTANT: DICOM convention is consistent:
+            # - Rows = HEIGHT (vertical, y-axis)
+            # - Columns = WIDTH (horizontal, x-axis)
+
+            # Total image dimensions
             # 00480006 = TotalPixelMatrixRows (HEIGHT)
             # 00480007 = TotalPixelMatrixColumns (WIDTH)
-            # 00280010 = Rows (tile HEIGHT)
-            # 00280011 = Columns (tile WIDTH)
-
             total_rows = instance_json.get('00480006', {}).get('Value', [0])[0] if '00480006' in instance_json else 0
             total_cols = instance_json.get('00480007', {}).get('Value', [0])[0] if '00480007' in instance_json else 0
 
@@ -524,28 +525,38 @@ class DICOMWebWSI(WSI):
                 total_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
 
             # Get tile dimensions
+            # 00280010 = Rows (tile HEIGHT)
+            # 00280011 = Columns (tile WIDTH)
             tile_rows = instance_json.get('00280010', {}).get('Value', [0])[0]
             tile_cols = instance_json.get('00280011', {}).get('Value', [0])[0]
 
             # Get number of frames
             num_frames = instance_json.get('00280008', {}).get('Value', [1])[0]
 
-            # VALIDATION: Tile dimensions should not exceed total dimensions
-            # If they do, the metadata is likely swapped
+            # VALIDATION: Check if dimensions make sense
+            # Only swap if we have clear evidence of a problem
             swapped = False
-            if tile_cols > total_cols or tile_rows > total_rows:
-                print(f"\n  ⚠️  Instance {idx}: Detected dimension swap!")
-                print(f"      Before: total={total_cols}×{total_rows}, tile={tile_cols}×{tile_rows}")
 
-                # Try swapping tile dimensions
-                tile_rows, tile_cols = tile_cols, tile_rows
+            # Only consider swapping if BOTH tile dimensions exceed their corresponding total dimensions
+            # This would be physically impossible and indicates a metadata issue
+            if tile_cols > total_cols and tile_rows > total_rows:
+                self.logger.warning(f"Instance {idx}: Tile dimensions exceed total dimensions!")
+                self.logger.debug(
+                    f"  Before: total={total_cols}(w)×{total_rows}(h), tile={tile_cols}(w)×{tile_rows}(h)")
 
-                # If still invalid, swap total dimensions too
-                if tile_cols > total_cols or tile_rows > total_rows:
-                    total_rows, total_cols = total_cols, total_rows
+                # Try swapping ONLY the total dimensions (most likely issue)
+                # Keep tile dimensions as-is since they're usually correct
+                total_rows, total_cols = total_cols, total_rows
 
-                print(f"      After:  total={total_cols}×{total_rows}, tile={tile_cols}×{tile_rows}")
+                self.logger.debug(
+                    f"  After:  total={total_cols}(w)×{total_rows}(h), tile={tile_cols}(w)×{tile_rows}(h)")
                 swapped = True
+
+            # Additional sanity check: warn if aspect ratio seems wrong
+            if total_cols > 0 and total_rows > 0:
+                aspect_ratio = total_cols / total_rows
+                if aspect_ratio > 3 or aspect_ratio < 0.33:
+                    self.logger.warning(f"Unusual aspect ratio {aspect_ratio:.2f} for instance {idx}")
 
             # Calculate expected grid size
             if tile_cols > 0 and tile_rows > 0:
@@ -555,22 +566,26 @@ class DICOMWebWSI(WSI):
             else:
                 expected_total = 1
 
-            print(f"\n  Instance {idx} (Level {idx}):")
-            print(f"    SOP UID: {sop_uid}")
-            print(f"    Total dimensions: {total_cols} × {total_rows}")
-            print(f"    Tile size: {tile_cols} × {tile_rows}")
-            print(f"    Frames in DICOM: {num_frames}")
-            print(f"    Expected grid: {expected_tiles_h} × {expected_tiles_v} = {expected_total} tiles")
+            self.logger.debug(f"Instance {idx} (Level {idx}):")
+            self.logger.debug(f"  SOP UID: {sop_uid}")
+            self.logger.debug(f"  Total dimensions: {total_cols}(w) × {total_rows}(h)")
+            self.logger.debug(f"  Tile size: {tile_cols}(w) × {tile_rows}(h)")
+            self.logger.debug(f"  Frames in DICOM: {num_frames}")
+            self.logger.debug(
+                f"  Expected grid: {expected_tiles_h}(h) × {expected_tiles_v}(v) = {expected_total} tiles")
             if swapped:
-                print(f"    ⚠️  Dimensions were auto-corrected")
+                self.logger.info(f"Instance {idx}: Total dimensions were swapped")
 
             if num_frames != expected_total:
-                print(f"    ⚠️  MISMATCH: DICOM has {num_frames} frames but grid expects {expected_total}")
+                self.logger.warning(
+                    f"Instance {idx}: Frame count mismatch - DICOM has {num_frames} frames but grid expects {expected_total}")
+                # Don't auto-correct this - it might be valid (edge tiles, etc.)
 
+            # Store with consistent naming convention
             self.instances.append({
                 'sop_instance_uid': sop_uid,
-                'rows': int(total_rows),  # HEIGHT
-                'cols': int(total_cols),  # WIDTH
+                'rows': int(total_rows),  # HEIGHT (y-axis)
+                'cols': int(total_cols),  # WIDTH (x-axis)
                 'tile_rows': int(tile_rows),  # Tile HEIGHT
                 'tile_cols': int(tile_cols),  # Tile WIDTH
                 'num_frames': int(num_frames),
@@ -666,17 +681,19 @@ class DICOMWebWSI(WSI):
         return 10.0 / level_mpp
 
     def print_pyramid_info(self) -> None:
-        """Print detailed pyramid information including magnifications."""
-        print(f"\n{'=' * 70}")
-        print(f"WSI Pyramid Information:")
-        print(f"{'=' * 70}")
-        print(f"  Full dimensions (level 0): {self.dimensions[0]} (w) × {self.dimensions[1]} (h)")
-        print(f"  Base MPP: {self.mpp:.4f} µm/pixel")
-        print(f"  Base magnification: {self.mag:.1f}x")
-        print(f"  Number of levels: {self.level_count}")
-        print(f"\nPyramid levels:")
-        print(f"  {'Level':<7} {'Width':<8} {'Height':<8} {'Downsample':<12} {'MPP':<15} {'Mag':<10} {'Tiles':<10}")
-        print(f"  {'-' * 7} {'-' * 8} {'-' * 8} {'-' * 12} {'-' * 15} {'-' * 10} {'-' * 10}")
+        """Log detailed pyramid information including magnifications."""
+        self.logger.debug("=" * 70)
+        self.logger.debug("WSI Pyramid Information:")
+        self.logger.debug("=" * 70)
+        self.logger.debug(f"  Full dimensions (level 0): {self.dimensions[0]} (w) × {self.dimensions[1]} (h)")
+        self.logger.debug(f"  Base MPP: {self.mpp:.4f} µm/pixel")
+        self.logger.debug(f"  Base magnification: {self.mag:.1f}x")
+        self.logger.debug(f"  Number of levels: {self.level_count}")
+        self.logger.debug("")
+        self.logger.debug("Pyramid levels:")
+        self.logger.debug(
+            f"  {'Level':<7} {'Width':<8} {'Height':<8} {'Downsample':<12} {'MPP':<15} {'Mag':<10} {'Tiles':<10}")
+        self.logger.debug(f"  {'-' * 7} {'-' * 8} {'-' * 8} {'-' * 12} {'-' * 15} {'-' * 10} {'-' * 10}")
 
         for level in range(self.level_count):
             width, height = self.level_dimensions[level]
@@ -685,17 +702,13 @@ class DICOMWebWSI(WSI):
             mag = self.get_mag_for_level(level)
             tiles = self.instances[level]['num_frames']
 
-            print(f"  {level:<7} {width:<8} {height:<8} {downsample:6.2f}×      "
-                  f"{mpp:6.4f} µm/px   {mag:6.1f}×    {tiles:6d}")
+            self.logger.debug(f"  {level:<7} {width:<8} {height:<8} {downsample:6.2f}×      "
+                             f"{mpp:6.4f} µm/px   {mag:6.1f}×    {tiles:6d}")
 
         # Sanity check: width should generally be close to height for typical slides
         aspect_ratio = self.width / self.height
         if aspect_ratio > 3 or aspect_ratio < 0.33:
-            print(f"\n⚠️  WARNING: Unusual aspect ratio ({aspect_ratio:.2f})")
-            print(f"    This might indicate swapped dimensions.")
-            print(f"    If thumbnail looks rotated, dimensions may need correction.")
-
-        print(f"{'=' * 70}\n")
+            self.logger.warning(f"Unusual aspect ratio ({aspect_ratio:.2f}) - might indicate swapped dimensions")
 
     def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int], read_as: ReadMode = 'pil', ) -> \
     Union[Image.Image, np.ndarray]:
@@ -712,11 +725,18 @@ class DICOMWebWSI(WSI):
         tile_height = instance['tile_rows']
         num_frames = instance['num_frames']
 
-        total_cols = instance['cols']  # WIDTH
-        total_rows = instance['rows']  # HEIGHT
-
         x, y = location
         req_width, req_height = size
+
+        # Calculate which tiles we need
+        start_tile_col = x // tile_width
+        start_tile_row = y // tile_height
+        end_tile_col = (x + req_width - 1) // tile_width
+        end_tile_row = (y + req_height - 1) // tile_height
+
+        # Calculate tiles per row
+        total_cols = instance['cols']
+        tiles_per_row = (total_cols + tile_width - 1) // tile_width
 
         # Build instance-specific URL
         instance_url = f"{self.dicomweb_url}/instances/{sop_uid}"
@@ -758,16 +778,6 @@ class DICOMWebWSI(WSI):
                 else:
                     return np.ones((req_height, req_width, 3), dtype=np.uint8) * 255
 
-        # MULTI-FRAME CASE: Standard tiled DICOM
-        # Calculate which tiles we need
-        start_tile_col = x // tile_width
-        start_tile_row = y // tile_height
-        end_tile_col = (x + req_width - 1) // tile_width
-        end_tile_row = (y + req_height - 1) // tile_height
-
-        # Calculate tiles per row
-        total_cols = instance['cols']
-        tiles_per_row = (total_cols + tile_width - 1) // tile_width
 
         # Create canvas for the result
         canvas = Image.new('RGB', size, (255, 255, 255))
@@ -885,7 +895,10 @@ class DICOMWebWSI(WSI):
         """Get the pre-rendered DICOM thumbnail."""
 
         if self.thumbnail_instance is None:
-            raise ValueError("No THUMBNAIL instance found in this DICOM series")
+            lowest_res_level = self.level_count - 1
+            img = self.read_region((0, 0), lowest_res_level, self.level_dimensions[lowest_res_level])
+            img.thumbnail(size, Image.Resampling.LANCZOS)
+            return img
 
         sop_uid = self.thumbnail_instance['sop_instance_uid']
         instance_url = f"{self.dicomweb_url}/instances/{sop_uid}"
