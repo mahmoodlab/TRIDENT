@@ -21,6 +21,9 @@ from trident.Processor import Processor
 from trident.Converter import AnyToTiffConverter
 
 from trident.Maintenance import deprecated
+# Load .env file if it exists
+from dotenv import load_dotenv
+load_dotenv()
 
 __all__ = [
     "Processor",
