@@ -338,11 +338,11 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
         
         if pretrained:
             # Try to get local weights path first
-            try:
-                weights_path = get_weights_path('slide', self.enc_name)
+            weights_path = get_weights_path('slide', self.enc_name)
+            if weights_path:
                 print(f"Loading GigaPath slide encoder from local path: {weights_path}")
                 model = create_model(weights_path, "gigapath_slide_enc12l768d", 1536, global_pool=True)
-            except (FileNotFoundError, KeyError):
+            else:
                 # Fallback to downloading from Hugging Face Hub
                 print("Local weights not found. Downloading from Hugging Face Hub...")
                 model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
