@@ -228,7 +228,19 @@ class PRISMSlideEncoder(BaseSlideEncoder):
         # input should be of shape (batch_size, tile_seq_len, tile_embed_dim)
         x = batch['features'].to(device)
         z = self.model.slide_representations(x)
-        z = z['image_embedding'] 
+        
+        # Extract both image_embedding (1x1280) and image_latents (512x1280)
+        image_embedding = z['image_embedding']  # Shape: (batch_size, 1280)
+        image_latents = z['image_latents']      # Shape: (batch_size, 512, 1280)
+        
+        # Expand image_embedding to have the same number of dimensions as image_latents
+        # Shape: (batch_size, 1280) -> (batch_size, 1, 1280)
+        image_embedding = image_embedding.unsqueeze(1)
+        
+        # Concatenate image_embedding first, then image_latents
+        # Final shape: (batch_size, 513, 1280)
+        z = torch.cat([image_embedding, image_latents], dim=1)
+        
         return z
     
 
