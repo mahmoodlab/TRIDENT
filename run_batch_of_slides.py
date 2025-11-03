@@ -110,6 +110,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--slide_encoder', type=str, default=None, 
                         choices=slide_encoder_registry.keys(), 
                         help='Slide encoder to use')
+    parser.add_argument(
+        '--slide_encoder_ckpt_path', type=str, default=None,
+        help=(
+            "Optional local path to a slide encoder checkpoint directory or file. "
+            "Use this to force local weights (offline clusters). If not provided, "
+            "models are loaded from Hugging Face or the local registry at "
+            "`./trident/slide_encoder_models/local_ckpts.json`."
+        )
+    )
     parser.add_argument('--feat_batch_size', type=int, default=None, 
                         help='Batch size for feature extraction. Defaults to None (use `batch_size` argument instead).')
     return parser
@@ -226,7 +235,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             )
         else:
             from trident.slide_encoder_models.load import encoder_factory
-            encoder = encoder_factory(args.slide_encoder)
+            encoder = encoder_factory(args.slide_encoder, weights_path=args.slide_encoder_ckpt_path)
             processor.run_slide_feature_extraction_job(
                 slide_encoder=encoder,
                 coords_dir=args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap',

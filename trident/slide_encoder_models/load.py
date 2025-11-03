@@ -58,12 +58,13 @@ slide_to_patch_encoder_name = {
 
 class BaseSlideEncoder(torch.nn.Module):
     
-    def __init__(self, freeze: bool = True, **build_kwargs: Dict[str, Any]) -> None:
+    def __init__(self, freeze: bool = True, weights_path: Optional[str] = None, **build_kwargs: Dict[str, Any]) -> None:
         """
         Parent class for all pretrained slide encoders.
         """
         super().__init__()
         self.enc_name = None
+        self.weights_path: Optional[str] = weights_path
         self.model, self.precision, self.embedding_dim = self._build(**build_kwargs)
 
         # Set all parameters to be non-trainable
@@ -71,6 +72,23 @@ class BaseSlideEncoder(torch.nn.Module):
             for param in self.model.parameters():
                 param.requires_grad = False
             self.model.eval()
+        
+    def ensure_valid_weights_path(self, path: str) -> None:
+        if path and not os.path.exists(path):
+            raise FileNotFoundError(f"Expected slide checkpoint at '{path}', but it was not found.")
+    
+    def _get_weights_path(self) -> str:
+        """
+        If self.weights_path is provided, use it. Else, consult the slide encoder registry.
+        Return empty string if none found.
+        """
+        if self.weights_path:
+            self.ensure_valid_weights_path(self.weights_path)
+            return self.weights_path
+        path = get_weights_path('slide', self.enc_name)
+        if path:
+            self.ensure_valid_weights_path(path)
+        return path
         
     def forward(self, batch: torch.Tensor) -> torch.Tensor:
         """
@@ -215,10 +233,17 @@ class PRISMSlideEncoder(BaseSlideEncoder):
                 "and ensure Python version is 3.10 or above."
             )
 
+        weights_path = self._get_weights_path()
         if pretrained:
-            model = AutoModel.from_pretrained('paige-ai/Prism', trust_remote_code=True)
+            if weights_path:
+                model = AutoModel.from_pretrained(weights_path, trust_remote_code=True, local_files_only=True)
+            else:
+                model = AutoModel.from_pretrained('paige-ai/Prism', trust_remote_code=True)
         else:
-            model = AutoModel.from_config(AutoConfig.from_pretrained('paige-ai/Prism'))
+            if weights_path:
+                model = AutoModel.from_config(AutoConfig.from_pretrained(weights_path, local_files_only=True))
+            else:
+                model = AutoModel.from_config(AutoConfig.from_pretrained('paige-ai/Prism'))
         model.text_decoder = None
         precision = torch.float16
         embedding_dim = 1280
@@ -254,7 +279,7 @@ class CHIEFSlideEncoder(BaseSlideEncoder):
     def _build(self, pretrained=True):
         
         self.enc_name = 'chief'
-        weights_path = get_weights_path('slide', self.enc_name)
+        weights_path = self._get_weights_path()
 
         # Ensure model can be built.
         try:
@@ -347,8 +372,12 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
             traceback.print_exc()
             raise Exception("Please install flash_attn version 2.5.8 using `pip install flash_attn==2.5.8`.")
         
+        weights_path = self._get_weights_path()
         if pretrained:
-            model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
+            if weights_path:
+                model = create_model(weights_path, "gigapath_slide_enc12l768d", 1536, global_pool=True)
+            else:
+                model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
         else:
             model = create_model("", "gigapath_slide_enc12l768d", 1536, global_pool=True)
         
@@ -376,7 +405,7 @@ class MadeleineSlideEncoder(BaseSlideEncoder):
         assert pretrained, "MadeleineSlideEncoder has no non-pretrained models. Please load with pretrained=True."
 
         self.enc_name = 'madeleine'
-        weights_path = get_weights_path('slide', self.enc_name)
+        weights_path = self._get_weights_path()
         embedding_dim = 512
 
         try:
@@ -430,7 +459,11 @@ class TitanSlideEncoder(BaseSlideEncoder):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
         from transformers import AutoModel 
-        model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
+        weights_path = self._get_weights_path()
+        if weights_path:
+            model = AutoModel.from_pretrained(weights_path, trust_remote_code=True, local_files_only=True)
+        else:
+            model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
         precision = torch.float16
         embedding_dim = 768
         return model, precision, embedding_dim
@@ -454,12 +487,16 @@ class FeatherSlideEncoder(BaseSlideEncoder):
         from transformers import AutoModel 
         from huggingface_hub import snapshot_download
 
-        model_path = snapshot_download(
-            repo_id="MahmoodLab/abmil.base.conch_v15.pc108-24k",
-            revision="main",
-            allow_patterns=["*.py", "model.safetensors", "config.json"]
-        )
-        model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        weights_path = self._get_weights_path()
+        if weights_path:
+            model = AutoModel.from_pretrained(weights_path, trust_remote_code=True, local_files_only=True)
+        else:
+            model_path = snapshot_download(
+                repo_id="MahmoodLab/abmil.base.conch_v15.pc108-24k",
+                revision="main",
+                allow_patterns=["*.py", "model.safetensors", "config.json"]
+            )
+            model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
         precision = torch.float32
         embedding_dim = 512
 
