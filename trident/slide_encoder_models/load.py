@@ -230,6 +230,12 @@ class PRISMSlideEncoder(BaseSlideEncoder):
         z = self.model.slide_representations(x)
         
         # Extract both image_embedding (1x1280) and image_latents (512x1280)
+        if 'image_embedding' not in z or 'image_latents' not in z:
+            raise KeyError(
+                f"Expected 'image_embedding' and 'image_latents' keys in model output, "
+                f"but got keys: {list(z.keys())}"
+            )
+        
         image_embedding = z['image_embedding']  # Shape: (batch_size, 1280)
         image_latents = z['image_latents']      # Shape: (batch_size, 512, 1280)
         

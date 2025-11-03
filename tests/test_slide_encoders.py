@@ -3,7 +3,6 @@ import torch
 
 import sys; sys.path.append('../')
 from trident.slide_encoder_models import *
-from trident.slide_encoder_models.load import CustomSlideEncoder
 
 """
 Test the forward pass of the slide encoders.
@@ -111,16 +110,14 @@ class TestSlideEncoders(unittest.TestCase):
             def eval(self):
                 pass
         
-        # Create custom encoder with mock model
-        encoder = CustomSlideEncoder(
-            enc_name='prism',
-            model=MockPRISMModel(),
-            precision=torch.float16,
-            embedding_dim=1280
-        )
+        # Create a test subclass of PRISMSlideEncoder to avoid _build
+        class TestPRISMSlideEncoder(PRISMSlideEncoder):
+            def _build(self, **kwargs):
+                # Override _build to avoid dependencies
+                return MockPRISMModel(), torch.float16, 1280
         
-        # Use PRISM's forward method
-        encoder.forward = lambda batch, device='cuda': PRISMSlideEncoder.forward(encoder, batch, device)
+        # Create encoder instance
+        encoder = TestPRISMSlideEncoder(pretrained=False, freeze=False)
         
         # Create sample batch
         sample_batch = {
@@ -139,6 +136,52 @@ class TestSlideEncoders(unittest.TestCase):
         
         print("\033[94m" + f"    PRISM concatenation test success with output shape {output.shape}" + "\033[0m")
         print("\033[94m" + f"    ✓ Concatenated 1 image_embedding + 512 image_latents = 513 total embeddings" + "\033[0m")
+
+    def test_prism_encoder_missing_keys(self):
+        """
+        Test that PRISM encoder raises appropriate error when model output is missing expected keys.
+        """
+        print("\033[95m" + "Testing PRISM encoder error handling for missing keys" + "\033[0m")
+        
+        # Create a mock PRISM model that returns incomplete output
+        class MockPRISMModelIncomplete:
+            def __init__(self):
+                self.text_decoder = None
+            
+            def slide_representations(self, x):
+                """Mock method that returns incomplete dict"""
+                batch_size = x.shape[0]
+                return {
+                    'image_embedding': torch.randn(batch_size, 1280),
+                    # Missing 'image_latents' key
+                }
+            
+            def parameters(self):
+                return []
+            
+            def eval(self):
+                pass
+        
+        # Create a test subclass of PRISMSlideEncoder
+        class TestPRISMSlideEncoderIncomplete(PRISMSlideEncoder):
+            def _build(self, **kwargs):
+                return MockPRISMModelIncomplete(), torch.float16, 1280
+        
+        # Create encoder instance
+        encoder = TestPRISMSlideEncoderIncomplete(pretrained=False, freeze=False)
+        
+        # Create sample batch
+        sample_batch = {
+            'features': torch.randn(1, 100, 2560),
+            'coords': torch.randn(1, 100, 2),
+        }
+        
+        # Verify that KeyError is raised
+        with self.assertRaises(KeyError) as context:
+            encoder.forward(sample_batch, device='cpu')
+        
+        self.assertIn('image_latents', str(context.exception))
+        print("\033[94m" + "    ✓ Properly raises KeyError when 'image_latents' is missing" + "\033[0m")
 
 
 if __name__ == "__main__":
