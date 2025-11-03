@@ -3,6 +3,7 @@ import torch
 
 import sys; sys.path.append('../')
 from trident.slide_encoder_models import *
+from trident.slide_encoder_models.load import CustomSlideEncoder
 
 """
 Test the forward pass of the slide encoders.
@@ -82,6 +83,62 @@ class TestSlideEncoders(unittest.TestCase):
         print("\033[95m" + "Testing Slide Encoder Factory with invalid names" + "\033[0m")
         with self.assertRaises(ValueError):
             encoder_factory('invalid-model')
+
+    def test_prism_encoder_concatenation(self):
+        """
+        Test that PRISM encoder properly concatenates image_embedding and image_latents.
+        This test uses a mock model to verify the concatenation logic without needing
+        the actual PRISM model weights.
+        """
+        print("\033[95m" + "Testing PRISM encoder concatenation of image_embedding and image_latents" + "\033[0m")
+        
+        # Create a mock PRISM model
+        class MockPRISMModel:
+            def __init__(self):
+                self.text_decoder = None
+            
+            def slide_representations(self, x):
+                """Mock method that returns expected dict structure"""
+                batch_size = x.shape[0]
+                return {
+                    'image_embedding': torch.randn(batch_size, 1280),
+                    'image_latents': torch.randn(batch_size, 512, 1280)
+                }
+            
+            def parameters(self):
+                return []
+            
+            def eval(self):
+                pass
+        
+        # Create custom encoder with mock model
+        encoder = CustomSlideEncoder(
+            enc_name='prism',
+            model=MockPRISMModel(),
+            precision=torch.float16,
+            embedding_dim=1280
+        )
+        
+        # Use PRISM's forward method
+        encoder.forward = lambda batch, device='cuda': PRISMSlideEncoder.forward(encoder, batch, device)
+        
+        # Create sample batch
+        sample_batch = {
+            'features': torch.randn(1, 100, 2560),
+            'coords': torch.randn(1, 100, 2),
+        }
+        
+        # Run forward pass
+        output = encoder.forward(sample_batch, device='cpu')
+        
+        # Verify output shape
+        self.assertEqual(output.shape[0], 1, "Batch dimension should be 1")
+        self.assertEqual(output.shape[1], 513, "Should have 513 embeddings (1 image_embedding + 512 image_latents)")
+        self.assertEqual(output.shape[2], 1280, "Feature dimension should be 1280")
+        self.assertEqual(output.shape[-1], encoder.embedding_dim, "Last dimension should match embedding_dim")
+        
+        print("\033[94m" + f"    PRISM concatenation test success with output shape {output.shape}" + "\033[0m")
+        print("\033[94m" + f"    ✓ Concatenated 1 image_embedding + 512 image_latents = 513 total embeddings" + "\033[0m")
 
 
 if __name__ == "__main__":
