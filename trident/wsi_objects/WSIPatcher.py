@@ -249,8 +249,8 @@ class WSIPatcher:
 
     def _colrow_to_xy(self, col, row):
         """ Convert col row of a tile to its top-left coordinates before rescaling (x, y) """
-        x = col * (self.patch_size_src) - self.overlap_src * np.clip(col - 1, 0, None)
-        y = row * (self.patch_size_src) - self.overlap_src * np.clip(row - 1, 0, None)
+        x = col * (self.patch_size_src) - self.overlap_src * np.clip(col, 0, None)
+        y = row * (self.patch_size_src) - self.overlap_src * np.clip(row, 0, None)
         return (x, y)   
             
     def _xy_to_colrow(self, x, y):
