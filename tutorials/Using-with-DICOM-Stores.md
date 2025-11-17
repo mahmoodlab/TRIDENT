@@ -74,6 +74,13 @@ TRIDENT will automatically trim instance-level URLs to series level and warn you
 from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
+import os
+from huggingface_hub import login
+from dotenv import load_dotenv
+load_dotenv() 
+
+hf_token = os.environ.get('HF_TOKEN')
+login(token=hf_token)
 
 # Load DICOMweb slide
 dicomweb_url = "https://healthcare.googleapis.com/v1/projects/my-project/locations/us-central1/datasets/pathology/dicomStores/slides/dicomWeb/studies/1.2.840.113/series/1.3.6.1.4"
