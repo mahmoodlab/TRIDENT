@@ -57,6 +57,14 @@ def collect_valid_slides(
     """
     valid_rel_paths: List[str] = []
 
+    # Handle DICOMweb manifest file
+    if custom_list_path and custom_list_path.endswith('.dicomweb.csv'):
+        # Read CSV with DICOMweb URLs
+        df = pd.read_csv(custom_list_path)
+        if 'dicomweb_url' in df.columns:
+            urls = df['dicomweb_url'].tolist()
+            return urls if not return_relative_paths else (urls, urls)
+
     if custom_list_path is not None:
         from concurrent.futures import ThreadPoolExecutor
 
