@@ -1,5 +1,6 @@
 import os
 import gc
+import time
 import torch
 import shutil
 from typing import List, Callable, Any
@@ -36,6 +37,10 @@ def cache_batch(wsis: List[str], dest_dir: str) -> List[str]:
             if os.path.exists(mrxs_dir):
                 dest_mrxs_dir = os.path.join(dest_dir, os.path.basename(mrxs_dir))
                 shutil.copytree(mrxs_dir, dest_mrxs_dir)
+
+    # Create completion marker
+    with open(os.path.join(dest_dir, '.cache_complete'), 'w') as f:
+        f.write('done')
 
     return copied
 
@@ -105,6 +110,12 @@ def batch_consumer(
             break
 
         ssd_batch_dir = os.path.join(cache_dir, f"batch_{batch_id}")
+        
+        # Wait for cache completion marker
+        marker = os.path.join(ssd_batch_dir, '.cache_complete')
+        while not os.path.exists(marker):
+            time.sleep(0.5)
+        
         print(f"[CONSUMER] Processing batch {batch_id}: {ssd_batch_dir}")
 
         processor = processor_factory(ssd_batch_dir)
