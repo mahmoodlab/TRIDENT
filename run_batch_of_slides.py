@@ -18,6 +18,7 @@ from trident.slide_encoder_models import encoder_registry as slide_encoder_regis
 
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def build_parser() -> argparse.ArgumentParser:
     """
@@ -321,9 +322,6 @@ def main() -> None:
     and feature extraction tasks.
     """
     from trident.IO import collect_valid_slides
-    
-    # Suppress DataLoader multiprocessing warnings
-    os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning'
 
     args = parse_arguments()
     args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
