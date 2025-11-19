@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "trident"
-version = "0.2.0"
+version = "0.2.1"
 description = "A package for preprocessing whole-slide images."
 authors = [
-    "Andrew Zhang <andrewzh@mit.edu>",
     "Guillaume Jaume <gjaume@bwh.harvard.edu>",
+    "Andrew Zhang <andrewzh@mit.edu>",
     "Paul Doucet <homedoucetpaul@gmail.com>"
 ]
-license = "CC BY-NC-ND 4.0"  # Specify your package's license if different.
+license = "CC BY-NC-ND 4.0"  
 repository = "https://github.com/mahmoodlab/TRIDENT"
 
 [tool.poetry.dependencies]
@@ -30,6 +30,7 @@ timm = "0.9.16"
 einops_exts = "*"
 scipy = "*"
 segmentation-models-pytorch = "*"
+safetensors = "*"
 
 [tool.poetry.dev-dependencies]
 # Optional development dependencies 

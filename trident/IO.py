@@ -867,7 +867,6 @@ def overlay_gdf_on_thumbnail(
     cropped_annotated = cv2.cvtColor(cropped_annotated, cv2.COLOR_BGR2RGB)
     cv2.imwrite(contours_saveto, cropped_annotated)
 
-# .tools.register_tool(imports=["import numpy as np"])
 def get_num_workers(batch_size: int, 
                     factor: float = 0.75, 
                     fallback: int = 16, 

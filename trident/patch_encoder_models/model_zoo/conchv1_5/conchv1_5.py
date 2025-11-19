@@ -519,7 +519,7 @@ class VisionTransformer(nn.Module):
             block_num = len(self.blocks) + block_num
 
         if self.grad_checkpointing and not torch.jit.is_scripting():
-            raise NotImplementedError
+            raise NotImplementedError("Gradient checkpointing is not implemented for this forward pass")
         else:
             for i, blk in enumerate(self.blocks):
                 if i < block_num:

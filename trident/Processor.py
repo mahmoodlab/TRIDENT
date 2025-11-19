@@ -55,7 +55,7 @@ class Processor:
                 [DEPRECATED as of v0.2.0] An optional directory for caching WSIs locally. If specified, slides will be copied 
                 from the source directory to this local directory before processing, improving performance 
                 when the source is a network drive. Defaults to None.
-            clear_cache (str, optional):
+            clear_cache (bool, optional):
                 [DEPRECATED as of v0.2.0] A flag indicating whether slides in the cache should be deleted after processing. 
                 This helps manage storage space. Defaults to False. 
             skip_errors (bool, optional): 
@@ -260,10 +260,17 @@ class Processor:
                     self.loop.set_postfix_str(f'Empty GeoDataFrame for {wsi.name}.')
                 else:
                     update_log(os.path.join(self.job_dir,  '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'Tissue segmented.')
-
+                
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
+                # Release WSI resources even on error to prevent memory leaks
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
                 if self.skip_errors:
                     update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', f'ERROR: {e}')
                     continue
@@ -384,9 +391,17 @@ class Processor:
 
                 remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
+                
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
+                # Release WSI resources even on error to prevent memory leaks
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
                 if self.skip_errors:
                     update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', f'ERROR: {e}')
                     continue
@@ -499,7 +514,6 @@ class Processor:
                 create_lock(wsi_feats_fp)
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'LOCKED. Extracting features...')
 
-                # under construction
                 wsi.extract_patch_features(
                     patch_encoder = patch_encoder,
                     coords_path = coords_path,
@@ -511,9 +525,17 @@ class Processor:
 
                 remove_lock(wsi_feats_fp)
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
+                
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(wsi_feats_fp)
+                # Release WSI resources even on error to prevent memory leaks
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
                 if self.skip_errors:
                     update_log(log_fp, f'{wsi.name}{wsi.ext}', f'ERROR: {e}')
                     continue
@@ -646,9 +668,17 @@ class Processor:
 
                 remove_lock(slide_feature_path)
                 update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'Slide features extracted.')
+                
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
             except Exception as e:
                 if isinstance(e, KeyboardInterrupt):
                     remove_lock(slide_feature_path)
+                # Release WSI resources even on error to prevent memory leaks
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
                 if self.skip_errors:
                     update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', f'ERROR: {e}')
                     continue

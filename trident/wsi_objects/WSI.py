@@ -963,7 +963,6 @@ class WSI:
         Call this method after you're done processing to avoid memory/GPU leaks.
         """
         # Clear backend image object
-
         if hasattr(self, "close"):
             self.close()
 
@@ -975,12 +974,8 @@ class WSI:
                 pass
             self.img = None
 
-        # Clear segmentation results and coordinates
-        for attr in ["gdf_contours", "tissue_seg_path"]:
-            if hasattr(self, attr):
-                setattr(self, attr, None)
+        # The path is lightweight and needed for subsequent tasks
+        if hasattr(self, "gdf_contours"):
+            self.gdf_contours = None
 
-        import gc
-        import torch
-        gc.collect()
-        torch.cuda.empty_cache()
+        self.lazy_init = False # to avoid double initialization

@@ -106,7 +106,7 @@ class WSIPatcher:
             Custom coordinates to use. Defaults to None.
         threshold : float, optional
             Minimum proportion of the patch under tissue to be kept.
-            This argument is ignored if mask=None, passing threshold=0 will be faster. Defaults to 0.15.
+            This argument is ignored if mask=None, passing threshold=0 will be faster. Defaults to 0.0.
         pil : bool, optional
             Whether to get patches as `PIL.Image` (numpy array by default). Defaults to False.
         """
@@ -249,8 +249,8 @@ class WSIPatcher:
 
     def _colrow_to_xy(self, col, row):
         """ Convert col row of a tile to its top-left coordinates before rescaling (x, y) """
-        x = col * (self.patch_size_src) - self.overlap_src * np.clip(col - 1, 0, None)
-        y = row * (self.patch_size_src) - self.overlap_src * np.clip(row - 1, 0, None)
+        x = col * (self.patch_size_src - self.overlap_src)
+        y = row * (self.patch_size_src - self.overlap_src)
         return (x, y)   
             
     def _xy_to_colrow(self, x, y):
