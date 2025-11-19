@@ -12,12 +12,12 @@ import shutil
 import torch
 from typing import Any, List, Sequence, Tuple, Optional
 
-torch.multiprocessing.set_start_method('spawn', force=True)
-
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 def build_parser() -> argparse.ArgumentParser:
     """
@@ -321,6 +321,9 @@ def main() -> None:
     and feature extraction tasks.
     """
     from trident.IO import collect_valid_slides
+    
+    # Suppress DataLoader multiprocessing warnings
+    os.environ['PYTHONWARNINGS'] = 'ignore::UserWarning'
 
     args = parse_arguments()
     args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
@@ -380,15 +383,11 @@ def main() -> None:
         producer = Thread(target=batch_producer, args=(
             queue, pending_slides, args.cache_batch_size, args.cache_batch_size, args.wsi_cache
         ))
-        consumer = Thread(target=batch_consumer, args=(
-            queue, args.task, args.wsi_cache, processor_factory, run_task_fn
-        ))
 
-        print("[MAIN] Starting producer and consumer threads.")
+        print("[MAIN] Starting producer thread; consuming batches on main process.")
         producer.start()
-        consumer.start()
+        batch_consumer(queue, args.task, args.wsi_cache, processor_factory, run_task_fn)
         producer.join()
-        consumer.join()
     else:
         # === Sequential mode ===
         # Write pending slides to temporary CSV
