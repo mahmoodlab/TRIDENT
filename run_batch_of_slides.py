@@ -388,25 +388,23 @@ def main() -> None:
         producer.join()
     else:
         # === Sequential mode ===
-        # Write pending slides to temporary CSV
-        import csv
-        import tempfile
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['wsi'])
-            writer.writerows([[slide] for slide in pending_slides])
-            temp_csv_path = f.name
-        
-        try:
-            args.custom_list_of_wsis = temp_csv_path
-            processor = initialize_processor(args)
-            
-            for task_name in task_sequence:
-                args.task = task_name
-                run_task(processor, args)
-        finally:
-            os.unlink(temp_csv_path)
+        processor = initialize_processor(args)
+
+        pending_paths = {os.path.abspath(slide) for slide in pending_slides}
+        processor.wsis = [
+            wsi for wsi in processor.wsis
+            if os.path.abspath(wsi.slide_path) in pending_paths
+        ]
+
+        if not processor.wsis:
+            print('[MAIN] No pending slides remain after processor initialization. Nothing to process.')
+            return
+
+        print(f"[MAIN] Restricting sequential run to {len(processor.wsis)} pending slide(s).")
+
+        for task_name in task_sequence:
+            args.task = task_name
+            run_task(processor, args)
 
 
 if __name__ == "__main__":
