@@ -2,8 +2,9 @@ import os
 import gc
 import torch
 import shutil
-from typing import List, Callable, Any
+from typing import List, Callable, Any, Optional
 from queue import Queue
+from tqdm import tqdm
 
 
 
@@ -26,7 +27,7 @@ def cache_batch(wsis: List[str], dest_dir: str) -> List[str]:
     os.makedirs(dest_dir, exist_ok=True)
     copied = []
 
-    for wsi in wsis:
+    for wsi in tqdm(wsis, desc=f"Caching to {os.path.basename(dest_dir)}", unit="slide", leave=False):
         dest_path = os.path.join(dest_dir, os.path.basename(wsi))
         shutil.copy(wsi, dest_path)
         copied.append(dest_path)
@@ -46,6 +47,7 @@ def batch_producer(
     start_idx: int,
     batch_size: int,
     cache_dir: str,
+    on_cached: Optional[Callable[[int], None]] = None,
 ) -> None:
     """
     Produces and caches batches of slides. Sends batch IDs to a queue for downstream processing.
@@ -67,10 +69,12 @@ def batch_producer(
         batch_paths = valid_slides[i:i + batch_size]
         batch_id = i // batch_size
         ssd_batch_dir = os.path.join(cache_dir, f"batch_{batch_id}")
-        print(f"[PRODUCER] Caching batch {batch_id}: {ssd_batch_dir}")
+        print(f"[PRODUCER] Caching batch {batch_id} ({len(batch_paths)} slides) to {ssd_batch_dir}")
         cache_batch(batch_paths, ssd_batch_dir)
-        print(f"[PRODUCER] Batch {batch_id} cached and ready")
-        queue.put(batch_id)  # Put will block if queue is full (maxsize=1), enabling pipeline
+        print(f"[PRODUCER] Batch {batch_id} ready for processing")
+        if on_cached is not None:
+            on_cached(batch_id)
+        queue.put(batch_id)
 
     queue.put(None)  # Sentinel to signal completion
 
@@ -81,6 +85,7 @@ def batch_consumer(
     cache_dir: str,
     processor_factory: Callable[[str], Any],
     run_task_fn: Callable[[Any, str], None],
+    wait_for_cache_ready: Optional[Callable[[int], None]] = None,
 ) -> None:
     """
     Consumes cached batches from the queue, processes them, and optionally clears cache.
@@ -106,7 +111,11 @@ def batch_consumer(
             break
 
         ssd_batch_dir = os.path.join(cache_dir, f"batch_{batch_id}")
-        print(f"[CONSUMER] Processing batch {batch_id}: {ssd_batch_dir}")
+        
+        if wait_for_cache_ready is not None:
+            print(f"[CONSUMER] Waiting for batch {batch_id} cache to complete...")
+            wait_for_cache_ready(batch_id)
+            print(f"[CONSUMER] Batch {batch_id} cache ready, starting processing")
 
         processor = processor_factory(ssd_batch_dir)
 
@@ -126,5 +135,4 @@ def batch_consumer(
 
             print(f"[CONSUMER] Clearing cache for batch {batch_id}")
             shutil.rmtree(ssd_batch_dir, ignore_errors=True)
-            print(f"[CONSUMER] Batch {batch_id} completed and cache cleared")
-            queue.task_done()  # Signal completion to producer
+            queue.task_done()

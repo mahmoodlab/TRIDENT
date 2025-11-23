@@ -3,9 +3,9 @@ import argparse
 import torch
 import multiprocessing as mp
 import shutil
-from typing import Any, List
+from typing import Any, Dict, List
 from queue import Queue
-from threading import Thread
+from threading import Thread, Event
 from tqdm import tqdm
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -304,6 +304,28 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
         
         queue = Queue(maxsize=1)
         valid_slides = args.selected_wsi_paths
+        cache_ready_flags: Dict[int, Event] = {}
+
+        def get_flag(batch_id: int) -> Event:
+            flag = cache_ready_flags.get(batch_id)
+            if flag is None:
+                flag = Event()
+                cache_ready_flags[batch_id] = flag
+            return flag
+
+        def mark_cache_ready(batch_id: int) -> None:
+            get_flag(batch_id).set()
+
+        def wait_for_cache(batch_id: int) -> None:
+            get_flag(batch_id).wait()
+
+        warm = valid_slides[:args.cache_batch_size]
+        warmup_dir = os.path.join(gpu_cache_dir, "batch_0")
+        print(f"[GPU {args.gpu}] Pre-caching batch 0 ({len(warm)} slides)...")
+        cache_batch(warm, warmup_dir)
+        print(f"[GPU {args.gpu}] Batch 0 cached to {warmup_dir}")
+        mark_cache_ready(0)
+        queue.put(0)
 
         def processor_factory(wsi_dir: str) -> Processor:
             local_args = argparse.Namespace(**vars(args))
@@ -311,6 +333,7 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             local_args.wsi_cache = None
             local_args.custom_list_of_wsis = None
             local_args.search_nested = False
+            local_args.selected_wsi_paths = None
             return initialize_processor(local_args)
 
         def run_task_fn(processor: Processor, task_name: str) -> None:
@@ -320,11 +343,11 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             run_task(processor, local_args)
 
         producer = Thread(target=batch_producer, args=(
-            queue, valid_slides, 0, args.cache_batch_size, gpu_cache_dir
+            queue, valid_slides, args.cache_batch_size, args.cache_batch_size, gpu_cache_dir, mark_cache_ready
         ))
 
         consumer = Thread(target=batch_consumer, args=(
-            queue, args.task, gpu_cache_dir, processor_factory, run_task_fn
+            queue, args.task, gpu_cache_dir, processor_factory, run_task_fn, wait_for_cache
         ))
 
         producer.start()
