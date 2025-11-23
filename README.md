@@ -42,6 +42,8 @@ Additional packages may be required to load some pretrained models. Follow error
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
+Add `--gpus 0 1` (or any list of device indices) to split slides across multiple GPUs automatically.
+
 **Feeling cautious?**
 
 Run this command to perform all processing steps for a **single** slide:
