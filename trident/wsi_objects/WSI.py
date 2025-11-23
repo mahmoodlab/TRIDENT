@@ -18,10 +18,7 @@ from trident.IO import (
 
 ReadMode = Literal['pil', 'numpy']
 
-try:
-    _DATALOADER_MP_CTX = mp.get_context('fork') if 'fork' in mp.get_all_start_methods() else None
-except (ValueError, AttributeError):
-    _DATALOADER_MP_CTX = None
+_DATALOADER_MP_CTX = mp.get_context('spawn')
 
 
 class WSI:
