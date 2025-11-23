@@ -69,7 +69,8 @@ def batch_producer(
         ssd_batch_dir = os.path.join(cache_dir, f"batch_{batch_id}")
         print(f"[PRODUCER] Caching batch {batch_id}: {ssd_batch_dir}")
         cache_batch(batch_paths, ssd_batch_dir)
-        queue.put(batch_id)
+        print(f"[PRODUCER] Batch {batch_id} cached and ready")
+        queue.put(batch_id)  # Put will block if queue is full (maxsize=1), enabling pipeline
 
     queue.put(None)  # Sentinel to signal completion
 
@@ -125,4 +126,5 @@ def batch_consumer(
 
             print(f"[CONSUMER] Clearing cache for batch {batch_id}")
             shutil.rmtree(ssd_batch_dir, ignore_errors=True)
-            queue.task_done()
+            print(f"[CONSUMER] Batch {batch_id} completed and cache cleared")
+            queue.task_done()  # Signal completion to producer

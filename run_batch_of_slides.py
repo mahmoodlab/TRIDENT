@@ -6,6 +6,9 @@ import shutil
 from typing import Any, List
 from queue import Queue
 from threading import Thread
+from tqdm import tqdm
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
@@ -264,7 +267,8 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
     coords_dir = args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap'
     pending = []
 
-    for slide in all_slides:
+    print(f"[MAIN] Found {len(all_slides)} slides. Filtering completed slides...")
+    for slide in tqdm(all_slides, desc="Checking slides", unit="slide"):
         stem = os.path.splitext(os.path.basename(slide))[0]
         is_done = True
         for t in tasks:
@@ -281,7 +285,8 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
         
         if not is_done: pending.append(slide)
 
-    print(f"[MAIN] Found {len(all_slides)} slides. Processing {len(pending)} pending slides ({len(all_slides)-len(pending)} skipped).")
+    skipped = len(all_slides) - len(pending)
+    print(f"[MAIN] Skipped {skipped} completed slides. Processing {len(pending)} pending slides.")
     return pending
 
 
@@ -300,11 +305,6 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
         queue = Queue(maxsize=1)
         valid_slides = args.selected_wsi_paths
 
-        warm = valid_slides[:args.cache_batch_size]
-        warmup_dir = os.path.join(gpu_cache_dir, "batch_0")
-        cache_batch(warm, warmup_dir)
-        queue.put(0)
-
         def processor_factory(wsi_dir: str) -> Processor:
             local_args = argparse.Namespace(**vars(args))
             local_args.wsi_dir = wsi_dir
@@ -320,7 +320,7 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             run_task(processor, local_args)
 
         producer = Thread(target=batch_producer, args=(
-            queue, valid_slides, args.cache_batch_size, args.cache_batch_size, gpu_cache_dir
+            queue, valid_slides, 0, args.cache_batch_size, gpu_cache_dir
         ))
 
         consumer = Thread(target=batch_consumer, args=(
