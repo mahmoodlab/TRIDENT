@@ -1,19 +1,20 @@
 import os
+import math
 import argparse
 import torch
 import multiprocessing as mp
 import shutil
-from typing import Any, Dict, List
+from typing import Any, List
 from queue import Queue
-from threading import Thread, Event
-from tqdm import tqdm
+from threading import Thread
 import warnings
+from tqdm import tqdm
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
-from trident.Concurrency import batch_producer, batch_consumer, cache_batch
+from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
 
 
@@ -267,26 +268,47 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
     coords_dir = args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap'
     pending = []
 
-    print(f"[MAIN] Found {len(all_slides)} slides. Filtering completed slides...")
-    for slide in tqdm(all_slides, desc="Checking slides", unit="slide"):
+    def safe_listdir(path: str) -> List[str]:
+        try:
+            return os.listdir(path)
+        except (FileNotFoundError, NotADirectoryError):
+            return []
+
+    seg_done = set()
+    coords_done = set()
+    feat_done = set()
+
+    if 'seg' in tasks:
+        contour_dir = os.path.join(args.job_dir, 'contours')
+        seg_done = {os.path.splitext(f)[0] for f in safe_listdir(contour_dir) if f.lower().endswith('.jpg')}
+
+    if 'coords' in tasks:
+        patches_dir = os.path.join(args.job_dir, coords_dir, 'patches')
+        coords_done = {
+            f[:-len('_patches')]
+            for f in (os.path.splitext(fname)[0] for fname in safe_listdir(patches_dir) if fname.endswith('_patches.h5'))
+        }
+
+    if 'feat' in tasks:
+        feat_sub = f'slide_features_{args.slide_encoder}' if args.slide_encoder else f'features_{args.patch_encoder}'
+        feat_dir = os.path.join(args.job_dir, coords_dir, feat_sub)
+        feat_done = {os.path.splitext(f)[0] for f in safe_listdir(feat_dir) if os.path.splitext(f)[1] in {'.h5', '.pt'}}
+
+    for slide in tqdm(all_slides, desc="Checking slide status", unit="slide"):
         stem = os.path.splitext(os.path.basename(slide))[0]
         is_done = True
         for t in tasks:
-            if t == 'seg' and not os.path.exists(os.path.join(args.job_dir, 'contours', f'{stem}.jpg')):
+            if t == 'seg' and stem not in seg_done:
                 is_done = False
-            elif t == 'coords' and not os.path.exists(os.path.join(args.job_dir, coords_dir, 'patches', f'{stem}_patches.h5')):
+            elif t == 'coords' and stem not in coords_done:
                 is_done = False
-            elif t == 'feat':
-                feat_sub = f'slide_features_{args.slide_encoder}' if args.slide_encoder else f'features_{args.patch_encoder}'
-                feat_dir = os.path.join(args.job_dir, coords_dir, feat_sub)
-                if not (os.path.isdir(feat_dir) and any(os.path.exists(os.path.join(feat_dir, f'{stem}.{ext}')) for ext in ['h5', 'pt'])):
-                    is_done = False
+            elif t == 'feat' and stem not in feat_done:
+                is_done = False
             if not is_done: break
         
         if not is_done: pending.append(slide)
 
-    skipped = len(all_slides) - len(pending)
-    print(f"[MAIN] Skipped {skipped} completed slides. Processing {len(pending)} pending slides.")
+    print(f"[MAIN] Found {len(all_slides)} slides. Processing {len(pending)} pending slides ({len(all_slides)-len(pending)} skipped).")
     return pending
 
 
@@ -301,31 +323,18 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
         # Setup specific cache dir for this GPU process
         gpu_cache_dir = os.path.join(args.wsi_cache, f"gpu_{args.gpu}")
         os.makedirs(gpu_cache_dir, exist_ok=True)
+
+        valid_slides = list(args.selected_wsi_paths or [])
+        if not valid_slides:
+            print(f"[WORKER {args.gpu}] No slides assigned. Skipping cached pipeline.")
+            return
+
+        batch_size = max(1, args.cache_batch_size or len(valid_slides))
         
         queue = Queue(maxsize=1)
-        valid_slides = args.selected_wsi_paths
-        cache_ready_flags: Dict[int, Event] = {}
-
-        def get_flag(batch_id: int) -> Event:
-            flag = cache_ready_flags.get(batch_id)
-            if flag is None:
-                flag = Event()
-                cache_ready_flags[batch_id] = flag
-            return flag
-
-        def mark_cache_ready(batch_id: int) -> None:
-            get_flag(batch_id).set()
-
-        def wait_for_cache(batch_id: int) -> None:
-            get_flag(batch_id).wait()
-
-        warm = valid_slides[:args.cache_batch_size]
-        warmup_dir = os.path.join(gpu_cache_dir, "batch_0")
-        print(f"[GPU {args.gpu}] Pre-caching batch 0 ({len(warm)} slides)...")
-        cache_batch(warm, warmup_dir)
-        print(f"[GPU {args.gpu}] Batch 0 cached to {warmup_dir}")
-        mark_cache_ready(0)
-        queue.put(0)
+        
+        # No pre-warming: let producer handle all batching
+        start_idx = 0
 
         def processor_factory(wsi_dir: str) -> Processor:
             local_args = argparse.Namespace(**vars(args))
@@ -340,14 +349,15 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             # We must use a local copy of args to update the task without affecting others
             local_args = argparse.Namespace(**vars(args))
             local_args.task = task_name
+            local_args.selected_wsi_paths = None
             run_task(processor, local_args)
 
         producer = Thread(target=batch_producer, args=(
-            queue, valid_slides, args.cache_batch_size, args.cache_batch_size, gpu_cache_dir, mark_cache_ready
+            queue, valid_slides, start_idx, batch_size, gpu_cache_dir
         ))
 
         consumer = Thread(target=batch_consumer, args=(
-            queue, args.task, gpu_cache_dir, processor_factory, run_task_fn, wait_for_cache
+            queue, args.task, gpu_cache_dir, processor_factory, run_task_fn
         ))
 
         producer.start()
@@ -414,5 +424,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    mp.set_start_method('spawn', force=True)
     main()
