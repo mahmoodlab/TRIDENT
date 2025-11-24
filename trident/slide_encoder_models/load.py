@@ -330,14 +330,22 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
             raise Exception("Please install fairscale and gigapath using `pip install fairscale git+https://github.com/prov-gigapath/prov-gigapath.git`.")
         
         # Make sure flash_attn is correct version
-        try:
-            import flash_attn; assert flash_attn.__version__ == '2.5.8'
-        except:
-            traceback.print_exc()
-            raise Exception("Please install flash_attn version 2.5.8 using `pip install flash_attn==2.5.8`.")
+        # try:
+        #     import flash_attn; assert flash_attn.__version__ == '2.5.8'
+        # except:
+        #     traceback.print_exc()
+        #     raise Exception("Please install flash_attn version 2.5.8 using `pip install flash_attn==2.5.8`.")
         
         if pretrained:
-            model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
+            # Try to get local weights path first
+            weights_path = get_weights_path('slide', self.enc_name)
+            if weights_path:
+                print(f"Loading GigaPath slide encoder from local path: {weights_path}")
+                model = create_model(weights_path, "gigapath_slide_enc12l768d", 1536, global_pool=True)
+            else:
+                # Fallback to downloading from Hugging Face Hub
+                print("Local weights not found. Downloading from Hugging Face Hub...")
+                model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
         else:
             model = create_model("", "gigapath_slide_enc12l768d", 1536, global_pool=True)
         

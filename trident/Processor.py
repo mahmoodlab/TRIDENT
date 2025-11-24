@@ -28,6 +28,7 @@ class Processor:
         max_workers: Optional[int] = None,
         reader_type: Optional[WSIReaderType] = None,
         search_nested: bool = False, 
+        selected_wsi_paths: Optional[List[str]] = None,
     ) -> None:
         """
         The `Processor` class handles all preprocessing steps starting from whole-slide images (WSIs). 
@@ -82,6 +83,9 @@ class Processor:
                 the filename (excluding directory structure) will be used for downstream outputs (e.g., segmentation filenames).  
                 If False, only files directly inside `wsi_source` will be considered.  
                 Defaults to False.
+            selected_wsi_paths (List[str], optional):
+                Optional explicit list of absolute slide paths to process. When provided, `collect_valid_slides`
+                is skipped and only the supplied slides are used (useful for distributed processing). Defaults to None.
 
 
         Returns:
@@ -117,15 +121,19 @@ class Processor:
         for ext in self.wsi_ext:
             assert ext.startswith('.'), f'Invalid extension: {ext} (must start with a period)'
 
-        # === Collect slide paths and relative paths ===
-        full_paths, rel_paths = collect_valid_slides(
-            wsi_dir=wsi_source,
-            custom_list_path=custom_list_of_wsis,
-            wsi_ext=self.wsi_ext,
-            search_nested=search_nested,
-            max_workers=max_workers,
-            return_relative_paths=True
-        )
+        # Collect slide paths and relative paths
+        if selected_wsi_paths is not None:
+            full_paths = selected_wsi_paths
+            rel_paths = [os.path.relpath(path, wsi_source) for path in selected_wsi_paths]
+        else:
+            full_paths, rel_paths = collect_valid_slides(
+                wsi_dir=wsi_source,
+                custom_list_path=custom_list_of_wsis,
+                wsi_ext=self.wsi_ext,
+                search_nested=search_nested,
+                max_workers=max_workers,
+                return_relative_paths=True
+            )
 
         self.wsi_rel_paths = rel_paths if custom_list_of_wsis else None
 
