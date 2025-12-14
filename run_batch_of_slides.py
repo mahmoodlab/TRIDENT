@@ -143,6 +143,52 @@ def generate_help_text() -> str:
     parser = build_parser()
     return parser.format_help()
 
+def _materialize_batch_csv(cache_batch_dir: str, original_csv_path: str) -> str:
+    """Create a per-batch CSV whose `wsi` entries match cached filenames.
+
+    Cache mode flattens slides into `cache_batch_dir` (basenames only). When a user
+    provides a CSV with nested relative paths and/or an `mpp` column, we generate a
+    filtered CSV for the current batch so `Processor` can still:
+      1) select exactly the batch slides, and
+      2) apply per-slide metadata like `mpp`.
+    """
+    import pandas as pd
+
+    df = pd.read_csv(original_csv_path)
+    if 'wsi' not in df.columns:
+        raise ValueError("CSV must contain a column named 'wsi'.")
+
+    cached_names = {
+        name
+        for name in os.listdir(cache_batch_dir)
+        if os.path.isfile(os.path.join(cache_batch_dir, name))
+    }
+    if not cached_names:
+        raise ValueError(f"Cache batch dir is empty: {cache_batch_dir}")
+
+    def _basename(p: Any) -> str:
+        # Handle NaNs and Windows-style separators.
+        s = str(p)
+        s = s.replace('\\\\', '/').replace('\\', '/')
+        return os.path.basename(s)
+
+    df = df.copy()
+    df['_wsi_basename'] = df['wsi'].map(_basename)
+
+    batch_df = df[df['_wsi_basename'].isin(cached_names)].copy()
+    if batch_df.empty:
+        raise ValueError(
+            "None of the slides in the custom CSV match the cached batch files. "
+            f"batch_dir={cache_batch_dir}, csv={original_csv_path}"
+        )
+
+    # Rewrite to basenames so `collect_valid_slides(cache_batch_dir, csv)` succeeds.
+    batch_df['wsi'] = batch_df['_wsi_basename']
+    batch_df.drop(columns=['_wsi_basename'], inplace=True)
+
+    out_csv = os.path.join(cache_batch_dir, '_trident_batch_wsis.csv')
+    batch_df.to_csv(out_csv, index=False)
+    return out_csv
 
 def initialize_processor(args: argparse.Namespace) -> Processor:
     """
@@ -340,7 +386,11 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             local_args = argparse.Namespace(**vars(args))
             local_args.wsi_dir = wsi_dir
             local_args.wsi_cache = None
-            local_args.custom_list_of_wsis = None
+            if local_args.custom_list_of_wsis:
+                local_args.custom_list_of_wsis = _materialize_batch_csv(
+                    cache_batch_dir=wsi_dir,
+                    original_csv_path=local_args.custom_list_of_wsis,
+                )
             local_args.search_nested = False
             local_args.selected_wsi_paths = None
             return initialize_processor(local_args)
