@@ -200,7 +200,7 @@ The project was built on top of amazing repositories such as [Timm](https://gith
 ## Issues
 
 - The preferred mode of communication is via GitHub issues.
-- If GitHub issues are inappropriate, email gjaume@bwh.harvard.edu and andrewzh@mit.edu.
+- If GitHub issues are inappropriate, email guillaume.jaume@unil.ch and andrewzh@mit.edu.
 - Immediate response to minor issues may not be available.
 
 ## Funding
