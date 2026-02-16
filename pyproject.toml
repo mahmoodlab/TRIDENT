@@ -23,6 +23,7 @@ Pillow = "*"
 geopandas = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
+wsidicom = "*"
 
 # Optional dependencies (can be marked as optional in later versions)
 transformers = "*"
