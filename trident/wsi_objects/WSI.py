@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import os 
 import warnings
+import multiprocessing as mp
 import torch 
 from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
@@ -16,6 +17,11 @@ from trident.IO import (
 )
 
 ReadMode = Literal['pil', 'numpy']
+
+try:
+    _DATALOADER_MP_CTX = mp.get_context('fork') if 'fork' in mp.get_all_start_methods() else None
+except (ValueError, AttributeError):
+    _DATALOADER_MP_CTX = None
 
 
 class WSI:
@@ -313,11 +319,15 @@ class WSI:
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
+        inferred_workers = get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers
+        dataloader_ctx = _DATALOADER_MP_CTX if inferred_workers and inferred_workers > 0 else None
+
         dataloader = DataLoader(
             dataset, 
             batch_size=batch_size, 
             collate_fn=collate_fn,
-            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
+            num_workers=inferred_workers,
+            multiprocessing_context=dataloader_ctx,
             pin_memory=True
         )
 
@@ -815,10 +825,17 @@ class WSI:
                 coords_only=False,
                 pil=True,
             )  
-
-
         dataset = WSIPatcherDataset(patcher, patch_transforms)
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
+        inferred_workers = get_num_workers(batch_limit, max_workers=self.max_workers)
+        dataloader_ctx = _DATALOADER_MP_CTX if inferred_workers and inferred_workers > 0 else None
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_limit,
+            num_workers=inferred_workers,
+            pin_memory=False,
+            multiprocessing_context=dataloader_ctx,
+        )
 
         dataloader = tqdm(dataloader) if verbose else dataloader
 
@@ -826,7 +843,7 @@ class WSI:
         for imgs, _ in dataloader:
             imgs = imgs.to(device)
             with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                batch_features = patch_encoder(imgs)  
+                batch_features = patch_encoder(imgs)
             features.append(batch_features.cpu().numpy())
 
         # Concatenate features
