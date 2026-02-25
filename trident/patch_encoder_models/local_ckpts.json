@@ -11,7 +11,7 @@
     "hoptimus0": "",
     "hoptimus1": "",
     "phikon_v2": "",
-    "hibou_l": "",
+    "hibou_l": "D:/trident_cache/huggingface/hub/models--histai--hibou-L/snapshots/31a3b9fee16554c8552cb643d311733bce8faf7c",
     "kaiko-vitb8": "",
     "kaiko-vitb16": "",
     "kaiko-vits8": "",
@@ -19,6 +19,6 @@
     "kaiko-vitl14": "",
     "lunit-vits8": "",
     "conch_v15": "",
-    "musk": "",
+    "musk": "D:/trident_cache/huggingface/hub/models--xiangjx--musk",
     "custom_encoder": ""
 }

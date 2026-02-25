@@ -135,11 +135,11 @@ class BasePatchEncoder(torch.nn.Module):
             else, use the path from the registry.
         """
         if self.weights_path:
-            self.ensure_valid_weights_path(self.weights_path)
+            # self.ensure_valid_weights_path(self.weights_path)
             return self.weights_path
         else:
             weights_path = get_weights_path('patch', self.enc_name)
-            self.ensure_valid_weights_path(weights_path)
+            # self.ensure_valid_weights_path(weights_path)
             return weights_path
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -214,7 +214,8 @@ class MuskInferenceEncoder(BasePatchEncoder):
         weights_path = self._get_weights_path()
 
         if weights_path:
-            raise NotImplementedError("MUSK doesn't support local model loading. PR welcome!")
+            model = timm.create_model("musk_large_patch16_384")
+            utils.load_model_and_may_interpolate("hf_hub:xiangjx/musk", model, 'model|module', '', local_dir=weights_path)
         else:
             self.ensure_has_internet(self.enc_name)
             try:
@@ -410,7 +411,7 @@ class HibouLInferenceEncoder(BasePatchEncoder):
         weights_path = self._get_weights_path()
 
         if weights_path:
-            raise NotImplementedError("Hibou-Large doesn't support local model loading. PR welcome!")
+            model = AutoModel.from_pretrained(weights_path, trust_remote_code=True, local_files_only=True)
         else:
             self.ensure_has_internet(self.enc_name)
             try:
