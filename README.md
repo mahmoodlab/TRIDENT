@@ -31,9 +31,9 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - Create an environment: `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
 - Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
 - Local installation: `pip install -e .`.
+  - This installs the shared model stack (`transformers`, `timm`, `safetensors`, etc.).
 
 Optional install profiles:
-- `pip install -e ".[base]"` for shared stack (transformers/timm/etc).
 - `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
 - `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
@@ -215,7 +215,7 @@ main()
    - **A**: Yes using the `--custom_list_of_wsis` argument. Provide a list of WSI names in a CSV (with slide extension, `wsi`). Optionally, provide the mpp (field `mpp`)
  
  - **Q**: Do I need to install any additional packages to use Trident?
-   - **A**: Yes for many optional encoders. Prefer installing profiles (`.[patch-encoders]`, `.[slide-encoders]`, or `.[full]`) and run `trident-doctor` to get actionable checks before running jobs.
+   - **A**: `pip install -e .` installs core dependencies. Some optional encoders still require extra installs. Use profiles (`.[patch-encoders]`, `.[slide-encoders]`, or `.[full]`) and run `trident-doctor` for preflight checks.
 
 ## License and Terms of Use
 

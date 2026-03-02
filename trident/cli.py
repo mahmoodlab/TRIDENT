@@ -3,11 +3,18 @@ from __future__ import annotations
 import argparse
 import sys
 
+from trident import __version__
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="trident",
         description="TRIDENT command-line interface.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"trident {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True

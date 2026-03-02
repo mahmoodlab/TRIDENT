@@ -14,6 +14,9 @@ repository = "https://github.com/mahmoodlab/TRIDENT"
 python = "^3.10"  # Specify the Python version compatibility.
 ipywidgets = "*"
 torch = "*"
+torchvision = "*"
+numpy = "*"
+pandas = "*"
 tqdm = "*"
 h5py = "*"
 matplotlib = "*"
@@ -21,16 +24,20 @@ opencv-python = "*"
 openslide-python = "*"
 Pillow = "*"
 geopandas = "*"
+shapely = "*"
+requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
 
+# Core model dependencies (installed with `pip install -e .`)
+transformers = "*"
+timm = "0.9.16"
+einops_exts = "*"
+scipy = "*"
+segmentation-models-pytorch = "*"
+safetensors = "*"
+
 # Optional dependencies
-transformers = { version = "*", optional = true }
-timm = { version = "0.9.16", optional = true }
-einops_exts = { version = "*", optional = true }
-scipy = { version = "*", optional = true }
-segmentation-models-pytorch = { version = "*", optional = true }
-safetensors = { version = "*", optional = true }
 environs = { version = "11.0.0", optional = true }
 sacremoses = { version = "0.1.1", optional = true }
 fairscale = { version = "*", optional = true }
@@ -41,14 +48,6 @@ gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optiona
 madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
 
 [tool.poetry.extras]
-base = [
-    "transformers",
-    "timm",
-    "einops_exts",
-    "scipy",
-    "segmentation-models-pytorch",
-    "safetensors",
-]
 patch-encoders = [
     "fairscale",
     "timm_ctp",
@@ -62,12 +61,6 @@ slide-encoders = [
     "madeleine",
 ]
 full = [
-    "transformers",
-    "timm",
-    "einops_exts",
-    "scipy",
-    "segmentation-models-pytorch",
-    "safetensors",
     "environs",
     "sacremoses",
     "fairscale",
