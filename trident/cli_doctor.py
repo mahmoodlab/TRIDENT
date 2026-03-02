@@ -160,16 +160,33 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
     )
 
     patch_gated_repos = [
-        ("CONCH v1", "MahmoodLab/conch"),
-        ("CONCH v1.5", "MahmoodLab/conchv1_5"),
-        ("Virchow", "paige-ai/Virchow"),
-        ("Virchow2", "paige-ai/Virchow2"),
-        ("H-optimus-0", "bioptimus/H-optimus-0"),
-        ("H-optimus-1", "bioptimus/H-optimus-1"),
+        ("CONCH v1", "MahmoodLab/conch", "model"),
+        ("CONCH v1.5", "MahmoodLab/conchv1_5", "model"),
+        ("UNI", "MahmoodLab/uni", "model"),
+        ("UNI2-h", "MahmoodLab/UNI2-h", "model"),
+        ("Virchow", "paige-ai/Virchow", "model"),
+        ("Virchow2", "paige-ai/Virchow2", "model"),
+        ("H-optimus-0", "bioptimus/H-optimus-0", "model"),
+        ("H-optimus-1", "bioptimus/H-optimus-1", "model"),
+        ("Phikon", "owkin/phikon", "model"),
+        ("Phikon-v2", "owkin/phikon-v2", "model"),
+        ("Hibou-L", "histai/hibou-L", "model"),
+        ("Prov-GigaPath", "prov-gigapath/prov-gigapath", "model"),
+        ("Midnight", "kaiko-ai/midnight", "model"),
+        ("Lunit vits8", "1aurent/vit_small_patch8_224.lunit_dino", "model"),
+        ("Kaiko vit-small-8", "1aurent/vit_small_patch8_224.kaiko_ai_towards_large_pathology_fms", "model"),
+        ("Kaiko vit-small-16", "1aurent/vit_small_patch16_224.kaiko_ai_towards_large_pathology_fms", "model"),
+        ("Kaiko vit-base-8", "1aurent/vit_base_patch8_224.kaiko_ai_towards_large_pathology_fms", "model"),
+        ("Kaiko vit-base-16", "1aurent/vit_base_patch16_224.kaiko_ai_towards_large_pathology_fms", "model"),
+        ("Kaiko vit-large-14", "1aurent/vit_large_patch14_reg4_dinov2.kaiko_ai_towards_large_pathology_fms", "model"),
+        ("ResNet50 (timm)", "timm/resnet50.tv_in1k", "model"),
+        ("CTransPath weights", "MahmoodLab/hest-bench", "dataset"),
     ]
 
     slide_gated_repos = [
-        ("PRISM", "paige-ai/Prism"),
+        ("PRISM", "paige-ai/Prism", "model"),
+        ("Titan", "MahmoodLab/TITAN", "model"),
+        ("Feather", "MahmoodLab/abmil.base.conch_v15.pc108-24k", "model"),
     ]
 
     if profile in {"patch-encoders", "full"}:
@@ -194,7 +211,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
             ]
         )
         if check_gated:
-            results.extend(_check_hf_repo_access(name, repo) for name, repo in patch_gated_repos)
+            results.extend(_check_hf_repo_access(name, repo, repo_type=repo_type) for name, repo, repo_type in patch_gated_repos)
 
     if profile in {"slide-encoders", "full"}:
         results.extend(
@@ -218,7 +235,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
             ]
         )
         if check_gated:
-            results.extend(_check_hf_repo_access(name, repo) for name, repo in slide_gated_repos)
+            results.extend(_check_hf_repo_access(name, repo, repo_type=repo_type) for name, repo, repo_type in slide_gated_repos)
 
     return results
 
