@@ -1,0 +1,57 @@
+# -----------------------------
+# Python bytecode / caches
+# -----------------------------
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# -----------------------------
+# Virtual environments
+# -----------------------------
+.venv/
+venv/
+env/
+
+# -----------------------------
+# Test / coverage artifacts
+# -----------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# -----------------------------
+# Lint / type-check caches
+# -----------------------------
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# -----------------------------
+# Build / packaging artifacts
+# -----------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# -----------------------------
+# Notebook / editor / OS noise
+# -----------------------------
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# -----------------------------
+# Repo-specific generated data
+# -----------------------------
+test_processor_output/
+test_single_slide_processing/
+tests/test_patcher_artifacts/
+rosai_processed/
