@@ -8,7 +8,7 @@ import geopandas as gpd
 import pandas as pd 
 
 from trident import load_wsi, WSIReaderType
-from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides
+from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides, splitext
 from trident.Maintenance import deprecated
 from trident.wsi_objects.WSIFactory import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS, SDPC_EXTENSIONS
 
@@ -147,7 +147,7 @@ class Processor:
             name = os.path.basename(abs_path)
             tissue_seg_path = os.path.join(
                 self.job_dir, 'contours_geojson',
-                f'{os.path.splitext(name)[0]}.geojson'
+                f'{splitext(name)[0]}.geojson'
             )
             if not os.path.exists(tissue_seg_path):
                 tissue_seg_path = None

@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 from tqdm import tqdm
+from trident.IO import splitext
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -54,7 +55,7 @@ class AnyToTiffConverter:
             zoom (float): Zoom factor for image resizing, e.g., 0.5 is reducing the image by a factor.
         """
         try:
-            img_name = os.path.splitext(os.path.basename(input_file))[0]
+            img_name = splitext(os.path.basename(input_file))[0]
             img = self._read_image(input_file, zoom)
             self._save_tiff(img, img_name, mpp * (1/zoom))
         except Exception as e:

@@ -6,7 +6,6 @@ from trident.wsi_objects.OpenSlideWSI import OpenSlideWSI
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.CuCIMWSI import CuCIMWSI
 from trident.wsi_objects.SDPCWSI import SDPCWSI
-
 WSIReaderType = Literal['openslide', 'image', 'cucim', 'sdpc']
 OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs'}
 CUCIM_EXTENSIONS = {'.svs', '.tif', '.tiff'}

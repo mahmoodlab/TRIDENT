@@ -13,6 +13,18 @@ from geopandas import gpd
 from shapely import Polygon
 
 
+COMPOUND_EXTENSIONS = {'.ome.tif', '.ome.tiff'}
+
+
+def splitext(path: str) -> tuple:
+    """Like os.path.splitext but handles compound extensions (e.g., .ome.tif)."""
+    path_lower = path.lower()
+    for ext in COMPOUND_EXTENSIONS:
+        if path_lower.endswith(ext):
+            return path[:-len(ext)], path[-len(ext):]
+    return os.path.splitext(path)
+
+
 ENV_TRIDENT_HOME = "TRIDENT_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"

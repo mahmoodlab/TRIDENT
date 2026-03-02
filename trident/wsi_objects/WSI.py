@@ -12,7 +12,8 @@ from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords,
-    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5
+    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
+    splitext
 )
 
 ReadMode = Literal['pil', 'numpy']
@@ -94,9 +95,9 @@ class WSI:
         """
         self.slide_path = slide_path
         if name is None:
-            self.name, self.ext = os.path.splitext(os.path.basename(slide_path)) 
+            self.name, self.ext = splitext(os.path.basename(slide_path)) 
         else:
-            self.name, self.ext = os.path.splitext(name)
+            self.name, self.ext = splitext(name)
         self.tissue_seg_path = tissue_seg_path
         self.custom_mpp_keys = custom_mpp_keys
 
