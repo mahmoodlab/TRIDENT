@@ -52,7 +52,7 @@ Run checks before launching jobs:
 CLI options (all are supported):
 - `python run_batch_of_slides.py ...` (existing command)
 - `python run_single_slide.py ...` (existing command)
-- `trident batch ...` and `trident single ...` (new wrapper CLI)
+- `trident batch ...`, `trident single ...`, and `trident convert ...` (wrapper CLI)
 
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
@@ -75,6 +75,11 @@ python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_proc
 Equivalent wrapper CLI:
 ```
 trident single -- --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+```
+
+Convert images/WSIs to pyramidal TIFF:
+```
+trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
 ```
 
 **Or follow step-by-step instructions:**

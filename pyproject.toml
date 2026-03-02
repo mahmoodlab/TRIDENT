@@ -32,6 +32,7 @@ openslide-bin = "*"
 # Core model dependencies (installed with `pip install -e .`)
 transformers = "*"
 timm = "0.9.16"
+einops = "*"
 einops_exts = "*"
 scipy = "*"
 segmentation-models-pytorch = "*"

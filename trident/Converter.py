@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 from tqdm import tqdm
+import multiprocessing as mp
 from trident.IO import splitext
 
 Image.MAX_IMAGE_PIXELS = None
@@ -22,6 +23,12 @@ OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.dcm', '.vms', '.vmu', '.ndpi', '.scn',
 
 # Combined with CZI 
 SUPPORTED_EXTENSIONS = BIOFORMAT_EXTENSIONS | PIL_EXTENSIONS | {'.czi'}
+
+def _process_file_worker(args) -> None:
+    """Top-level worker for multiprocessing compatibility."""
+    job_dir, bigtiff, input_file, mpp, zoom = args
+    converter = AnyToTiffConverter(job_dir=job_dir, bigtiff=bigtiff)
+    converter.process_file(input_file=input_file, mpp=mpp, zoom=zoom)
 
 
 
@@ -56,10 +63,45 @@ class AnyToTiffConverter:
         """
         try:
             img_name = splitext(os.path.basename(input_file))[0]
+            output_mpp = mpp * (1 / zoom)
+            save_path = os.path.join(self.job_dir, f"{img_name}.tiff")
+
+            # Fast path: stream directly from source to pyramidal TIFF when pyvips supports it.
+            if self._try_pyvips_convert(input_file=input_file, save_path=save_path, zoom=zoom, mpp=output_mpp):
+                return
+
+            # Fallback path: load image via existing readers, then save with pyvips.
             img = self._read_image(input_file, zoom)
-            self._save_tiff(img, img_name, mpp * (1/zoom))
+            self._save_tiff(img, img_name, output_mpp)
         except Exception as e:
             print(f"Error processing {input_file}: {e}")
+
+    def _try_pyvips_convert(self, input_file: str, save_path: str, zoom: float, mpp: float) -> bool:
+        """
+        Attempt a streaming conversion with pyvips.
+
+        Returns
+        -------
+        bool
+            True if conversion succeeded, False if caller should fallback.
+        """
+        # Keep CZI on the dedicated reader path for compatibility.
+        if input_file.lower().endswith(".czi"):
+            return False
+
+        try:
+            import pyvips
+        except ImportError:
+            return False
+
+        try:
+            img = pyvips.Image.new_from_file(input_file, access="sequential")
+            if zoom != 1:
+                img = img.resize(zoom)
+            self._save_pyvips_tiff(img, save_path, mpp, pyvips)
+            return True
+        except Exception:
+            return False
 
     def _read_image(self, file_path: str, zoom: float = 1) -> np.ndarray:
         """
@@ -126,6 +168,10 @@ class AnyToTiffConverter:
         except ImportError:
             raise ImportError("pyvips is required for saving pyramidal TIFFs. Install it with pip install pyvips.")
         pyvips_img = pyvips.Image.new_from_array(img)
+        self._save_pyvips_tiff(pyvips_img, save_path, mpp, pyvips)
+
+    def _save_pyvips_tiff(self, pyvips_img, save_path: str, mpp: float, pyvips_module) -> None:
+        """Save a pyvips image object as pyramidal TIFF."""
         pyvips_img.tiffsave(
             save_path,
             bigtiff=self.bigtiff,
@@ -134,12 +180,12 @@ class AnyToTiffConverter:
             tile_width=256,
             tile_height=256,
             compression='jpeg',
-            resunit=pyvips.enums.ForeignTiffResunit.CM,
+            resunit=pyvips_module.enums.ForeignTiffResunit.CM,
             xres=1. / (mpp * 1e-4),
             yres=1. / (mpp * 1e-4)
         )
 
-    def process_all(self, input_dir: str, mpp_csv: str, downscale_by: int = 1) -> None:
+    def process_all(self, input_dir: str, mpp_csv: str, downscale_by: int = 1, num_workers: int = 1) -> None:
         """
         Process all eligible image files in a directory to convert them to pyramidal TIFF.
 
@@ -147,19 +193,31 @@ class AnyToTiffConverter:
             input_dir (str): Directory containing image files to process.
             mpp_csv (str): Path to a CSV file with 2 field: "wsi" with fnames with extensions and "mpp" with the micron per pixel values.
             downscale_by (int): Factor to downscale images by, e.g., to save a 40x image into a 20x one, set downscale_by to 2. 
+            num_workers (int): Number of parallel workers. Use 1 for sequential mode.
         """
+        if downscale_by < 1:
+            raise ValueError(f"downscale_by must be >= 1, got {downscale_by}.")
+        if num_workers < 0:
+            raise ValueError(f"num_workers must be >= 0, got {num_workers}.")
+
         files = [f for f in os.listdir(input_dir) if f.lower().endswith(tuple(SUPPORTED_EXTENSIONS))]
         mpp_df = pd.read_csv(mpp_csv)
-        for filename in tqdm(files, desc="Processing images"):
+        tasks = []
+        for filename in files:
             img_path = os.path.join(input_dir, filename)
             mpp = self._get_mpp(mpp_df, img_path)
-            try:
-                with Image.open(img_path) as img:
-                    size = img.size
-            except Exception:
-                size = "Unknown"
-            tqdm.write(f"Processing {filename} | Size: {size}")
-            self.process_file(img_path, mpp, zoom=1/downscale_by)
+            tasks.append((self.job_dir, self.bigtiff, img_path, mpp, 1 / downscale_by))
+
+        if num_workers == 0:
+            num_workers = mp.cpu_count()
+
+        if num_workers <= 1:
+            for _, _, img_path, mpp, zoom in tqdm(tasks, desc="Processing images"):
+                self.process_file(img_path, mpp, zoom=zoom)
+        else:
+            with mp.Pool(processes=num_workers) as pool:
+                for _ in tqdm(pool.imap_unordered(_process_file_worker, tasks), total=len(tasks), desc="Processing images"):
+                    pass
 
         #clean up 
         try:
@@ -181,4 +239,4 @@ if __name__ == "__main__":
     # wsi,mpp
     # 3756144.svs,0.25
     # 4290019.svs,0.25
-    # 619709.svs,0.25
+    # 619709.svs,0.258
