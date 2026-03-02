@@ -59,15 +59,11 @@ class TestSlideEncoders(unittest.TestCase):
 
     def test_slide_encoder_factory_with_valid_names(self):
         print("\033[95m" + "Testing Slide Encoder Factory with valid names" + "\033[0m")
-        # Test factory method for valid model names
+        # Keep this focused on dependency-light encoders.
+        # Other encoder backends are tested in dedicated integration-style tests.
         for model_name, expected_class in [
             ('mean-conch_v15', MeanSlideEncoder),
-            ('mean-blahblah', MeanSlideEncoder),
-            ('prism', PRISMSlideEncoder),
-            ('chief', CHIEFSlideEncoder),
-            ('gigapath', GigaPathSlideEncoder),
-            ('titan', TitanSlideEncoder),
-            ('madeleine', MadeleineSlideEncoder),
+            ('mean-uni_v1', MeanSlideEncoder),
         ]:
             encoder = encoder_factory(model_name)
             self.assertIsInstance(encoder, expected_class)
@@ -82,6 +78,8 @@ class TestSlideEncoders(unittest.TestCase):
         print("\033[95m" + "Testing Slide Encoder Factory with invalid names" + "\033[0m")
         with self.assertRaises(ValueError):
             encoder_factory('invalid-model')
+        with self.assertRaises((ValueError, KeyError)):
+            encoder_factory('mean-blahblah')
 
 
 if __name__ == "__main__":

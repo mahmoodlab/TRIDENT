@@ -50,36 +50,35 @@ class TestOpenSlideWSI(unittest.TestCase):
         for slide_filename in self.TEST_SLIDE_FILENAMES:
             with self.subTest(slide=slide_filename):
                 slide_path = os.path.join(self.local_wsi_dir, slide_filename)
-                slide = load_wsi(slide_path=slide_path, lazy_init=False)
+                with load_wsi(slide_path=slide_path, lazy_init=False) as slide:
+                    # Step 1: Tissue segmentation
+                    segmentation_model = segmentation_model_factory("hest")
+                    slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR, device=self.TEST_DEVICE)
 
-                # Step 1: Tissue segmentation
-                segmentation_model = segmentation_model_factory("hest")
-                slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR, device=self.TEST_DEVICE)
+                    # Step 2: Tissue coordinate extraction
+                    coords_path = slide.extract_tissue_coords(
+                        target_mag=self.TEST_MAG,
+                        patch_size=self.TEST_PATCH_SIZE,
+                        save_coords=self.TEST_OUTPUT_DIR
+                    )
 
-                # Step 2: Tissue coordinate extraction
-                coords_path = slide.extract_tissue_coords(
-                    target_mag=self.TEST_MAG,
-                    patch_size=self.TEST_PATCH_SIZE,
-                    save_coords=self.TEST_OUTPUT_DIR
-                )
+                    # Step 3: Visualization
+                    viz_coords_path = slide.visualize_coords(
+                        coords_path=coords_path,
+                        save_patch_viz=os.path.join(self.TEST_OUTPUT_DIR, "visualization")
+                    )
 
-                # Step 3: Visualization
-                viz_coords_path = slide.visualize_coords(
-                    coords_path=coords_path,
-                    save_patch_viz=os.path.join(self.TEST_OUTPUT_DIR, "visualization")
-                )
-
-                # Step 4: Feature extraction
-                encoder = encoder_factory(self.TEST_PATCH_ENCODER)
-                encoder.eval()
-                encoder.to(self.TEST_DEVICE)
-                features_dir = os.path.join(self.TEST_OUTPUT_DIR, f"features_{self.TEST_PATCH_ENCODER}")
-                slide.extract_patch_features(
-                    patch_encoder=encoder,
-                    coords_path=coords_path,
-                    save_features=features_dir,
-                    device=self.TEST_DEVICE
-                )
+                    # Step 4: Feature extraction
+                    encoder = encoder_factory(self.TEST_PATCH_ENCODER)
+                    encoder.eval()
+                    encoder.to(self.TEST_DEVICE)
+                    features_dir = os.path.join(self.TEST_OUTPUT_DIR, f"features_{self.TEST_PATCH_ENCODER}")
+                    slide.extract_patch_features(
+                        patch_encoder=encoder,
+                        coords_path=coords_path,
+                        save_features=features_dir,
+                        device=self.TEST_DEVICE
+                    )
 
                 # Verify outputs
                 self.assertTrue(os.path.exists(os.path.join(self.TEST_OUTPUT_DIR, "contours_geojson")), "GDF contours were not saved.")

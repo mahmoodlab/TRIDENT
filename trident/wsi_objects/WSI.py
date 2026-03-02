@@ -117,6 +117,15 @@ class WSI:
             return f"<width={self.width}, height={self.height}, backend={self.__class__.__name__}, mpp={self.mpp}, mag={self.mag}>"
         else:
             return f"<name={self.name}>"
+
+    def __enter__(self) -> "WSI":
+        """Enable use as a context manager (`with ... as wsi`)."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        """Always release resources when leaving a context."""
+        self.release()
+        return False
     
     def _lazy_initialize(self) -> None:
         """

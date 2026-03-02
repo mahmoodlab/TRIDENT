@@ -32,9 +32,27 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
 - Local installation: `pip install -e .`.
 
-Additional packages may be required to load some pretrained models. Follow error messages for instructions.
+Optional install profiles:
+- `pip install -e ".[base]"` for shared stack (transformers/timm/etc).
+- `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
+- `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
+- `pip install -e ".[full]"` to install all pip-installable optional dependencies.
+
+Run checks before launching jobs:
+- `trident-doctor --profile base`
+- `trident-doctor --profile patch-encoders --check-gated`
+- `trident-doctor --profile slide-encoders`
+- `trident-doctor --profile full --check-gated`
+
+> [!NOTE]
+> Some models still require manual setup (e.g., local CHIEF repository path in `trident/slide_encoder_models/local_ckpts.json`) or HuggingFace gated access approvals.
 
 ### 🔨 2. **Running Trident**:
+
+CLI options (all are supported):
+- `python run_batch_of_slides.py ...` (existing command)
+- `python run_single_slide.py ...` (existing command)
+- `trident batch ...` and `trident single ...` (new wrapper CLI)
 
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
@@ -42,11 +60,21 @@ Additional packages may be required to load some pretrained models. Follow error
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
+Equivalent wrapper CLI:
+```
+trident batch -- --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+```
+
 **Feeling cautious?**
 
 Run this command to perform all processing steps for a **single** slide:
 ```
 python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+```
+
+Equivalent wrapper CLI:
+```
+trident single -- --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
 **Or follow step-by-step instructions:**
@@ -187,7 +215,7 @@ main()
    - **A**: Yes using the `--custom_list_of_wsis` argument. Provide a list of WSI names in a CSV (with slide extension, `wsi`). Optionally, provide the mpp (field `mpp`)
  
  - **Q**: Do I need to install any additional packages to use Trident?
-   - **A**: Most pretrained models require additional dependencies (e.g., the CTransPath patch encoder requires `pip install timm_ctp`). When you load a model using Trident, it will tell you what dependencies are missing and how to install them. 
+   - **A**: Yes for many optional encoders. Prefer installing profiles (`.[patch-encoders]`, `.[slide-encoders]`, or `.[full]`) and run `trident-doctor` to get actionable checks before running jobs.
 
 ## License and Terms of Use
 
