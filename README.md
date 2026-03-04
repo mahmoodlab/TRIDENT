@@ -54,7 +54,7 @@ Run checks before launching jobs:
 CLI options (all are supported):
 - `python run_batch_of_slides.py ...` (existing command)
 - `python run_single_slide.py ...` (existing command)
-- `trident batch ...`, `trident single ...`, and `trident convert ...` (wrapper CLI)
+- `trident batch ...`, `trident single ...`, `trident convert ...`, and `trident doctor ...` (wrapper CLI)
 
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 

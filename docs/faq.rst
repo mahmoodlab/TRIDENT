@@ -1,6 +1,8 @@
 Frequently Asked Questions
 ==========================
 
+This page explains common calls in plain language and when to use them.
+
 .. dropdown:: **How do I extract embeddings from legacy CLAM coordinates?**
 
    Use the `--coords_dir` flag to pass CLAM-style patch coordinates:
@@ -32,6 +34,30 @@ Frequently Asked Questions
 .. dropdown:: **I want to skip patches on holes.**
 
    By default, TRIDENT includes all tissue patches (including holes). Use `--remove_holes` to exclude them. Not recommended, as "holes" often help define the tissue microenvironment.
+
+.. dropdown:: **Which segmenter should I use?**
+
+   TRIDENT supports three segmenters:
+
+   - ``hest``: preferred for IHC and dirtier slides.
+   - ``grandqc``: often preferred for clean H&E workflows (fast and reliable).
+   - ``otsu``: image-processing-only fallback (no segmentation weights required), runs at 1.25x on CPU.
+
+.. dropdown:: **Which tasks need GPU and which are fine on CPU?**
+
+   - Segmentation:
+     - ``hest`` and ``grandqc`` use GPU.
+     - Optional artifact cleanup (``--remove_artifacts`` / ``--remove_penmarks``) adds additional segmentation cost.
+     - ``otsu`` runs on CPU.
+   - Patching:
+     - CPU-only; usually fast, but can be CPU-intensive on very large slides or heavy overlap settings.
+     - Use ``--min_tissue_proportion`` to require more tissue overlap and reduce weak/edge patches.
+   - Feature extraction:
+     - Patch-level and slide-level feature extraction require GPU in practice.
+
+.. dropdown:: **Why does `trident convert` exist if OpenSlide already reads many formats?**
+
+   The converter is mainly for formats OpenSlide does not handle well. It uses BioFormats-backed readers when possible, then writes pyramidal TIFF outputs for downstream workflows.
 
 .. dropdown:: **I don’t have enough local SSD storage and my WSIs are on a slow remote disk. How can I accelerate processing?**
 
@@ -120,7 +146,7 @@ Frequently Asked Questions
       from trident.patch_encoder_models.load import encoder_factory as patch_encoder_model_factory
       from trident.slide_encoder_models.load import encoder_factory as slide_encoder_model_factory
 
-      segmentation_models = ["hest", "grandqc", "grandqc_artifact"]
+      segmentation_models = ["hest", "grandqc", "grandqc_artifact", "otsu"]
       for model in segmentation_models:
           try:
               segmentation_model_factory(model)

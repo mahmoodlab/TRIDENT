@@ -18,6 +18,19 @@ Explore the **end-to-end pipeline**, from segmentation to slide-level representa
 
 ---
 
+Quick command guide
+-------------------
+
+Use these calls based on your goal:
+
+- ``python run_single_slide.py ...``: run one slide end-to-end. Use this first to validate settings.
+- ``python run_batch_of_slides.py ...``: run many slides. Use this for production jobs.
+- ``trident batch -- ...`` / ``trident single -- ...``: same workflows through one unified CLI.
+- ``trident convert ...``: convert listed files to pyramidal TIFF before downstream processing.
+- ``trident doctor -- --profile ...``: check environment readiness before long runs.
+
+If you are new, start with ``single`` on one known-good slide, then scale to ``batch``.
+
 .. toctree::
    :maxdepth: 2
    :caption: 📚 Contents
