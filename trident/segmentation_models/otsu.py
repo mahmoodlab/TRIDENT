@@ -53,14 +53,14 @@ def apply_otsu_thresholding(tile: np.ndarray) -> np.ndarray:
     masked_image_gray = 255 * sk_color.rgb2gray(full_tile_bg)
     thresh = sk_filters.threshold_otsu(masked_image_gray)
     otsu_masking = masked_image_gray < thresh
-    otsu_masking = sk_morphology.remove_small_objects(otsu_masking, max_size=60)
+    otsu_masking = sk_morphology.remove_small_objects(otsu_masking, 60)
     tile = mask_rgb(tile, otsu_masking).astype(np.uint8)
 
     # Second Otsu pass for smaller artifacts.
     masked_image_gray = 255 * sk_color.rgb2gray(tile)
     thresh = sk_filters.threshold_otsu(masked_image_gray)
     otsu_masking = masked_image_gray < thresh
-    otsu_masking = sk_morphology.remove_small_holes(otsu_masking, max_size=5000)
+    otsu_masking = sk_morphology.remove_small_holes(otsu_masking, 5000)
     otsu_thr = ~otsu_masking
     return otsu_thr.astype(np.uint8)
 

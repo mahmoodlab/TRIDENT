@@ -1,7 +1,10 @@
 import unittest
+import importlib
 from unittest.mock import MagicMock, patch
 
 from trident import Processor
+
+processor_module = importlib.import_module("trident.Processor")
 
 
 class _Ctx:
@@ -31,9 +34,9 @@ class TestProcessorLifecycle(unittest.TestCase):
         ctx1 = _Ctx(slide1, on_exit)
         ctx2 = _Ctx(slide2, on_exit)
 
-        with patch("trident.Processor.collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
-             patch("trident.Processor.load_wsi", side_effect=[ctx1, ctx2]), \
-             patch("trident.Processor.os.path.exists", return_value=False):
+        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
+             patch.object(processor_module, "load_wsi", side_effect=[ctx1, ctx2]), \
+             patch.object(processor_module.os.path, "exists", return_value=False):
             processor = Processor(
                 job_dir="/tmp/job",
                 wsi_source="/tmp/wsi",
@@ -63,9 +66,9 @@ class TestProcessorLifecycle(unittest.TestCase):
 
         ctx1 = _Ctx(MagicMock(name="slide1"), on_exit)
 
-        with patch("trident.Processor.collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
-             patch("trident.Processor.load_wsi", side_effect=[ctx1, RuntimeError("boom")]), \
-             patch("trident.Processor.os.path.exists", return_value=False):
+        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
+             patch.object(processor_module, "load_wsi", side_effect=[ctx1, RuntimeError("boom")]), \
+             patch.object(processor_module.os.path, "exists", return_value=False):
             with self.assertRaises(RuntimeError):
                 Processor(
                     job_dir="/tmp/job",
@@ -93,12 +96,12 @@ class TestProcessorLifecycle(unittest.TestCase):
             # Pretend the slide feature exists to avoid entering heavy extraction branch.
             return path.endswith("/slide.h5")
 
-        with patch("trident.Processor.os.path.isdir", return_value=True), \
-             patch("trident.Processor.os.listdir", return_value=["slide.h5"]), \
-             patch("trident.Processor.os.path.exists", side_effect=fake_exists), \
-             patch("trident.Processor.os.makedirs"), \
-             patch("trident.Processor.is_locked", return_value=False), \
-             patch("trident.Processor.update_log"):
+        with patch.object(processor_module.os.path, "isdir", return_value=True), \
+             patch.object(processor_module.os, "listdir", return_value=["slide.h5"]), \
+             patch.object(processor_module.os.path, "exists", side_effect=fake_exists), \
+             patch.object(processor_module.os, "makedirs"), \
+             patch.object(processor_module, "is_locked", return_value=False), \
+             patch.object(processor_module, "update_log"):
             processor.run_slide_feature_extraction_job(
                 coords_dir="20x_256px_0px_overlap",
                 slide_encoder=slide_encoder,
