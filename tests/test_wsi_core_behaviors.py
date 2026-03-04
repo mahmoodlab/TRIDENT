@@ -41,7 +41,7 @@ class TestWSIFactoryRouting(unittest.TestCase):
              patch.object(wsifactory, "SDPCWSI", return_value="sdpc_reader"):
             reader = wsifactory.load_wsi("/tmp/sample.ome.tif", reader_type=None)
             self.assertEqual(reader, "open_reader")
-            open_mock.assert_called_once_with(slide_path="/tmp/sample.ome.tif")
+            open_mock.assert_called_once_with(slide_path="/tmp/sample.ome.tif", lazy_init=False)
             image_mock.assert_not_called()
 
     def test_auto_reader_routes_ome_tiff_to_openslide(self):
@@ -50,8 +50,14 @@ class TestWSIFactoryRouting(unittest.TestCase):
              patch.object(wsifactory, "SDPCWSI", return_value="sdpc_reader"):
             reader = wsifactory.load_wsi("/tmp/sample.ome.tiff", reader_type=None)
             self.assertEqual(reader, "open_reader")
-            open_mock.assert_called_once_with(slide_path="/tmp/sample.ome.tiff")
+            open_mock.assert_called_once_with(slide_path="/tmp/sample.ome.tiff", lazy_init=False)
             image_mock.assert_not_called()
+
+    def test_explicit_lazy_init_true_is_forwarded(self):
+        with patch.object(wsifactory, "OpenSlideWSI", return_value="open_reader") as open_mock:
+            reader = wsifactory.load_wsi("/tmp/sample.svs", reader_type="openslide", lazy_init=True)
+            self.assertEqual(reader, "open_reader")
+            open_mock.assert_called_once_with(slide_path="/tmp/sample.svs", lazy_init=True)
 
 
 class TestWSIContextManager(unittest.TestCase):

@@ -163,6 +163,7 @@ class Processor:
                     mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
                     max_workers=self.max_workers,
                     reader_type=reader_type,
+                    lazy_init=True,
                 ))
                 self.wsis.append(slide)
         except Exception:

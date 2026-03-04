@@ -35,7 +35,9 @@ class WSI:
     custom_mpp_keys : dict
         Custom keys for extracting microns per pixel (MPP) and magnification metadata.
     lazy_init : bool
-        Indicates whether lazy initialization is used.
+        User preference indicating whether initialization should be deferred.
+    _initialized : bool
+        Internal runtime flag indicating whether the backend has been initialized.
     tissue_seg_path : str
         Path to a tissue segmentation mask (if available).
     width : int
@@ -104,16 +106,17 @@ class WSI:
         self.width, self.height = None, None  # Placeholder dimensions
         self.mpp = mpp  # Placeholder microns per pixel. Defaults will be None unless specified in constructor. 
         self.mag = None  # Placeholder magnification
-        self.lazy_init = lazy_init  # Initialize immediately if lazy_init is False
+        # Public configuration flag (do not mutate at runtime).
+        self.lazy_init = lazy_init
+        # Internal runtime state flag.
+        self._initialized = False
         self.max_workers = max_workers
 
         if not self.lazy_init:
             self._lazy_initialize()
-        else: 
-            self.lazy_init = not self.lazy_init
 
     def __repr__(self) -> str:
-        if self.lazy_init:
+        if self._initialized:
             return f"<width={self.width}, height={self.height}, backend={self.__class__.__name__}, mpp={self.mpp}, mag={self.mag}>"
         else:
             return f"<name={self.name}>"
@@ -149,7 +152,7 @@ class WSI:
         - `gdf_contours`: loaded from `tissue_seg_path` if available.
         """
 
-        if not self.lazy_init:
+        if not self._initialized:
             self.img = None
             self.dimensions = None
             self.width, self.height = None, None
@@ -988,4 +991,4 @@ class WSI:
         if hasattr(self, "gdf_contours"):
             self.gdf_contours = None
 
-        self.lazy_init = False # to avoid double initialization
+        self._initialized = False

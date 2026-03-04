@@ -76,7 +76,7 @@ class CuCIMWSI(WSI):
                 "  cupy: https://docs.cupy.dev/en/stable/install.html"
             ) from e
 
-        if not self.lazy_init:
+        if not self._initialized:
             try:
                 self.img = CuImage(self.slide_path)
                 self.dimensions = (self.img.size()[1], self.img.size()[0])  # width, height are reverted compared to openslide!!
@@ -88,7 +88,7 @@ class CuCIMWSI(WSI):
                 if self.mpp is None:
                     self.mpp = self._fetch_mpp(self.custom_mpp_keys)
                 self.mag = self._fetch_magnification(self.custom_mpp_keys)
-                self.lazy_init = True
+                self._initialized = True
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize WSI using CuCIM: {e}") from e
@@ -310,4 +310,4 @@ class CuCIMWSI(WSI):
         if self.img is not None:
             self.img.close()
             self.img = None
-            self.lazy_init = False
+            self._initialized = False

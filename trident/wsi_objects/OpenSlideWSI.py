@@ -62,7 +62,7 @@ class OpenSlideWSI(WSI):
 
         super()._lazy_initialize()
 
-        if not self.lazy_init:
+        if not self._initialized:
             try:
                 self.img = openslide.OpenSlide(self.slide_path)
                 # set openslide attrs as self
@@ -75,7 +75,7 @@ class OpenSlideWSI(WSI):
                 if self.mpp is None:
                     self.mpp = self._fetch_mpp(self.custom_mpp_keys)
                 self.mag = self._fetch_magnification(self.custom_mpp_keys)
-                self.lazy_init = True
+                self._initialized = True
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize WSI with OpenSlide: {e}") from e

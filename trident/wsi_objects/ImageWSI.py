@@ -79,7 +79,7 @@ class ImageWSI(WSI):
 
         super()._lazy_initialize()
 
-        if not self.lazy_init:
+        if not self._initialized:
             try:
                 self._ensure_image_open()
                 self.level_downsamples = [1]
@@ -89,7 +89,7 @@ class ImageWSI(WSI):
                 self.dimensions = self.img.size
                 self.level_dimensions = [(self.img.width, self.img.height)]
                 self.level_count = 1
-                self.lazy_init = True
+                self._initialized = True
 
             except Exception as e:
                 raise Exception(f"Error initializing WSI with PIL.Image: {e}")
@@ -209,3 +209,4 @@ class ImageWSI(WSI):
         if self.img is not None:
             self.img.close()
             self.img = None
+            self._initialized = False

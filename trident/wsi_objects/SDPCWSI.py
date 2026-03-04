@@ -65,7 +65,7 @@ class SDPCWSI(WSI):
         
         super()._lazy_initialize()
 
-        if not self.lazy_init:
+        if not self._initialized:
             try:
                 self.img = opensdpc.OpenSdpc(self.slide_path)
                 self.dimensions = self.get_dimensions()
@@ -77,7 +77,7 @@ class SDPCWSI(WSI):
                 if self.mpp is None:
                     self.mpp = self.img.readSdpc(self.slide_path).contents.picHead.contents.ruler
                 self.mag = self.img.scan_magnification
-                self.lazy_init = True
+                self._initialized = True
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize WSI with OpenSdpc: {e}") from e
