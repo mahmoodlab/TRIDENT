@@ -35,6 +35,17 @@ class TestOtsuSegmenter(unittest.TestCase):
         unique = set(np.unique(mask).tolist())
         self.assertTrue(unique.issubset({0, 1}))
 
+    def test_apply_otsu_thresholding_all_white_tile(self):
+        tile = np.full((128, 128, 3), 255, dtype=np.uint8)
+        mask = apply_otsu_thresholding(tile)
+        self.assertEqual(mask.shape, (128, 128))
+        self.assertTrue(np.all(mask == 1))
+
+    def test_apply_otsu_thresholding_invalid_shape_raises(self):
+        tile = np.full((128, 128), 255, dtype=np.uint8)  # grayscale instead of RGB
+        with self.assertRaises(Exception):
+            _ = apply_otsu_thresholding(tile)
+
     def test_factory_builds_otsu_segmenter(self):
         seg = segmentation_model_factory("otsu")
         self.assertIsInstance(seg, OtsuSegmenter)

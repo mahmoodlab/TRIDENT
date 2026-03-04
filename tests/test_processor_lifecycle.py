@@ -46,6 +46,15 @@ class TestProcessorLifecycle(unittest.TestCase):
         self.assertEqual(len(processor.wsis), 0)
         self.assertIsNone(processor._wsi_stack)
 
+    def test_release_is_idempotent(self):
+        processor = Processor.__new__(Processor)
+        processor.wsis = []
+        processor._wsi_stack = None
+        processor.release()
+        processor.release()
+        self.assertEqual(processor.wsis, [])
+        self.assertIsNone(processor._wsi_stack)
+
     def test_init_failure_closes_previously_entered_contexts(self):
         exit_calls = {"count": 0}
 

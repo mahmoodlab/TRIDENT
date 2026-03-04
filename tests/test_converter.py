@@ -60,6 +60,20 @@ class TestAnyToTiffConverter(unittest.TestCase):
             with self.assertRaises(ValueError):
                 converter.process_all(input_dir=tmpdir, mpp_csv=csv_path)
 
+    def test_process_all_rejects_missing_csv_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            converter = AnyToTiffConverter(job_dir=tmpdir)
+            with self.assertRaises(ValueError):
+                converter.process_all(input_dir=tmpdir, mpp_csv=f"{tmpdir}/does_not_exist.csv")
+
+    def test_process_all_raises_when_no_valid_tasks_from_csv(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            converter = AnyToTiffConverter(job_dir=tmpdir)
+            csv_path = f"{tmpdir}/to_process.csv"
+            pd.DataFrame({"wsi": ["missing_slide.svs"], "mpp": [0.25]}).to_csv(csv_path, index=False)
+            with self.assertRaises(ValueError):
+                converter.process_all(input_dir=tmpdir, mpp_csv=csv_path)
+
     def test_process_file_warns_when_embedded_mpp_differs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             converter = AnyToTiffConverter(job_dir=tmpdir)
