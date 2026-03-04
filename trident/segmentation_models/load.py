@@ -377,5 +377,8 @@ def segmentation_model_factory(
         return GrandQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'grandqc_artifact':
         return GrandQCArtifactSegmenter(freeze=freeze, **build_kwargs)
+    elif model_name == 'otsu':
+        from trident.segmentation_models.otsu import OtsuSegmenter
+        return OtsuSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     else:
         raise ValueError(f"Model type {model_name} not supported")

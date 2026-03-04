@@ -97,7 +97,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - `--wsi_dir ./wsis`: Path to dir with your WSIs.
    - `--job_dir ./trident_processed`: Output dir for processed results.
    - `--gpu 0`: Uses GPU with index 0.
-   - `--segmenter`: Segmentation model. Defaults to `hest`. Switch to `grandqc` for fast H&E segmentation. Add the option `--remove_artifacts` for additional artifact clean up.
+  - `--segmenter`: Segmentation model. Defaults to `hest`. Use `grandqc` for fast H&E segmentation or `otsu` for a classical image-processing-only fallback. Add the option `--remove_artifacts` for additional artifact clean up.
  - **Outputs**:
    - WSI thumbnails in `./trident_processed/thumbnails`.
    - WSI thumbnails with tissue contours in `./trident_processed/contours`.
@@ -218,7 +218,7 @@ main()
 
 - **Q**: I am not satisfied with the tissue vs background segmentation. What can I do?
    - **A**: Trident uses GeoJSON to store and load segmentations. This format is natively supported by [QuPath](https://qupath.github.io/). You can load the Trident segmentation into QuPath, modify it using QuPath's annotation tools, and save the updated segmentation back to GeoJSON.
-   - **A**: You can try another segmentation model by specifying `segmenter --grandqc`.
+   - **A**: You can try another segmentation model by specifying `--segmenter grandqc` or `--segmenter otsu`.
 
 - **Q**: I want to process a custom list of WSIs. Can I do it? Also, most of my WSIs don't have the micron per pixel (mpp) stored. Can I pass it?
    - **A**: Yes using the `--custom_list_of_wsis` argument. Provide a list of WSI names in a CSV (with slide extension, `wsi`). Optionally, provide the mpp (field `mpp`)

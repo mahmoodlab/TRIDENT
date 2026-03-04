@@ -77,6 +77,7 @@ Validate these before downstream modeling:
 If contours are not acceptable:
 
 - Try `--segmenter grandqc` for H&E workflows.
+- Try `--segmenter otsu` when you want a model-free, image-processing-only fallback.
 - Adjust `--seg_conf_thresh`.
 - Edit `contours_geojson` in QuPath and rerun downstream tasks.
 

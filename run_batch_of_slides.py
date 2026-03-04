@@ -68,8 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "Defaults to False (only top-level slides are included)."))
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
-                        choices=['hest', 'grandqc'], 
-                        help='Type of tissue vs background segmenter. Options are HEST or GrandQC.')
+                        choices=['hest', 'grandqc', 'otsu'],
+                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
                     help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
