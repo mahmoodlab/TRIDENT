@@ -28,6 +28,8 @@ shapely = "*"
 requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
+aicsimageio = "*"
+pyvips = "*"
 
 # Core model dependencies (installed with `pip install -e .`)
 transformers = "*"
@@ -47,6 +49,7 @@ conch = { git = "https://github.com/Mahmoodlab/CONCH.git", optional = true }
 musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
 gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
 madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
+pylibCZIrw = { version = "*", optional = true }
 
 [tool.poetry.extras]
 patch-encoders = [
@@ -61,6 +64,12 @@ slide-encoders = [
     "gigapath",
     "madeleine",
 ]
+converter = [
+    "pylibCZIrw",
+]
+convert = [
+    "pylibCZIrw",
+]
 full = [
     "environs",
     "sacremoses",
@@ -70,6 +79,7 @@ full = [
     "musk",
     "gigapath",
     "madeleine",
+    "pylibCZIrw",
 ]
 
 [tool.poetry.dev-dependencies]

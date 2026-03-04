@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes.util
 import importlib.util
 import json
 import os
@@ -139,6 +140,52 @@ def _check_chief_repo_root(repo_root: Path) -> CheckResult:
     )
 
 
+def _check_libvips_runtime() -> CheckResult:
+    """
+    Verify that pyvips can load system libvips.
+    """
+    try:
+        import pyvips
+    except Exception:
+        return CheckResult(
+            "FAIL",
+            "pyvips Python package",
+            "Module `pyvips` is missing.",
+            "Install with: pip install pyvips",
+        )
+
+    try:
+        # This call fails when libvips is not available at runtime.
+        _ = pyvips.version(0)
+        return CheckResult("PASS", "libvips runtime", "libvips is available to pyvips.")
+    except Exception:
+        hint = ctypes.util.find_library("vips")
+        extra = "" if hint else " (no `libvips` found on linker path)"
+        return CheckResult(
+            "FAIL",
+            "libvips runtime",
+            f"pyvips cannot load libvips{extra}.",
+            "Install system package: sudo apt-get update && sudo apt-get install -y libvips libvips-dev",
+        )
+
+
+def _check_openslide_runtime() -> CheckResult:
+    """
+    Verify that openslide-python can load system OpenSlide library.
+    """
+    try:
+        import openslide
+        _ = openslide.__version__
+        return CheckResult("PASS", "OpenSlide runtime", "OpenSlide library is available.")
+    except Exception:
+        return CheckResult(
+            "WARN",
+            "OpenSlide runtime",
+            "OpenSlide runtime is not available.",
+            "Install system package: sudo apt-get update && sudo apt-get install -y libopenslide0 libopenslide-dev",
+        )
+
+
 def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
     repo_root = Path(__file__).resolve().parents[1]
     results: List[CheckResult] = []
@@ -158,6 +205,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
             "Reinstall TRIDENT or restore the missing file.",
         )
     )
+    results.append(_check_openslide_runtime())
 
     patch_gated_repos = [
         ("CONCH v1", "MahmoodLab/conch", "model"),
@@ -236,6 +284,28 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         )
         if check_gated:
             results.extend(_check_hf_repo_access(name, repo, repo_type=repo_type) for name, repo, repo_type in slide_gated_repos)
+
+    if profile in {"convert", "full"}:
+        results.extend(
+            [
+                _check_module(
+                    "aicsimageio",
+                    "AICSImageIO dependency",
+                    "Install with: pip install aicsimageio",
+                ),
+                _check_libvips_runtime(),
+            ]
+        )
+        # Optional: only required for CZI inputs.
+        if not _has_module("pylibCZIrw"):
+            results.append(
+                CheckResult(
+                    "WARN",
+                    "CZI optional dependency",
+                    "Module `pylibCZIrw` is not installed (only needed for CZI conversion).",
+                    "Install with: pip install pylibCZIrw",
+                )
+            )
 
     return results
 
@@ -325,7 +395,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--profile",
-        choices=["base", "patch-encoders", "slide-encoders", "full"],
+        choices=["base", "patch-encoders", "slide-encoders", "convert", "full"],
         default="base",
         help="Dependency profile to validate.",
     )

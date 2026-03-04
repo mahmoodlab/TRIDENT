@@ -1,91 +1,215 @@
-## Quality Control
+# TRIDENT Details
 
-trident outputs a variety of files for quality control. It is recommended that you review these files after each step to ensure that the results are as expected.
+This document complements `README.md`.
 
-1. Segmentation contours are saved in the `./<job_dir>/contours` directory. These are thumbnails of the WSI with the tissue contours drawn in green.
+## Preflight checklist
 
-<img src="_readme/contours.jpg" alt="WSI thumbnail with the tissue contours drawn in green." height="150px">
+Run these checks before launching long jobs:
 
-2. Patch annotations are saved in the `./<job_dir>/<patch_dir>/visualization` directory. These are thumbnails of the WSI with the patch borders drawn in red.
+```bash
+trident-doctor --profile base
+trident-doctor --profile patch-encoders --check-gated
+trident-doctor --profile slide-encoders
+trident-doctor --profile convert
+```
 
-<img src="_readme/viz.jpg" alt="Patches drawn on top of the original WSI." height="150px">
+Use `--profile full --check-gated` only when you need one consolidated report.
 
-## Custom Pipelines
+Interpretation:
 
-Trident provides two simple `encoder_factory` functions for loading many patch and slide encoders through a unified API. You can import `encoder_factory` and load pretrained foundation model encoders into your own pipeline for inference or finetuning.
+- `FAIL`: missing required dependency or config. Fix before running.
+- `WARN`: optional dependency missing, gated access missing, or partial environment risk.
+- `PASS`: check succeeded.
 
-### Patch Encoders
+## Input conventions
+
+### WSI batch inputs (`run_batch_of_slides.py`)
+
+- `--wsi_dir` expects a directory of slide files.
+- By default, only top-level files are scanned.
+- Add `--search_nested` to recursively scan subdirectories.
+- Use `--custom_list_of_wsis <csv>` to process a curated subset.
+
+`--custom_list_of_wsis` CSV format:
+
+- Required column: `wsi` (filename with extension).
+- Optional column: `mpp` (numeric microns-per-pixel).
+
+### Converter inputs (`trident convert`)
+
+- `--input_dir` points to files that may be converted.
+- `--mpp_csv` is required and must include `wsi,mpp`.
+- `wsi` is resolved relative to `--input_dir`.
+- `mpp` must be numeric for each row you want converted.
+
+Example:
+
+```csv
+wsi,mpp
+case_001.czi,0.25
+case_002.svs,0.50
+```
+
+## Output structure and artifacts
+
+Given `--job_dir ./trident_processed`, common artifacts are:
+
+- `thumbnails`: WSI thumbnails.
+- `contours`: thumbnails with tissue contours.
+- `contours_geojson`: editable contours for QuPath workflows.
+- `<mag>x_<patch_size>px/patches`: patch coordinates.
+- `<mag>x_<patch_size>px/visualization`: patch overlays for QC.
+- `<mag>x_<patch_size>px/features_<patch_encoder>`: patch embeddings.
+- `<mag>x_<patch_size>px/slide_features_<slide_encoder>`: slide embeddings.
+
+For conversion runs, output TIFF files are written to the `--job_dir` given to `trident convert`.
+
+## Quality control checklist
+
+Validate these before downstream modeling:
+
+- Segmentation contours align with tissue foreground.
+- Artifact-heavy regions are removed when expected (`--remove_artifacts`, `--remove_penmarks`).
+- Patch overlays cover tissue at intended density.
+- Magnification and patch size match encoder requirements.
+- Feature files exist for all expected slides.
+
+If contours are not acceptable:
+
+- Try `--segmenter grandqc` for H&E workflows.
+- Adjust `--seg_conf_thresh`.
+- Edit `contours_geojson` in QuPath and rerun downstream tasks.
+
+## Performance and scaling patterns
+
+### Multiprocessing with lock-based coordination
+
+TRIDENT supports running multiple instances of the same task in parallel. Instances avoid duplicate work by using slide lockfiles.
+
+Recommended pattern:
+
+1. Start one task instance.
+2. Start additional instances with identical arguments.
+3. Monitor CPU, RAM, and storage throughput.
+
+Notes:
+
+- More workers are not always faster; I/O often becomes the bottleneck.
+- It is safer to scale gradually (1 -> 2 -> 3 processes).
+
+### Cache-assisted throughput
+
+If raw slides are on slower storage, cache-first workflows can reduce end-to-end time for heavy feature extraction.
+
+Pattern:
+
+1. Run segmentation/coords normally.
+2. Set `--wsi_cache` to a fast local path for runs that read many patches.
+3. Launch feature extraction with the same cache path so repeated reads use local storage.
+
+Safety note:
+
+- Only enable cache clearing if you are sure `--wsi_cache` does not point to raw source data.
+
+## Converter deep dive
+
+### What conversion does
+
+`trident convert` wraps `AnyToTiffConverter` and writes pyramidal `.tiff` outputs.
+
+Core arguments:
+
+- `--input_dir`: directory with source images/WSIs.
+- `--mpp_csv`: CSV with `wsi,mpp` rows.
+- `--job_dir`: output directory for converted TIFF files.
+- `--downscale_by`: integer >= 1.
+- `--num_workers`: `1` sequential, `0` all CPU cores.
+- `--bigtiff`: enable BigTIFF output.
+
+Examples:
+
+```bash
+trident convert --input_dir ./wsis --mpp_csv ./to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
+trident convert --input_dir ./wsis --mpp_csv ./to_process.csv --job_dir ./pyramidal_tiff --downscale_by 2 --num_workers 0 --bigtiff
+```
+
+Behavior details:
+
+- Only files listed in `mpp_csv` are attempted.
+- Unsupported extensions are skipped.
+- Missing files are skipped and reported.
+- Embedded MPP may be detected and compared against CSV MPP; CSV value is used for writing output resolution metadata.
+
+### Converter dependencies
+
+Install:
+
+```bash
+pip install -e ".[convert]"
+```
+
+System libraries typically required on Linux:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libvips libvips-dev libopenslide0 libopenslide-dev
+```
+
+Common optional/format-specific packages:
+
+- `aicsimageio` for BioFormats-backed reads.
+- `pylibCZIrw` for CZI reads.
+
+### Converter troubleshooting
+
+`ModuleNotFoundError: pyvips`
+
+- Install `pyvips` and system `libvips`.
+
+`cannot load library 'libvips.so'`
+
+- Install `libvips` system packages and re-open shell/session.
+
+`pylibCZIrw is required for CZI files`
+
+- Install `pylibCZIrw`.
+
+`MPP CSV must contain columns ['mpp', 'wsi']`
+
+- Fix headers to exactly `wsi,mpp`.
+
+`No valid conversion tasks found from CSV entries`
+
+- Ensure filenames exist under `--input_dir`.
+- Ensure listed extensions are supported.
+- Ensure `mpp` values are numeric and non-empty.
+
+## Using encoders in custom Python pipelines
+
+### Patch encoders
+
 ```python
 from trident.patch_encoder_models.load import encoder_factory
-encoder = encoder_factory("uni_v1") # Or any other encoder name
-# Attributes:
-print(encoder.enc_name)         # Model name 
-print(encoder.eval_transforms)  # PyTorch transforms to process the input image
-print(encoder.precision)        # Recommended precision to run the model
+
+encoder = encoder_factory("uni_v1")
+print(encoder.enc_name)
+print(encoder.eval_transforms)
+print(encoder.precision)
 ```
 
-### Slide Encoders
+### Slide encoders
+
 ```python
 from trident.slide_encoder_models.load import encoder_factory
-encoder = encoder_factory("titan") # Or any other encoder name
-# Attributes:
-print(encoder.enc_name)         # Model name
-print(encoder.precision)        # Recommended precision to run the model
+
+encoder = encoder_factory("titan")
+print(encoder.enc_name)
+print(encoder.precision)
 ```
 
-Some encoders take optional keyword arguments. For example, the `conch_v1` encoder can be run with or without the projection head. These keyword arguments can be passed directly to encoder_factory:
+Some encoders accept kwargs:
 
 ```python
 encoder = encoder_factory("conch_v1", with_proj=True)
 ```
 
-## Need for Speed
-Trident offers two optional ways to meet those conference deadlines on short notice: caching and multiprocessing.
-
-### Caching
-If your WSIs are on a cloud directory, it may be beneficial to copy them to a local directory before feature extraction. This is because the time it takes to read a WSI from a remote location is often longer than the time it takes to process the WSI locally. To do this, you can specify a path for `wsi_cache` when initializing Trident (see `run_trident.py`). If you do not specify `wsi_cache`, Trident will process the WSIs directly from `wsi_source_dir`. Caching is only recommended if you plan to do feature extraction; otherwise, the benefit of caching is typically outweighed by the I/O cost of copying the WSIs.
-
-Here is an example workflow using caching:
-1. Run segmentation and patching normally, without caching.
-2. We will use the cache for feature extraction. To copy WSIs to the cache, run this command:
-```bash
-python run_batch_of_slides.py --task cache --job_dir ./trident_processed --wsi_dir wsis --wsi_cache cache_dir
-```
-3. While the WSIs are being transferred, you can start a feature extraction job in a separate terminal window, pointing to the same `wsi_cache` directory. For example:
-```bash
-python run_batch_of_slides.py --task feat --wsi_dir wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256 --wsi_cache cache_dir
-```
-This instance will automatically use the cached WSIs if they are available, or skip to the next WSI if they are not.
-
-If you are running low on storage, you can set `clear_cache` to `True` in the feature extraction job. This will delete the cached WSIs as they are processed. Note that this assumes the caching job can run faster than the feature extraction job. Otherwise, the feature extraction job will skip slides because the caching job has not yet finished transferring them. If you find this is happening, you can rerun the feature extraction job once the caching job has finished.
-
-> [!WARNING]
-> Be careful when setting `clear_cache` to `True`. Make sure `wsi_cache` is set to the correct directory. Otherwise, you may accidentally delete your original copy of the raw WSIs.
-
-### Multiprocessing
-Trident supports flexible multiprocessing, so you can run many instances of caching, segmentation, patching, or feature extraction in parallel and they will automatically avoid conflicts by "leapfrogging" each other. Before processing a slide, Trident creates a lockfile of the form `{slide_name}.lock`. If another Trident instance tries to process the same slide, it will see the lock and skip to the next slide.
-
-Here is an example workflow using multiprocessing:
-1. Open a terminal window (it is highly recommended you use [tmux](https://github.com/tmux/tmux/wiki) so that processes continue running even if your computer sleeps) and start a segmentation job:
-```bash
-python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpu 0
-```
-2. Open another terminal window (or another tmux pane) and run the exact same command.
-3. Repeat Step 2 one or more times to spawn additional processes depending on how powerful your computer is. Be careful not to overload your machine, see Tips below:
-
-#### Tips:
-- Running multiple instances in parallel does not necessarily speed up processing, because of CPU or I/O bottlenecks. For example, on my machine I find that running more than 3 feature extraction instances in parallel causes things to lock up. Running multiple instances of the same task is probably only helpful if your bottleneck is the GPU. Keep track of your CPU load using `htop`.
-- If you are concurrently running two consecutive tasks (e.g., patching and feature extraction), make sure that the upstream task is faster than the downstream task. Otherwise, the downstream task will end up skipping slides because the upstream task has not yet finished processing them. In case this happens, just rerun the downstream task once the upstream task has finished.
-
-## Under the Hood
-
-### Segmentation
-Segmentation is performed by a deep learning model. 2 options: HEST segmenter, a [DeepLabV3 model](https://arxiv.org/abs/1706.05587v3) finetuned specifically to segment tissue from background in WSIs (`--segmenter hest`), or GrandQC segmenter, published in [Nat. Comm](https://www.nature.com/articles/s41467-024-54769-y) which can be used with `--segmenter grandqc`. 
-
-### Patching
-Trident's patching module is deterministic and extracts a set of patch coordinates given a tissue mask. Patches are extracted at a particular size (`patch_size`) and particular magnification (`mag`). Trident will attempt to read the base resolution of the WSI and calculate the appropriate downsample factor to extract patches at the desired magnification. Patches can either be nonoverlapping (`overlap == 0`) or overlapping (`overlap > 0`), where `overlap` refers to the absolute overlap in pixels. Trident keeps all patches that contain at least one pixel of tissue.
-
-### Feature Extraction
-Given a set of WSIs and patch coordinates, Trident's feature extraction module extracts features from the patches using a pretrained image encoder and associated transforms. Internally, Trident extracts patches from each WSI in batches and applies the provided transformations to them, then feeds them through the image encoder. The resulting patch features (shape (`num_patches`, `feature_dim`)) can be saved as h5 or pt files.
-
-The `batch_size` parameter can be used to limit the number of patches processed in parallel. It is recommended to set `batch_size` as high as possible without running out of VRAM. The provided image encoder has only the following requirements: (1) must subclass `nn.Module`, (2) must have a `forward` method which takes a tensor of shape (b c h w) and returns a tensor of shape (b f). The image encoder must also have a `transforms` attribute, which should resize the image to the size expected by the image encoder and apply any other necessary transformations (including normalization and conversion to tensor). 

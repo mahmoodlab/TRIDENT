@@ -50,6 +50,7 @@ class AnyToTiffConverter:
         """
         self.job_dir = job_dir
         self.bigtiff = bigtiff
+        self.detected_mpp = {}
         os.makedirs(job_dir, exist_ok=True)
 
     def process_file(self, input_file: str, mpp: float, zoom: float) -> None:
@@ -62,6 +63,16 @@ class AnyToTiffConverter:
             zoom (float): Zoom factor for image resizing, e.g., 0.5 is reducing the image by a factor.
         """
         try:
+            embedded_mpp = self._detect_embedded_mpp(input_file)
+            if embedded_mpp is not None:
+                self.detected_mpp[input_file] = embedded_mpp
+                if abs(embedded_mpp - mpp) > 1e-3:
+                    print(
+                        f"[Converter] MPP mismatch for {os.path.basename(input_file)}: "
+                        f"CSV mpp={mpp:.6f}, embedded mpp={embedded_mpp:.6f}. "
+                        "Using CSV value."
+                    )
+
             img_name = splitext(os.path.basename(input_file))[0]
             output_mpp = mpp * (1 / zoom)
             save_path = os.path.join(self.job_dir, f"{img_name}.tiff")
@@ -75,6 +86,51 @@ class AnyToTiffConverter:
             self._save_tiff(img, img_name, output_mpp)
         except Exception as e:
             print(f"Error processing {input_file}: {e}")
+
+    def _detect_embedded_mpp(self, file_path: str):
+        """Try to detect embedded MPP metadata using converter-native readers only."""
+        if file_path in self.detected_mpp:
+            return self.detected_mpp[file_path]
+
+        mpp = self._detect_embedded_mpp_pyvips(file_path)
+        if mpp is not None:
+            return mpp
+        return self._detect_embedded_mpp_aicsimageio(file_path)
+
+    def _detect_embedded_mpp_pyvips(self, file_path: str):
+        try:
+            import pyvips
+        except Exception:
+            return None
+
+        try:
+            img = pyvips.Image.new_from_file(file_path, access="sequential")
+            if img.get_typeof("xres") == 0:
+                return None
+            xres = float(img.get("xres"))
+            if xres <= 0:
+                return None
+            # pyvips uses pixels/mm for xres.
+            return 1000.0 / xres
+        except Exception:
+            return None
+
+    def _detect_embedded_mpp_aicsimageio(self, file_path: str):
+        if not file_path.lower().endswith(tuple(BIOFORMAT_EXTENSIONS)):
+            return None
+        try:
+            from aicsimageio import AICSImage
+        except Exception:
+            return None
+
+        try:
+            img = AICSImage(file_path)
+            px_sizes = img.physical_pixel_sizes
+            if px_sizes and px_sizes.X is not None:
+                return float(px_sizes.X)
+        except Exception:
+            return None
+        return None
 
     def _try_pyvips_convert(self, input_file: str, save_path: str, zoom: float, mpp: float) -> bool:
         """
@@ -123,13 +179,30 @@ class AnyToTiffConverter:
                 return czidoc.read(zoom=zoom)
         if file_path.lower().endswith(tuple(BIOFORMAT_EXTENSIONS)):
             try:
-                from valis_hest.slide_io import BioFormatsSlideReader
+                from aicsimageio import AICSImage
             except ImportError:
-                raise ImportError("Install valis_hest with `pip install valis_hest` and JVM with `sudo apt-get install maven`.")
-            reader = BioFormatsSlideReader(file_path) 
-            reader.create_metadata()
-            img = reader.slide2image(level=int(1/zoom)-1)  # @TODO: Assumes each level 2x small than the higher one.
-            return img
+                raise ImportError("Install aicsimageio with `pip install aicsimageio` to read this format.")
+
+            img_obj = AICSImage(file_path)
+            # Extract first timepoint and first z-plane with channel-aware handling.
+            czyx = img_obj.get_image_data("CZYX", T=0)
+            if czyx.ndim != 4:
+                raise ValueError(f"Unexpected image shape from AICSImage: {czyx.shape}")
+            first_z = czyx[:, 0, :, :]  # (C, Y, X)
+            if first_z.shape[0] == 1:
+                data = first_z[0]
+            else:
+                data = np.transpose(first_z[:3], (1, 2, 0))  # (Y, X, 3)
+            if zoom != 1:
+                pil_img = Image.fromarray(data)
+                new_size = (int(pil_img.width * zoom), int(pil_img.height * zoom))
+                pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+                data = np.array(pil_img)
+
+            px_sizes = img_obj.physical_pixel_sizes
+            if px_sizes and px_sizes.X is not None:
+                self.detected_mpp[file_path] = float(px_sizes.X)
+            return data
         else:
             with Image.open(file_path) as img:
                 new_size = (int(img.width * zoom), int(img.height * zoom))
@@ -150,7 +223,10 @@ class AnyToTiffConverter:
         filename = os.path.basename(input_file)
         mpp_row = mpp_data.loc[mpp_data['wsi'] == filename, 'mpp']
         if mpp_row.empty:
-            raise ValueError(f"No MPP found for {filename} in CSV.")
+            raise ValueError(
+                f"No MPP found for {filename} in CSV. "
+                "MPP must be provided in the CSV file with columns `wsi,mpp`."
+            )
         return float(mpp_row.values[0])
 
     def _save_tiff(self, img: np.ndarray, img_name: str, mpp: float) -> None:
@@ -199,14 +275,46 @@ class AnyToTiffConverter:
             raise ValueError(f"downscale_by must be >= 1, got {downscale_by}.")
         if num_workers < 0:
             raise ValueError(f"num_workers must be >= 0, got {num_workers}.")
+        if not os.path.isfile(mpp_csv):
+            raise ValueError(
+                f"MPP CSV not found: {mpp_csv}. "
+                "Provide a CSV with columns `wsi,mpp`."
+            )
 
-        files = [f for f in os.listdir(input_dir) if f.lower().endswith(tuple(SUPPORTED_EXTENSIONS))]
         mpp_df = pd.read_csv(mpp_csv)
+        required_cols = {"wsi", "mpp"}
+        missing_cols = required_cols - set(mpp_df.columns)
+        if missing_cols:
+            raise ValueError(
+                f"MPP CSV must contain columns {sorted(required_cols)}. "
+                f"Missing: {sorted(missing_cols)}"
+            )
+        if mpp_df.empty:
+            raise ValueError("MPP CSV is empty. Provide at least one row with columns `wsi,mpp`.")
+
+        mpp_df = mpp_df.dropna(subset=["wsi", "mpp"]).copy()
+        mpp_df["wsi"] = mpp_df["wsi"].astype(str)
+
         tasks = []
-        for filename in files:
+        skipped_missing = []
+        skipped_unsupported = []
+        for filename in mpp_df["wsi"].tolist():
             img_path = os.path.join(input_dir, filename)
+            if not os.path.exists(img_path):
+                skipped_missing.append(filename)
+                continue
+            if not filename.lower().endswith(tuple(SUPPORTED_EXTENSIONS)):
+                skipped_unsupported.append(filename)
+                continue
             mpp = self._get_mpp(mpp_df, img_path)
             tasks.append((self.job_dir, self.bigtiff, img_path, mpp, 1 / downscale_by))
+
+        if skipped_missing:
+            print(f"[Converter] Skipping {len(skipped_missing)} files not found in input_dir.")
+        if skipped_unsupported:
+            print(f"[Converter] Skipping {len(skipped_unsupported)} files with unsupported extension.")
+        if not tasks:
+            raise ValueError("No valid conversion tasks found from CSV entries.")
 
         if num_workers == 0:
             num_workers = mp.cpu_count()
@@ -219,12 +327,7 @@ class AnyToTiffConverter:
                 for _ in tqdm(pool.imap_unordered(_process_file_worker, tasks), total=len(tasks), desc="Processing images"):
                     pass
 
-        #clean up 
-        try:
-            from valis_hest import slide_io
-            slide_io.kill_jvm() 
-        except:
-            pass
+        # No JVM cleanup required after removing valis_hest from converter path.
 
 
 if __name__ == "__main__":

@@ -36,12 +36,14 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 Optional install profiles:
 - `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
 - `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
+- `pip install -e ".[convert]"` for slide conversion dependencies.
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
 
 Run checks before launching jobs:
 - `trident-doctor --profile base`
 - `trident-doctor --profile patch-encoders --check-gated`
 - `trident-doctor --profile slide-encoders`
+- `trident-doctor --profile convert`
 - `trident-doctor --profile full --check-gated`
 
 > [!NOTE]
@@ -81,6 +83,8 @@ Convert images/WSIs to pyramidal TIFF:
 ```
 trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
 ```
+`--mpp_csv` is required and must contain `wsi,mpp` columns. Only files listed in the CSV are converted.
+If embedded MPP metadata is detected in a slide, Trident compares it to the CSV value and logs mismatches.
 
 **Or follow step-by-step instructions:**
 
@@ -220,7 +224,7 @@ main()
    - **A**: Yes using the `--custom_list_of_wsis` argument. Provide a list of WSI names in a CSV (with slide extension, `wsi`). Optionally, provide the mpp (field `mpp`)
  
  - **Q**: Do I need to install any additional packages to use Trident?
-   - **A**: `pip install -e .` installs core dependencies. Some optional encoders still require extra installs. Use profiles (`.[patch-encoders]`, `.[slide-encoders]`, or `.[full]`) and run `trident-doctor` for preflight checks.
+   - **A**: `pip install -e .` installs core dependencies. Some optional components still require extra installs. Use profiles (`.[patch-encoders]`, `.[slide-encoders]`, `.[convert]`, or `.[full]`) and run `trident-doctor` for preflight checks.
 
 ## License and Terms of Use
 

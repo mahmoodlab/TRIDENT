@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
+import pandas as pd
 
 import numpy as np
 
@@ -50,6 +51,24 @@ class TestAnyToTiffConverter(unittest.TestCase):
         converter = AnyToTiffConverter(job_dir=".")
         with self.assertRaises(ValueError):
             converter.process_all(input_dir=".", mpp_csv="dummy.csv", num_workers=-1)
+
+    def test_process_all_requires_wsi_and_mpp_columns(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            converter = AnyToTiffConverter(job_dir=tmpdir)
+            csv_path = f"{tmpdir}/bad.csv"
+            pd.DataFrame({"wsi": ["a.svs"]}).to_csv(csv_path, index=False)
+            with self.assertRaises(ValueError):
+                converter.process_all(input_dir=tmpdir, mpp_csv=csv_path)
+
+    def test_process_file_warns_when_embedded_mpp_differs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            converter = AnyToTiffConverter(job_dir=tmpdir)
+            with patch.object(converter, "_detect_embedded_mpp", return_value=0.5), \
+                 patch.object(converter, "_try_pyvips_convert", return_value=True), \
+                 patch("builtins.print") as print_mock:
+                converter.process_file("slide.svs", mpp=0.25, zoom=1.0)
+            calls = [str(c) for c in print_mock.call_args_list]
+            self.assertTrue(any("MPP mismatch" in c for c in calls))
 
 
 if __name__ == "__main__":
