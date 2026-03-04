@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trident"
-version = "0.2.3"
+version = "0.2.4"
 description = "A package for preprocessing whole-slide images."
 authors = [
     "Guillaume Jaume <gjaume@bwh.harvard.edu>",
@@ -33,7 +33,7 @@ aicsimageio = "*"
 pyvips = "*"
 
 # Core model dependencies (installed with `pip install -e .`)
-transformers = "*"
+transformers = ">=4.40,<5"
 timm = "0.9.16"
 einops = "*"
 einops_exts = "*"
