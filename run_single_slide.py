@@ -57,6 +57,7 @@ def process_slide(args):
     # Initialize the WSI
     print(f"Processing slide: {args.slide_path}")
     with load_wsi(slide_path=args.slide_path, lazy_init=False, custom_mpp_keys=args.custom_mpp_keys) as slide:
+        seg_device = "cpu" if args.segmenter == "otsu" else f"cuda:{args.gpu}"
         # Step 1: Tissue Segmentation
         print("Running tissue segmentation...")
         segmentation_model = segmentation_model_factory(
@@ -75,7 +76,7 @@ def process_slide(args):
             segmentation_model=segmentation_model,
             target_mag=segmentation_model.target_mag,
             job_dir=args.job_dir,
-            device=f"cuda:{args.gpu}",
+            device=seg_device,
             holes_are_tissue=not args.remove_holes
         )
         # additionally remove artifacts for better segmentation.

@@ -183,6 +183,8 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
     if args.task == 'seg':
         from trident.segmentation_models.load import segmentation_model_factory
 
+        seg_device = "cpu" if args.segmenter == "otsu" else f"cuda:{args.gpu}"
+
         # instantiate segmentation model and artifact remover if requested by user
         segmentation_model = segmentation_model_factory(
             args.segmenter,
@@ -203,7 +205,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             holes_are_tissue= not args.remove_holes,
             artifact_remover_model=artifact_remover_model,
             batch_size=args.seg_batch_size if args.seg_batch_size is not None else args.batch_size,
-            device=f'cuda:{args.gpu}',
+            device=seg_device,
         )
     elif args.task == 'coords':
         processor.run_patching_job(
