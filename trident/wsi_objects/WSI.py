@@ -328,7 +328,7 @@ class WSI:
             batch_size=batch_size, 
             collate_fn=collate_fn,
             num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
-            pin_memory=True
+            pin_memory=False
         )
 
         mpp_reduction_factor = self.mpp / destination_mpp

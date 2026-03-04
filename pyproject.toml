@@ -11,7 +11,7 @@ license = "CC BY-NC-ND 4.0"
 repository = "https://github.com/mahmoodlab/TRIDENT"
 
 [tool.poetry.dependencies]
-python = "^3.10"  # Specify the Python version compatibility.
+python = ">=3.10,<3.12"  # Support Python 3.10 and 3.11.
 ipywidgets = "*"
 torch = "*"
 torchvision = "*"

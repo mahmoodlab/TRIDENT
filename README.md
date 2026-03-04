@@ -28,7 +28,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models.
 
 ### 🔨 1. **Installation**:
-- Create an environment: `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
+- Create an environment (Python 3.10 or 3.11): `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
 - Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
 - Local installation: `pip install -e .`.
   - This installs the shared model stack (`transformers`, `timm`, `safetensors`, etc.).
