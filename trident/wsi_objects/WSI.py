@@ -832,6 +832,38 @@ class WSI:
 
 
         dataset = WSIPatcherDataset(patcher, patch_transforms)
+        if len(dataset) == 0:
+            warnings.warn(
+                f"No patch coordinates available for slide '{self.name}'. Saving empty features."
+            )
+            coords_attrs = coords_attrs if 'coords_attrs' in locals() else {}
+            coords = np.empty((0, 2), dtype=np.int64)
+            embedding_dim = getattr(patch_encoder, "embedding_dim", None)
+            if embedding_dim is None:
+                features = np.empty((0,), dtype=np.float32)
+            else:
+                features = np.empty((0, int(embedding_dim)), dtype=np.float32)
+            os.makedirs(save_features, exist_ok=True)
+            if saveas == 'h5':
+                model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
+                save_h5(
+                    os.path.join(save_features, f'{self.name}.{saveas}'),
+                    assets={
+                        'features': features,
+                        'coords': coords,
+                    },
+                    attributes={
+                        'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
+                        'coords': coords_attrs,
+                    },
+                    mode='w'
+                )
+            elif saveas == 'pt':
+                torch.save(features, os.path.join(save_features, f'{self.name}.{saveas}'))
+            else:
+                raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
+            return os.path.join(save_features, f'{self.name}.{saveas}')
+
         dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
 
         dataloader = tqdm(dataloader) if verbose else dataloader
@@ -934,6 +966,26 @@ class WSI:
             coords = f['coords'][:]
             patch_features = f['features'][:]
             coords_attrs = dict(f['coords'].attrs)
+
+        if patch_features.size == 0 or (patch_features.ndim > 0 and patch_features.shape[0] == 0):
+            warnings.warn(
+                f"No patch features available for slide '{self.name}'. Saving empty slide features."
+            )
+            os.makedirs(save_features, exist_ok=True)
+            save_path = os.path.join(save_features, f'{self.name}.h5')
+            save_h5(
+                save_path,
+                assets={
+                    'features': np.empty((0,), dtype=np.float32),
+                    'coords': np.asarray(coords),
+                },
+                attributes={
+                    'features': {'name': self.name, 'savetodir': save_features},
+                    'coords': coords_attrs,
+                },
+                mode='w'
+            )
+            return save_path
 
         # Convert slide_features to tensor
         patch_features = torch.from_numpy(patch_features).float().to(device)

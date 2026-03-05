@@ -551,8 +551,18 @@ def coords_to_h5(
     overlap
 ):
     """ Save tissue coordinates to .h5 """
+    coords_array = np.asarray(coords, dtype=np.int64)
+    if coords_array.size == 0:
+        coords_array = coords_array.reshape(0, 2)
+    elif coords_array.ndim == 1 and coords_array.shape[0] == 2:
+        coords_array = coords_array.reshape(1, 2)
+    elif coords_array.ndim != 2 or coords_array.shape[1] != 2:
+        raise ValueError(
+            f"coords must have shape (N, 2). Got shape {coords_array.shape}."
+        )
+
     # Prepare assets for saving
-    assets = {'coords' : np.array(coords)}
+    assets = {'coords' : coords_array}
     attributes = {
         'patch_size': patch_size, # Reference frame: patch_level
         'patch_size_level0': patch_size * src_mag // target_mag, # Reference frame: level0

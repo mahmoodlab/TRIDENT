@@ -1,9 +1,13 @@
 import unittest
 from unittest.mock import patch
+import tempfile
+import os
+import numpy as np
 
-from trident.IO import splitext
+from trident.IO import splitext, coords_to_h5, read_coords
 import trident.wsi_objects.WSIFactory as wsifactory
 from trident.wsi_objects.WSI import WSI
+from trident.wsi_objects.WSIPatcher import WSIPatcher
 
 
 class DummyWSI(WSI):
@@ -74,6 +78,54 @@ class TestWSIContextManager(unittest.TestCase):
             with wsi:
                 raise RuntimeError("boom")
         self.assertTrue(wsi.released)
+
+
+class DummyPatcherWSI:
+    def __init__(self):
+        self.level_downsamples = [1]
+        self.width = 512
+        self.height = 512
+
+    def get_dimensions(self):
+        return self.width, self.height
+
+    def get_best_level_and_custom_downsample(self, downsample, tolerance=0.1):
+        return 0, 1.0
+
+    def read_region(self, location, level, size, read_as='numpy'):
+        return np.zeros((size[1], size[0], 3), dtype=np.uint8)
+
+
+class TestEmptyCoordsBehavior(unittest.TestCase):
+    def test_coords_to_h5_persists_empty_coords_as_nx2(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = os.path.join(tmpdir, "coords.h5")
+            coords_to_h5(
+                coords=[],
+                save_path=out_path,
+                patch_size=256,
+                src_mag=20,
+                target_mag=20,
+                save_coords=tmpdir,
+                width=1000,
+                height=1000,
+                name="dummy",
+                overlap=0,
+            )
+            _, coords = read_coords(out_path)
+            self.assertEqual(coords.shape, (0, 2))
+
+    def test_patcher_accepts_empty_custom_coords(self):
+        patcher = WSIPatcher(
+            wsi=DummyPatcherWSI(),
+            patch_size=256,
+            src_mag=20,
+            dst_mag=1,
+            custom_coords=np.empty((0, 2), dtype=np.int64),
+            coords_only=True,
+        )
+        self.assertEqual(len(patcher), 0)
+        self.assertEqual(patcher.valid_coords.shape, (0, 2))
 
 
 if __name__ == "__main__":
