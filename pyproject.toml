@@ -3,7 +3,7 @@ name = "trident"
 version = "0.2.4"
 description = "A package for preprocessing whole-slide images."
 authors = [
-    "Guillaume Jaume <gjaume@bwh.harvard.edu>",
+    "Guillaume Jaume <guillaume.jaume@unil.ch>",
     "Andrew Zhang <andrewzh@mit.edu>",
     "Paul Doucet <homedoucetpaul@gmail.com>"
 ]

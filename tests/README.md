@@ -1,0 +1,54 @@
+# Tests
+
+This folder contains two test tiers:
+
+- **Fast unit tests**: deterministic, no network, no large model downloads.
+- **Heavy integration tests**: real data/model paths, optional network/GPU, slower.
+
+## 1) Default (fast) test run
+
+Runs only fast unit tests by default.
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+## 2) Run heavy integration tests
+
+Enable with:
+
+```bash
+TRIDENT_RUN_INTEGRATION_TESTS=1 python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### Requirements for integration tests
+
+- `huggingface_hub` installed.
+- Internet access to download test assets/models.
+- Optional dependencies depending on the test module:
+  - `cv2` / `opencv-python`
+  - `matplotlib`
+  - `geopandas`
+  - `shapely`
+
+If these are missing, relevant heavy tests are skipped.
+
+## 3) Run GPU-only integration tests
+
+Some integration tests require CUDA and are additionally gated.
+
+```bash
+TRIDENT_RUN_INTEGRATION_TESTS=1 TRIDENT_RUN_GPU_TESTS=1 python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### Requirements for GPU tests
+
+- CUDA-capable GPU.
+- PyTorch with CUDA support.
+- GPU memory sufficient for selected models.
+
+## Notes
+
+- Heavy tests are intentionally skipped in normal local/CI quick runs.
+- Skip messages in unittest output tell you which flag/dependency is missing.
+- Keep fast tests green first; run heavy tests before releases or major model/pipeline changes.

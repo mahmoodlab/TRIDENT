@@ -3,11 +3,16 @@ import torch
 
 import sys; sys.path.append('../')
 from trident.slide_encoder_models import *
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
 """
 Test the forward pass of the slide encoders.
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 to run heavy integration tests.",
+)
 class TestSlideEncoders(unittest.TestCase):
 
     def setUp(self):
@@ -20,7 +25,12 @@ class TestSlideEncoders(unittest.TestCase):
         self.assertEqual(encoder.precision, expected_precision)
         self.assertTrue(hasattr(encoder, 'model'))
 
-        with torch.inference_mode(), torch.amp.autocast('cuda', dtype=encoder.precision):
+        device_type = "cuda" if self.device.type == "cuda" else "cpu"
+        with torch.inference_mode(), torch.amp.autocast(
+            device_type=device_type,
+            dtype=encoder.precision,
+            enabled=(self.device.type == "cuda"),
+        ):
             output = encoder.forward(batch, device=self.device)
 
         self.assertIsNotNone(output)

@@ -162,6 +162,7 @@ class WSI:
             self.properties = None
             self.mag = None
             if self.tissue_seg_path is not None:
+                import geopandas as gpd
                 try:
                     self.gdf_contours = gpd.read_file(self.tissue_seg_path)
                 except FileNotFoundError:

@@ -9,11 +9,16 @@ except:
 
 import sys; sys.path.append('../')
 from trident.patch_encoder_models import * 
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
 """
 Test forward pass of patch encoders
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 to run heavy integration tests.",
+)
 class TestPatchEncoders(unittest.TestCase):
 
     def setUp(self):
@@ -29,7 +34,12 @@ class TestPatchEncoders(unittest.TestCase):
         encoder = encoder.to(self.device)
         encoder.eval()
 
-        with torch.inference_mode(), torch.amp.autocast('cuda', dtype=encoder.precision):
+        device_type = "cuda" if self.device.type == "cuda" else "cpu"
+        with torch.inference_mode(), torch.amp.autocast(
+            device_type=device_type,
+            dtype=encoder.precision,
+            enabled=(self.device.type == "cuda"),
+        ):
             dummy_input = encoder.eval_transforms(self.dummy_image).to(self.device).unsqueeze(dim=0)
             output = encoder(dummy_input)
 

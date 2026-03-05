@@ -253,10 +253,18 @@ class CuCIMWSI(WSI):
         >>> region.show()
         """
 
-        import cupy as cp
-
         region = self.img.read_region(location=location, level=level, size=size, device='cpu')
-        region = cp.asnumpy(region)  # Convert from CuPy to NumPy
+        # CuCIM returns NumPy arrays for CPU reads; keep a safe fallback
+        # for unexpected array types without hard-requiring CuPy.
+        if not isinstance(region, np.ndarray):
+            try:
+                import cupy as cp
+                if isinstance(region, cp.ndarray):
+                    region = cp.asnumpy(region)
+                else:
+                    region = np.asarray(region)
+            except ModuleNotFoundError:
+                region = np.asarray(region)
 
         if read_as == 'numpy':
             return region

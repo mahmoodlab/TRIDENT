@@ -9,15 +9,25 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import numpy as np
-import matplotlib.pyplot as plt
-import cv2
+try:
+    import matplotlib.pyplot as plt
+    import cv2
+    from huggingface_hub import snapshot_download
+    import geopandas as gpd
+    from shapely.geometry import Polygon
+    HAS_PATCHER_TEST_DEPS = True
+except Exception:
+    plt = None
+    cv2 = None
+    snapshot_download = None
+    gpd = None
+    Polygon = None
+    HAS_PATCHER_TEST_DEPS = False
 from pathlib import Path
 from PIL import Image
-from huggingface_hub import snapshot_download
-import geopandas as gpd
-from shapely.geometry import Polygon
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.WSIPatcher import WSIPatcher
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
 def visualize_patches_debug(patcher, patches_list=None, mask_gdf=None, max_dimension=1000):
     """
@@ -359,6 +369,10 @@ def create_dummy_tissue_mask(width, height):
     return gdf
 
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS and HAS_PATCHER_TEST_DEPS,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 and install patcher test deps to run heavy integration tests.",
+)
 class TestWSIPatcher(unittest.TestCase):
     """Unit tests for WSIPatcher with visualization."""
     

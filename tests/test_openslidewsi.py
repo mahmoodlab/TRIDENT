@@ -6,8 +6,13 @@ import sys; sys.path.append('../')
 from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
-from huggingface_hub import snapshot_download
+try:
+    from huggingface_hub import snapshot_download
+    HAS_HF_HUB = True
+except Exception:
+    HAS_HF_HUB = False
 
 
 """
@@ -15,6 +20,10 @@ Test the methods of the OpenSlideWSI object, i.e. bypassing the Processor class.
 This is useful if you want to use the OpenSlideWSI class in a custom pipeline.
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS and HAS_HF_HUB,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 and install huggingface_hub to run heavy integration tests.",
+)
 class TestOpenSlideWSI(unittest.TestCase):
     HF_REPO = "MahmoodLab/unit-testing"
     TEST_SLIDE_FILENAMES = [
