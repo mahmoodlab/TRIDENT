@@ -326,7 +326,7 @@ class GrandQCSegmenter(SegmentationModel):
 
         # Model config
         self.input_size = 512
-        self.precision = torch.float32
+        self.precision = torch.float16
         self.target_mag = 1
 
         # Evaluation transforms

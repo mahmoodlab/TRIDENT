@@ -377,7 +377,6 @@ class WSI:
         return predicted_mask, mpp_reduction_factor
 
     @torch.inference_mode()
-    @torch.autocast(device_type="cuda", dtype=torch.float16)
     def segment_tissue(
         self,
         segmentation_model: SegmentationModel,
@@ -490,7 +489,6 @@ class WSI:
             return gdf_contours
 
     @torch.inference_mode()
-    @torch.autocast(device_type="cuda", dtype=torch.float16)
     def segment_semantic(
         self,
         segmentation_model: SegmentationModel,
