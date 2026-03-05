@@ -3,7 +3,12 @@ from trident.segmentation_models.load import (
     segmentation_model_factory,
     HESTSegmenter,
     GrandQCSegmenter,
-    GrandQCArtifactSegmenter
+    GrandQCArtifactSegmenter,
+)
+from trident.segmentation_models.otsu import (
+    OtsuSegmenter,
+    apply_otsu_thresholding,
+    mask_rgb,
 )
 
 __all__ = [
@@ -11,4 +16,7 @@ __all__ = [
     "HESTSegmenter",
     "GrandQCSegmenter",
     "GrandQCArtifactSegmenter",
+    "OtsuSegmenter",
+    "apply_otsu_thresholding",
+    "mask_rgb",
     ]

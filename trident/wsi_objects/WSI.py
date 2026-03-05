@@ -12,7 +12,8 @@ from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords,
-    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5
+    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
+    splitext
 )
 
 ReadMode = Literal['pil', 'numpy']
@@ -34,7 +35,9 @@ class WSI:
     custom_mpp_keys : dict
         Custom keys for extracting microns per pixel (MPP) and magnification metadata.
     lazy_init : bool
-        Indicates whether lazy initialization is used.
+        User preference indicating whether initialization should be deferred.
+    _initialized : bool
+        Internal runtime flag indicating whether the backend has been initialized.
     tissue_seg_path : str
         Path to a tissue segmentation mask (if available).
     width : int
@@ -94,28 +97,38 @@ class WSI:
         """
         self.slide_path = slide_path
         if name is None:
-            self.name, self.ext = os.path.splitext(os.path.basename(slide_path)) 
+            self.name, self.ext = splitext(os.path.basename(slide_path)) 
         else:
-            self.name, self.ext = os.path.splitext(name)
+            self.name, self.ext = splitext(name)
         self.tissue_seg_path = tissue_seg_path
         self.custom_mpp_keys = custom_mpp_keys
 
         self.width, self.height = None, None  # Placeholder dimensions
         self.mpp = mpp  # Placeholder microns per pixel. Defaults will be None unless specified in constructor. 
         self.mag = None  # Placeholder magnification
-        self.lazy_init = lazy_init  # Initialize immediately if lazy_init is False
+        # Public configuration flag (do not mutate at runtime).
+        self.lazy_init = lazy_init
+        # Internal runtime state flag.
+        self._initialized = False
         self.max_workers = max_workers
 
         if not self.lazy_init:
             self._lazy_initialize()
-        else: 
-            self.lazy_init = not self.lazy_init
 
     def __repr__(self) -> str:
-        if self.lazy_init:
+        if self._initialized:
             return f"<width={self.width}, height={self.height}, backend={self.__class__.__name__}, mpp={self.mpp}, mag={self.mag}>"
         else:
             return f"<name={self.name}>"
+
+    def __enter__(self) -> "WSI":
+        """Enable use as a context manager (`with ... as wsi`)."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        """Always release resources when leaving a context."""
+        self.release()
+        return False
     
     def _lazy_initialize(self) -> None:
         """
@@ -139,7 +152,7 @@ class WSI:
         - `gdf_contours`: loaded from `tissue_seg_path` if available.
         """
 
-        if not self.lazy_init:
+        if not self._initialized:
             self.img = None
             self.dimensions = None
             self.width, self.height = None, None
@@ -149,6 +162,7 @@ class WSI:
             self.properties = None
             self.mag = None
             if self.tissue_seg_path is not None:
+                import geopandas as gpd
                 try:
                     self.gdf_contours = gpd.read_file(self.tissue_seg_path)
                 except FileNotFoundError:
@@ -318,7 +332,7 @@ class WSI:
             batch_size=batch_size, 
             collate_fn=collate_fn,
             num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
-            pin_memory=True
+            pin_memory=False
         )
 
         mpp_reduction_factor = self.mpp / destination_mpp
@@ -363,7 +377,6 @@ class WSI:
         return predicted_mask, mpp_reduction_factor
 
     @torch.inference_mode()
-    @torch.autocast(device_type="cuda", dtype=torch.float16)
     def segment_tissue(
         self,
         segmentation_model: SegmentationModel,
@@ -476,7 +489,6 @@ class WSI:
             return gdf_contours
 
     @torch.inference_mode()
-    @torch.autocast(device_type="cuda", dtype=torch.float16)
     def segment_semantic(
         self,
         segmentation_model: SegmentationModel,
@@ -818,6 +830,38 @@ class WSI:
 
 
         dataset = WSIPatcherDataset(patcher, patch_transforms)
+        if len(dataset) == 0:
+            warnings.warn(
+                f"No patch coordinates available for slide '{self.name}'. Saving empty features."
+            )
+            coords_attrs = coords_attrs if 'coords_attrs' in locals() else {}
+            coords = np.empty((0, 2), dtype=np.int64)
+            embedding_dim = getattr(patch_encoder, "embedding_dim", None)
+            if embedding_dim is None:
+                features = np.empty((0,), dtype=np.float32)
+            else:
+                features = np.empty((0, int(embedding_dim)), dtype=np.float32)
+            os.makedirs(save_features, exist_ok=True)
+            if saveas == 'h5':
+                model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
+                save_h5(
+                    os.path.join(save_features, f'{self.name}.{saveas}'),
+                    assets={
+                        'features': features,
+                        'coords': coords,
+                    },
+                    attributes={
+                        'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
+                        'coords': coords_attrs,
+                    },
+                    mode='w'
+                )
+            elif saveas == 'pt':
+                torch.save(features, os.path.join(save_features, f'{self.name}.{saveas}'))
+            else:
+                raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
+            return os.path.join(save_features, f'{self.name}.{saveas}')
+
         dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
 
         dataloader = tqdm(dataloader) if verbose else dataloader
@@ -921,6 +965,26 @@ class WSI:
             patch_features = f['features'][:]
             coords_attrs = dict(f['coords'].attrs)
 
+        if patch_features.size == 0 or (patch_features.ndim > 0 and patch_features.shape[0] == 0):
+            warnings.warn(
+                f"No patch features available for slide '{self.name}'. Saving empty slide features."
+            )
+            os.makedirs(save_features, exist_ok=True)
+            save_path = os.path.join(save_features, f'{self.name}.h5')
+            save_h5(
+                save_path,
+                assets={
+                    'features': np.empty((0,), dtype=np.float32),
+                    'coords': np.asarray(coords),
+                },
+                attributes={
+                    'features': {'name': self.name, 'savetodir': save_features},
+                    'coords': coords_attrs,
+                },
+                mode='w'
+            )
+            return save_path
+
         # Convert slide_features to tensor
         patch_features = torch.from_numpy(patch_features).float().to(device)
         patch_features = patch_features.unsqueeze(0)  # Add batch dimension
@@ -978,4 +1042,4 @@ class WSI:
         if hasattr(self, "gdf_contours"):
             self.gdf_contours = None
 
-        self.lazy_init = False # to avoid double initialization
+        self._initialized = False

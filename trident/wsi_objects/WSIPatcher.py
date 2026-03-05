@@ -152,9 +152,16 @@ class WSIPatcher:
             ])
             coords = np.array([self._colrow_to_xy(xy[0], xy[1]) for xy in col_rows])
         else:
-            if round(custom_coords[0][0]) != custom_coords[0][0]:
-                raise ValueError("custom_coords must be a (N, 2) array of int")
-            coords = custom_coords
+            coords = np.asarray(custom_coords)
+            if coords.size == 0:
+                coords = coords.reshape(0, 2)
+            elif coords.ndim != 2 or coords.shape[1] != 2:
+                raise ValueError("custom_coords must be a (N, 2) array")
+            elif not np.issubdtype(coords.dtype, np.integer):
+                rounded = np.round(coords)
+                if not np.allclose(coords, rounded):
+                    raise ValueError("custom_coords must be a (N, 2) array of int")
+                coords = rounded.astype(np.int64)
         if self.mask is not None:
             self.valid_patches_nb, self.valid_coords = self._compute_masked(coords, threshold)
         else:

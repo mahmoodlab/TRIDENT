@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import sys
+from contextlib import ExitStack
 from tqdm import tqdm
 from typing import Optional, List, Dict, Any
 from inspect import signature
@@ -8,7 +9,7 @@ import geopandas as gpd
 import pandas as pd 
 
 from trident import load_wsi, WSIReaderType
-from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides
+from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides, splitext
 from trident.Maintenance import deprecated
 from trident.wsi_objects.WSIFactory import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS, SDPC_EXTENSIONS
 
@@ -143,25 +144,32 @@ class Processor:
 
         # === Initialize WSIs ===
         self.wsis = []
-        for wsi_idx, abs_path in enumerate(full_paths):
-            name = os.path.basename(abs_path)
-            tissue_seg_path = os.path.join(
-                self.job_dir, 'contours_geojson',
-                f'{os.path.splitext(name)[0]}.geojson'
-            )
-            if not os.path.exists(tissue_seg_path):
-                tissue_seg_path = None
+        stack = ExitStack()
+        try:
+            for wsi_idx, abs_path in enumerate(full_paths):
+                name = os.path.basename(abs_path)
+                tissue_seg_path = os.path.join(
+                    self.job_dir, 'contours_geojson',
+                    f'{splitext(name)[0]}.geojson'
+                )
+                if not os.path.exists(tissue_seg_path):
+                    tissue_seg_path = None
 
-            slide = load_wsi(
-                slide_path=abs_path,
-                name=name,
-                tissue_seg_path=tissue_seg_path,
-                custom_mpp_keys=self.custom_mpp_keys,
-                mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
-                max_workers=self.max_workers,
-                reader_type=reader_type,
-            )
-            self.wsis.append(slide)
+                slide = stack.enter_context(load_wsi(
+                    slide_path=abs_path,
+                    name=name,
+                    tissue_seg_path=tissue_seg_path,
+                    custom_mpp_keys=self.custom_mpp_keys,
+                    mpp=valid_mpps[wsi_idx] if valid_mpps is not None else None,
+                    max_workers=self.max_workers,
+                    reader_type=reader_type,
+                    lazy_init=True,
+                ))
+                self.wsis.append(slide)
+        except Exception:
+            stack.close()
+            raise
+        self._wsi_stack = stack
 
     def run_segmentation_job(
         self, 
@@ -753,12 +761,18 @@ class Processor:
         Frees memory, closes file handles, and clears GPU memory.
         Should be called after processing is complete to avoid memory leaks.
         """
-        if hasattr(self, "wsis"):
+        if hasattr(self, "_wsi_stack") and self._wsi_stack is not None:
+            self._wsi_stack.close()
+            self._wsi_stack = None
+
+        elif hasattr(self, "wsis"):
             for wsi in self.wsis:
                 try:
                     wsi.release()
                 except Exception:
                     pass
+
+        if hasattr(self, "wsis"):
             self.wsis.clear()
 
         # Also clear loop references (e.g., tqdm)

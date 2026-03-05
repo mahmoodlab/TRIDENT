@@ -3,6 +3,12 @@ API Reference
 
 This section documents the **public API** of TRIDENT. 
 
+When to use the API vs CLI:
+
+- Use the CLI (``run_batch_of_slides.py`` / ``trident batch``) for standard reproducible runs.
+- Use the API when embedding Trident in your own Python pipeline, custom loops, or experiments.
+- Start with the CLI first, then move to API once the workflow is validated.
+
 .. contents::
    :local:
    :depth: 2

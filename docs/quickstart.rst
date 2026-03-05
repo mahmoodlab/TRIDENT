@@ -5,6 +5,11 @@ Trident provides user-facing command-line scripts for processing large batches o
 
 This page explains how to quickly get started, and provides detailed help for available options.
 
+Use this rule of thumb:
+
+- Use ``run_single_slide.py`` (or ``trident single``) to test settings on one slide.
+- Use ``run_batch_of_slides.py`` (or ``trident batch``) once settings are validated.
+
 ---
 
 Processing a batch of slides
@@ -17,16 +22,24 @@ run the following command:
 
     python run_batch_of_slides.py --task all --wsi_dir output/wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
 
-- `--wsi_dir`: Folder containing your whole-slide images (.svs, .tiff, etc.)
-- `--job_dir`: Folder where all outputs (masks, coordinates, features) will be stored
-- `--patch_encoder`: Pre-trained encoder to use (e.g., `uni_v1`, `conch_v15`, etc.)
-- `--mag`: Target magnification level for patches (e.g., 20x)
-- `--patch_size`: Size of patches to extract (e.g., 256px)
+Equivalent wrapper CLI:
 
-This will:
+.. code-block:: bash
+
+    trident batch -- --task all --wsi_dir output/wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
+
+Other wrapper entrypoints:
+
+.. code-block:: bash
+
+    trident single -- --slide_path ./wsis/example.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
+    trident doctor -- --profile base
+
+This command runs the full pipeline:
+
 1. Segment tissue areas in the slides.
-2. Extract patch coordinates over the tissue.
-3. Extract patch-level features using the specified encoder.
+2. Extract patch coordinates over tissue.
+3. Extract patch-level features using the selected encoder.
 
 Typical Examples
 -----------------
@@ -38,12 +51,29 @@ Typical Examples
 
     python run_batch_of_slides.py --task seg --wsi_dir input_wsis --job_dir output
 
+Available segmenters:
+
+- ``hest`` (default, learned model)
+- ``grandqc`` (learned model, fast for H&E)
+- ``otsu`` (image-processing-only fallback, runs at 1.25x on CPU)
+
+Recommended choices:
+
+- Clean H&E: prefer ``grandqc`` (fast and reliable).
+- IHC or dirtier slides: prefer ``hest``.
+- Limited resources or fallback mode: use ``otsu``.
+
 **Patch Extraction Only**  
 (Extract patch coordinates from tissue regions.)
 
 .. code-block:: bash
 
     python run_batch_of_slides.py --task coords --wsi_dir input_wsis --job_dir output --mag 20 --patch_size 256
+
+To control how strict tissue overlap should be during patch selection, use:
+
+- ``--min_tissue_proportion`` (0.0 to 1.0)
+- Default is permissive (keeps patches if they overlap tissue even minimally).
 
 **Feature Extraction Only**  
 (Extract features from patches using a patch encoder.)
@@ -52,38 +82,115 @@ Typical Examples
 
     python run_batch_of_slides.py --task feat --wsi_dir input_wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
 
----
+**Converter (pyramidal TIFF)**  
+(Convert listed files from CSV to pyramidal TIFF.)
 
-Help Text
----------
+.. code-block:: bash
 
-The full list of available arguments and options is shown below.
+    trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
 
-.. note::
+Argument guide (run_batch_of_slides.py)
+---------------------------------------
 
-   .. raw:: html
+This section explains every parser argument in plain language.
 
-      <div style="padding: 12px; background-color: #f9fafb; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 2px 2px 8px rgba(0,0,0,0.05);">
+Generic arguments
+^^^^^^^^^^^^^^^^^
 
-      <h3 style="margin-top: 0px; margin-bottom: 10px;">
-         🛠️ <b>Command-line Argument Reference</b>
-      </h3>
+- ``--task``: chooses pipeline stage.
+  - ``seg`` = segmentation only
+  - ``coords`` = patch coordinate extraction only
+  - ``feat`` = feature extraction only
+  - ``all`` = run ``seg -> coords -> feat`` in order
+- ``--job_dir``: output root directory for all generated files.
+- ``--gpu``: GPU index used by learned segmentation and feature extraction.
+- ``--skip_errors``: continue processing other slides if one slide fails.
+- ``--max_workers``: worker count for slide collection/processing internals.
+- ``--batch_size``: shared batch size baseline for segmentation and feature extraction.
+- ``--seg_batch_size``: segmentation-specific override for ``--batch_size``.
+- ``--feat_batch_size``: feature-specific override for ``--batch_size``.
 
-   .. literalinclude:: generated/run_batch_of_slides_help.txt
-      :language: text
+When to change:
 
-   .. raw:: html
+- Use ``--skip_errors`` for long production runs.
+- Start with default ``--batch_size`` and increase only if memory allows.
 
-      </div>
+WSI discovery and reading
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Notes
------
+- ``--wsi_dir``: directory containing input slides.
+- ``--wsi_ext``: optional allowed extension filter (for mixed folders).
+- ``--search_nested``: recursively discover slides in nested subfolders.
+- ``--custom_list_of_wsis``: CSV subset list to process selected slides only.
+- ``--custom_mpp_keys``: metadata keys to read MPP from non-standard slide headers.
+- ``--reader_type``: force backend reader (``openslide``, ``cucim``, ``image``, ``sdpc``).
 
-- If you use `--task all`, it will run segmentation, patch extraction, and feature extraction sequentially.
-- For feature extraction, you can choose either a **patch encoder** (e.g., `uni_v1`) or a **slide encoder** (e.g., `threads`).
-- You can cache WSIs locally using `--wsi_cache` for faster processing on networked filesystems.
-- You can control the number of parallel workers with `--max_workers`.
+When to change:
 
-For more advanced settings (artifact removal, segmentation confidence thresholds, slide readers),  
-refer to the full help text above.
+- Use ``--search_nested`` when slides are organized by subfolders.
+- Use ``--custom_list_of_wsis`` to run curated/retry batches.
+- Set ``--reader_type`` only for debugging backend-specific read issues.
+
+Segmentation arguments
+^^^^^^^^^^^^^^^^^^^^^^
+
+- ``--segmenter``: segmentation model choice (``hest``, ``grandqc``, ``otsu``).
+- ``--seg_conf_thresh``: tissue confidence threshold for learned segmenters.
+- ``--remove_holes``: exclude hole regions from final tissue mask.
+- ``--remove_artifacts``: run extra artifact-cleaning segmentation pass.
+- ``--remove_penmarks``: lighter artifact mode focused on penmark removal.
+
+Operational behavior:
+
+- ``hest`` and ``grandqc`` run on GPU.
+- ``grandqc`` is typically fast on clean H&E.
+- ``hest`` is often preferred for IHC/dirtier slides.
+- ``otsu`` is model-free fallback and runs on CPU at 1.25x.
+- ``--remove_artifacts`` / ``--remove_penmarks`` add extra segmentation time.
+
+Patching arguments
+^^^^^^^^^^^^^^^^^^
+
+- ``--mag``: target magnification for patch coordinates/features.
+- ``--patch_size``: patch size in pixels at target magnification.
+- ``--overlap``: absolute patch overlap in pixels.
+- ``--min_tissue_proportion``: minimum tissue overlap ratio (0.0 to 1.0) to keep a patch.
+- ``--coords_dir``: custom coordinates directory to read/write.
+
+When to change:
+
+- Increase ``--min_tissue_proportion`` to remove weak edge patches.
+- Use ``--coords_dir`` to reuse precomputed coordinates.
+
+Feature extraction arguments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- ``--patch_encoder``: patch encoder name for patch-level features.
+- ``--patch_encoder_ckpt_path``: local patch-encoder checkpoint path (offline/custom).
+- ``--slide_encoder``: optional slide encoder name for slide-level embeddings.
+
+How this works:
+
+- If ``--slide_encoder`` is not provided, TRIDENT extracts patch features only.
+- If ``--slide_encoder`` is provided, TRIDENT computes patch features as needed, then slide embeddings.
+- Patch and slide feature extraction are GPU workflows.
+
+Caching arguments
+^^^^^^^^^^^^^^^^^
+
+- ``--wsi_cache``: local cache directory used when source storage is slow.
+- ``--cache_batch_size``: max slides staged in cache per batch.
+
+When to use:
+
+- Use caching when source slides are on slow network disks and you run large jobs.
+- Keep cache on fast local SSD storage for best effect.
+
+Raw parser help
+---------------
+
+For exact defaults and full flag list, see:
+
+.. literalinclude:: generated/run_batch_of_slides_help.txt
+   :language: text
 

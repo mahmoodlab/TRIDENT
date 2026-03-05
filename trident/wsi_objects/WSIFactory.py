@@ -6,7 +6,6 @@ from trident.wsi_objects.OpenSlideWSI import OpenSlideWSI
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.CuCIMWSI import CuCIMWSI
 from trident.wsi_objects.SDPCWSI import SDPCWSI
-
 WSIReaderType = Literal['openslide', 'image', 'cucim', 'sdpc']
 OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs'}
 CUCIM_EXTENSIONS = {'.svs', '.tif', '.tiff'}
@@ -17,6 +16,7 @@ PIL_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 def load_wsi(
     slide_path: str,
     reader_type: Optional[WSIReaderType] = None,
+    lazy_init: bool = False,
     **kwargs
 ) -> Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI]:
     """
@@ -33,6 +33,9 @@ def load_wsi(
     reader_type : {'openslide', 'image', 'cucim', 'sdpc'}, optional
         Manually specify the WSI reader to use. If None (default), selection
         is automatic based on file extension.
+    lazy_init : bool, optional
+        Whether to defer backend initialization. Defaults to False for API convenience:
+        `load_wsi("slide.svs")` returns an initialized slide object by default.
     **kwargs : dict
         Additional keyword arguments passed to the WSI reader constructor.
 
@@ -53,14 +56,14 @@ def load_wsi(
     assert reader_type in ['openslide', 'image', 'cucim', 'sdpc', None], f"Unknown reader_type: {reader_type}. Choose from 'openslide', 'image', 'cucim', or 'sdpc'."
 
     if reader_type == 'openslide':
-        return OpenSlideWSI(slide_path=slide_path, **kwargs)
+        return OpenSlideWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
 
     elif reader_type == 'image':
-        return ImageWSI(slide_path=slide_path, **kwargs)
+        return ImageWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
     
     elif reader_type == 'sdpc':
         if ext in SDPC_EXTENSIONS:
-            return SDPCWSI(slide_path=slide_path, **kwargs)
+            return SDPCWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         else:
             raise ValueError(
                 f"Unsupported file format '{ext}' for SDPC. "
@@ -69,7 +72,7 @@ def load_wsi(
 
     elif reader_type == 'cucim':
         if ext in CUCIM_EXTENSIONS:
-            return CuCIMWSI(slide_path=slide_path, **kwargs)
+            return CuCIMWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         else:
             raise ValueError(
                 f"Unsupported file format '{ext}' for CuCIM. "
@@ -78,8 +81,8 @@ def load_wsi(
  
     elif reader_type is None:
         if ext in OPENSLIDE_EXTENSIONS:
-            return OpenSlideWSI(slide_path=slide_path, **kwargs)
+            return OpenSlideWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         elif ext in SDPC_EXTENSIONS:
-            return SDPCWSI(slide_path=slide_path, **kwargs)
+            return SDPCWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         else:
-            return ImageWSI(slide_path=slide_path, **kwargs)
+            return ImageWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)

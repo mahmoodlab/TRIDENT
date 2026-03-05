@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "trident"
-version = "0.2.3"
+version = "0.2.4"
 description = "A package for preprocessing whole-slide images."
 authors = [
-    "Guillaume Jaume <gjaume@bwh.harvard.edu>",
+    "Guillaume Jaume <guillaume.jaume@unil.ch>",
     "Andrew Zhang <andrewzh@mit.edu>",
     "Paul Doucet <homedoucetpaul@gmail.com>"
 ]
@@ -11,33 +11,86 @@ license = "CC BY-NC-ND 4.0"
 repository = "https://github.com/mahmoodlab/TRIDENT"
 
 [tool.poetry.dependencies]
-python = "^3.10"  # Specify the Python version compatibility.
+python = ">=3.10,<3.12"  # Support Python 3.10 and 3.11.
 ipywidgets = "*"
 torch = "*"
+torchvision = "*"
+numpy = "*"
+pandas = "*"
 tqdm = "*"
 h5py = "*"
 matplotlib = "*"
 opencv-python = "*"
+scikit-image = ">=0.20"
 openslide-python = "*"
 Pillow = "*"
 geopandas = "*"
+shapely = "*"
+requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
+aicsimageio = "*"
+pyvips = "*"
 
-# Optional dependencies (can be marked as optional in later versions)
-transformers = "*"
+# Core model dependencies (installed with `pip install -e .`)
+transformers = ">=4.40,<5"
 timm = "0.9.16"
+einops = "*"
 einops_exts = "*"
 scipy = "*"
 segmentation-models-pytorch = "*"
 safetensors = "*"
 
+# Optional dependencies
+environs = { version = "11.0.0", optional = true }
+sacremoses = { version = "0.1.1", optional = true }
+fairscale = { version = "*", optional = true }
+timm_ctp = { version = "*", optional = true }
+conch = { git = "https://github.com/Mahmoodlab/CONCH.git", optional = true }
+musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
+gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
+madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
+pylibCZIrw = { version = "*", optional = true }
+
+[tool.poetry.extras]
+patch-encoders = [
+    "fairscale",
+    "timm_ctp",
+    "conch",
+    "musk",
+]
+slide-encoders = [
+    "environs",
+    "sacremoses",
+    "gigapath",
+    "madeleine",
+]
+converter = [
+    "pylibCZIrw",
+]
+convert = [
+    "pylibCZIrw",
+]
+full = [
+    "environs",
+    "sacremoses",
+    "fairscale",
+    "timm_ctp",
+    "conch",
+    "musk",
+    "gigapath",
+    "madeleine",
+    "pylibCZIrw",
+]
+
 [tool.poetry.dev-dependencies]
 # Optional development dependencies 
 
 [tool.poetry.scripts]
+trident = "trident.cli:main"
 run_batch_of_slides = "run_batch_of_slides:main"
 run_single_slide = "run_single_slide:main"
+trident-doctor = "trident.cli_doctor:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

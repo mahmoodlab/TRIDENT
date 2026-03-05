@@ -5,8 +5,14 @@ sys.path.append('../')
 from trident import Processor
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
+from tests._test_gating import RUN_GPU_TESTS, RUN_INTEGRATION_TESTS
 
-from huggingface_hub import snapshot_download
+import torch
+try:
+    from huggingface_hub import snapshot_download
+    HAS_HF_HUB = True
+except Exception:
+    HAS_HF_HUB = False
 
 """
 Unit tests for the Processor class, which is responsible for handling segmentation, patching, and feature extraction on whole slide images (WSIs).
@@ -29,6 +35,14 @@ Methods:
     tearDownClass(cls): Remove the test output directory after all tests are done.
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS and HAS_HF_HUB,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 and install huggingface_hub to run heavy integration tests.",
+)
+@unittest.skipUnless(
+    RUN_GPU_TESTS and torch.cuda.is_available(),
+    "Set TRIDENT_RUN_GPU_TESTS=1 and run on CUDA host for GPU integration tests.",
+)
 class TestProcessor(unittest.TestCase):
     HF_REPO = "MahmoodLab/unit-testing"
     TEST_OUTPUT_DIR = "test_processor_output/"

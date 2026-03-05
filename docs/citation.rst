@@ -1,6 +1,8 @@
 Citation & License
 ==================
 
+Use this page when you need to cite TRIDENT or check usage terms.
+
 If you use TRIDENT in your work, please cite:
 
 .. code-block:: bibtex

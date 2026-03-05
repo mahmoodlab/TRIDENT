@@ -10,11 +10,16 @@ except:
 
 import sys; sys.path.append('../')
 from trident.segmentation_models import segmentation_model_factory 
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
 """
 Test forward pass of the segmentation model(s).
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 to run heavy integration tests.",
+)
 class TestSegmentationModels(unittest.TestCase):
 
     def setUp(self):

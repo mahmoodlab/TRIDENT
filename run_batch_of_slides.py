@@ -68,8 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
                               "Defaults to False (only top-level slides are included)."))
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
-                        choices=['hest', 'grandqc'], 
-                        help='Type of tissue vs background segmenter. Options are HEST or GrandQC.')
+                        choices=['hest', 'grandqc', 'otsu'],
+                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
                     help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
@@ -82,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help='Batch size for segmentation. Defaults to None (use `batch_size` argument instead).')
     
     # Patching arguments
-    parser.add_argument('--mag', type=int, choices=[5, 10, 20, 40, 80], default=20, 
-                        help='Magnification for coords/features extraction.')
+    parser.add_argument('--mag', type=float, default=20.0,
+                        help='Magnification for coords/features extraction. Supports fractional values (e.g., 1.25x, 2.5x, 5x, etc.).')
     parser.add_argument('--patch_size', type=int, default=512, 
                         help='Patch size for coords/image extraction.')
     parser.add_argument('--overlap', type=int, default=0, 
@@ -183,6 +183,8 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
     if args.task == 'seg':
         from trident.segmentation_models.load import segmentation_model_factory
 
+        seg_device = "cpu" if args.segmenter == "otsu" else f"cuda:{args.gpu}"
+
         # instantiate segmentation model and artifact remover if requested by user
         segmentation_model = segmentation_model_factory(
             args.segmenter,
@@ -203,7 +205,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             holes_are_tissue= not args.remove_holes,
             artifact_remover_model=artifact_remover_model,
             batch_size=args.seg_batch_size if args.seg_batch_size is not None else args.batch_size,
-            device=f'cuda:{args.gpu}',
+            device=seg_device,
         )
     elif args.task == 'coords':
         processor.run_patching_job(

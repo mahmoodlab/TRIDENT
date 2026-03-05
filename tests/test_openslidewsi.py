@@ -6,8 +6,13 @@ import sys; sys.path.append('../')
 from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
+from tests._test_gating import RUN_INTEGRATION_TESTS
 
-from huggingface_hub import snapshot_download
+try:
+    from huggingface_hub import snapshot_download
+    HAS_HF_HUB = True
+except Exception:
+    HAS_HF_HUB = False
 
 
 """
@@ -15,6 +20,10 @@ Test the methods of the OpenSlideWSI object, i.e. bypassing the Processor class.
 This is useful if you want to use the OpenSlideWSI class in a custom pipeline.
 """
 
+@unittest.skipUnless(
+    RUN_INTEGRATION_TESTS and HAS_HF_HUB,
+    "Set TRIDENT_RUN_INTEGRATION_TESTS=1 and install huggingface_hub to run heavy integration tests.",
+)
 class TestOpenSlideWSI(unittest.TestCase):
     HF_REPO = "MahmoodLab/unit-testing"
     TEST_SLIDE_FILENAMES = [
@@ -50,36 +59,35 @@ class TestOpenSlideWSI(unittest.TestCase):
         for slide_filename in self.TEST_SLIDE_FILENAMES:
             with self.subTest(slide=slide_filename):
                 slide_path = os.path.join(self.local_wsi_dir, slide_filename)
-                slide = load_wsi(slide_path=slide_path, lazy_init=False)
+                with load_wsi(slide_path=slide_path, lazy_init=False) as slide:
+                    # Step 1: Tissue segmentation
+                    segmentation_model = segmentation_model_factory("hest")
+                    slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR, device=self.TEST_DEVICE)
 
-                # Step 1: Tissue segmentation
-                segmentation_model = segmentation_model_factory("hest")
-                slide.segment_tissue(segmentation_model=segmentation_model, target_mag=10, job_dir=self.TEST_OUTPUT_DIR, device=self.TEST_DEVICE)
+                    # Step 2: Tissue coordinate extraction
+                    coords_path = slide.extract_tissue_coords(
+                        target_mag=self.TEST_MAG,
+                        patch_size=self.TEST_PATCH_SIZE,
+                        save_coords=self.TEST_OUTPUT_DIR
+                    )
 
-                # Step 2: Tissue coordinate extraction
-                coords_path = slide.extract_tissue_coords(
-                    target_mag=self.TEST_MAG,
-                    patch_size=self.TEST_PATCH_SIZE,
-                    save_coords=self.TEST_OUTPUT_DIR
-                )
+                    # Step 3: Visualization
+                    viz_coords_path = slide.visualize_coords(
+                        coords_path=coords_path,
+                        save_patch_viz=os.path.join(self.TEST_OUTPUT_DIR, "visualization")
+                    )
 
-                # Step 3: Visualization
-                viz_coords_path = slide.visualize_coords(
-                    coords_path=coords_path,
-                    save_patch_viz=os.path.join(self.TEST_OUTPUT_DIR, "visualization")
-                )
-
-                # Step 4: Feature extraction
-                encoder = encoder_factory(self.TEST_PATCH_ENCODER)
-                encoder.eval()
-                encoder.to(self.TEST_DEVICE)
-                features_dir = os.path.join(self.TEST_OUTPUT_DIR, f"features_{self.TEST_PATCH_ENCODER}")
-                slide.extract_patch_features(
-                    patch_encoder=encoder,
-                    coords_path=coords_path,
-                    save_features=features_dir,
-                    device=self.TEST_DEVICE
-                )
+                    # Step 4: Feature extraction
+                    encoder = encoder_factory(self.TEST_PATCH_ENCODER)
+                    encoder.eval()
+                    encoder.to(self.TEST_DEVICE)
+                    features_dir = os.path.join(self.TEST_OUTPUT_DIR, f"features_{self.TEST_PATCH_ENCODER}")
+                    slide.extract_patch_features(
+                        patch_encoder=encoder,
+                        coords_path=coords_path,
+                        save_features=features_dir,
+                        device=self.TEST_DEVICE
+                    )
 
                 # Verify outputs
                 self.assertTrue(os.path.exists(os.path.join(self.TEST_OUTPUT_DIR, "contours_geojson")), "GDF contours were not saved.")

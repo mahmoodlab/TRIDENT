@@ -13,6 +13,18 @@ from geopandas import gpd
 from shapely import Polygon
 
 
+COMPOUND_EXTENSIONS = {'.ome.tif', '.ome.tiff'}
+
+
+def splitext(path: str) -> tuple:
+    """Like os.path.splitext but handles compound extensions (e.g., .ome.tif)."""
+    path_lower = path.lower()
+    for ext in COMPOUND_EXTENSIONS:
+        if path_lower.endswith(ext):
+            return path[:-len(ext)], path[-len(ext):]
+    return os.path.splitext(path)
+
+
 ENV_TRIDENT_HOME = "TRIDENT_HOME"
 ENV_XDG_CACHE_HOME = "XDG_CACHE_HOME"
 DEFAULT_CACHE_DIR = "~/.cache"
@@ -539,8 +551,18 @@ def coords_to_h5(
     overlap
 ):
     """ Save tissue coordinates to .h5 """
+    coords_array = np.asarray(coords, dtype=np.int64)
+    if coords_array.size == 0:
+        coords_array = coords_array.reshape(0, 2)
+    elif coords_array.ndim == 1 and coords_array.shape[0] == 2:
+        coords_array = coords_array.reshape(1, 2)
+    elif coords_array.ndim != 2 or coords_array.shape[1] != 2:
+        raise ValueError(
+            f"coords must have shape (N, 2). Got shape {coords_array.shape}."
+        )
+
     # Prepare assets for saving
-    assets = {'coords' : np.array(coords)}
+    assets = {'coords' : coords_array}
     attributes = {
         'patch_size': patch_size, # Reference frame: patch_level
         'patch_size_level0': patch_size * src_mag // target_mag, # Reference frame: level0
