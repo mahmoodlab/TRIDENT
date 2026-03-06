@@ -135,7 +135,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 21 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link |
 |-----------------------|---------------:|------------------------------------------------------------------|------|
@@ -150,8 +150,11 @@ Trident supports 21 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Prov-Gigapath**     | 1536           | `--patch_encoder gigapath --patch_size 256 --mag 20`             | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) |
 | **H-Optimus-0**       | 1536           | `--patch_encoder hoptimus0 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0) |
 | **H-Optimus-1**       | 1536           | `--patch_encoder hoptimus1 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1) |
+| **H0-mini**           | 768/1536       | `--patch_encoder h0-mini --patch_size 224 --mag 20`              | [bioptimus/H0-mini](https://huggingface.co/bioptimus/H0-mini) |
 | **MUSK**              | 1024           | `--patch_encoder musk --patch_size 384 --mag 20`                 | [xiangjx/musk](https://huggingface.co/xiangjx/musk) |
 | **Midnight-12k**      | 3072           | `--patch_encoder midnight12k --patch_size 224 --mag 20`          | [kaiko-ai/midnight](https://huggingface.co/kaiko-ai/midnight) |
+| **OpenMidnight**      | 1536           | `--patch_encoder openmidnight --patch_size 224 --mag 20`         | [SophontAI/OpenMidnight](https://huggingface.co/SophontAI/OpenMidnight) |
+| **GPFM**              | 1024           | `--patch_encoder gpfm --patch_size 224 --mag 20`                 | [majiabo/GPFM](https://huggingface.co/majiabo/GPFM) |
 | **Kaiko**             | 384/768/1024   | `--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20` | [1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795](https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795) |
 | **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
 | **Hibou**             | 1024           | `--patch_encoder hibou_l --patch_size 224 --mag 20`              | [histai/hibou-L](https://huggingface.co/histai/hibou-L) |

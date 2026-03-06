@@ -14,6 +14,7 @@ from trident.patch_encoder_models.load import (
     Virchow2InferenceEncoder,
     HOptimus0InferenceEncoder,
     HOptimus1InferenceEncoder,
+    H0MiniInferenceEncoder,
     Conchv15InferenceEncoder,
     Phikonv2InferenceEncoder,
     LunitS8InferenceEncoder,
@@ -24,6 +25,8 @@ from trident.patch_encoder_models.load import (
     KaikoS8InferenceEncoder,
     KaikoL14InferenceEncoder,
     Midnight12kInferenceEncoder,
+    OpenMidnightInferenceEncoder,
+    GPFMInferenceEncoder,
 )
 
 __all__ = [
@@ -42,6 +45,7 @@ __all__ = [
     "Virchow2InferenceEncoder",
     "HOptimus0InferenceEncoder",
     "HOptimus1InferenceEncoder",
+    "H0MiniInferenceEncoder",
     "Conchv15InferenceEncoder",
     "Phikonv2InferenceEncoder",
     "LunitS8InferenceEncoder",
@@ -52,4 +56,6 @@ __all__ = [
     "KaikoS8InferenceEncoder",
     "KaikoL14InferenceEncoder",
     "Midnight12kInferenceEncoder",
+    "OpenMidnightInferenceEncoder",
+    "GPFMInferenceEncoder",
 ]
