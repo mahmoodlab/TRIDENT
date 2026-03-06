@@ -27,6 +27,10 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - 02.25: Support for GrandQC([Citation necessary](https://www.nature.com/articles/s41467-024-54769-y), [Non-commercial use](https://creativecommons.org/licenses/by-nc-sa/4.0/), [Original repository](https://github.com/cpath-ukk/grandqc)) tissue vs. background segmentation.
 - 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models.
 
+> [!NOTE]
+> GrandQC is integrated into Trident under the CC BY-NC-SA 4.0 license. If you use GrandQC, please cite their [original publication](https://www.nature.com/articles/s41467-024-54769-y).
+
+
 ### 🔨 1. **Installation**:
 - Create an environment (Python 3.10 or 3.11): `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
 - Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
