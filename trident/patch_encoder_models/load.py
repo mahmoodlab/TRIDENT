@@ -37,7 +37,10 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "virchow2"
         - "hoptimus0"
         - "hoptimus1"
+        - "h0-mini"
         - "musk"
+        - "openmidnight"
+        - "gpfm"
         - "hibou_l"
         - "kaiko-vitb8"
         - "kaiko-vitb16"
@@ -1242,6 +1245,189 @@ class Midnight12kInferenceEncoder(BasePatchEncoder):
                 f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
             )
 
+
+class H0MiniInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        H0-mini initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+        import timm
+        from timm.data import resolve_model_data_config
+        from timm.data.transforms_factory import create_transform
+
+        self.enc_name = "h0-mini"
+        weights_path = self._get_weights_path()
+        self.return_type = return_type
+
+        if weights_path:
+            raise NotImplementedError(
+                "H0-mini currently supports loading from Hugging Face only. "
+                "Please leave `weights_path` unset."
+            )
+
+        self.ensure_has_internet(self.enc_name)
+        try:
+            model = timm.create_model(
+                "hf-hub:bioptimus/H0-mini",
+                pretrained=True,
+                mlp_layer=timm.layers.SwiGLUPacked,
+                act_layer=torch.nn.SiLU,
+            )
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                "Failed to download H0-mini model, make sure that you were granted access "
+                "and that you correctly registered your token"
+            )
+
+        # timm>=0.9 expects the model instance directly here.
+        data_config = resolve_model_data_config(model)
+        eval_transform = create_transform(**data_config, is_training=False)
+        precision = torch.float16
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        out = self.model(x)
+        if out.ndim != 3:
+            return out
+        cls_token = out[:, 0, :]
+        if self.return_type == "cls_token":
+            return cls_token
+        elif self.return_type == "cls+mean":
+            patch_embeddings = out[:, self.model.num_prefix_tokens:, :]
+            return torch.cat([cls_token, patch_embeddings.mean(1)], dim=-1)
+        else:
+            raise ValueError(
+                f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
+            )
+
+
+class OpenMidnightInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        OpenMidnight initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from huggingface_hub import hf_hub_download
+        from torchvision import transforms
+
+        self.enc_name = "openmidnight"
+        weights_path = self._get_weights_path()
+
+        try:
+            model = torch.hub.load(
+                "facebookresearch/dinov2",
+                "dinov2_vitg14_reg",
+                pretrained=False,
+            )
+        except Exception:
+            traceback.print_exc()
+            raise Exception("Failed to initialize DINOv2 ViT-G/14 backbone for OpenMidnight.")
+
+        if not weights_path:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                weights_path = hf_hub_download(
+                    repo_id="SophontAI/OpenMidnight",
+                    filename="teacher_checkpoint_load.pt",
+                )
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download OpenMidnight model, make sure that you were granted access "
+                    "and that you correctly registered your token"
+                )
+
+        try:
+            checkpoint = torch.load(weights_path, map_location="cpu", weights_only=False)
+            pos_embed = checkpoint["pos_embed"]
+            model.pos_embed = torch.nn.parameter.Parameter(pos_embed)
+            model.load_state_dict(checkpoint, strict=True)
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                f"Failed to create OpenMidnight model from checkpoint at '{weights_path}'. "
+                "You can download the required `teacher_checkpoint_load.pt` from: "
+                "https://huggingface.co/SophontAI/OpenMidnight."
+            )
+
+        mean, std = get_constants("imagenet")
+        eval_transform = transforms.Compose(
+            [
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ]
+        )
+        precision = torch.float16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class GPFMInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        GPFM initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        import timm
+        from huggingface_hub import hf_hub_download
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = "gpfm"
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                weights_path = hf_hub_download(repo_id="majiabo/GPFM", filename="GPFM.pth")
+            except Exception:
+                traceback.print_exc()
+                raise Exception("Failed to download GPFM model.")
+
+        try:
+            model = timm.create_model(
+                "vit_large_patch14_dinov2.lvd142m",
+                pretrained=False,
+                img_size=224,
+                init_values=1e-5,
+            )
+            state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
+            if isinstance(state_dict, dict) and "state_dict" in state_dict:
+                state_dict = state_dict["state_dict"]
+            model.load_state_dict(state_dict, strict=True)
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                f"Failed to create GPFM model from checkpoint at '{weights_path}'. "
+                "You can download the required `GPFM.pth` from: https://huggingface.co/majiabo/GPFM."
+            )
+
+        mean, std = get_constants("imagenet")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BICUBIC,
+            max_size=None,
+            antialias=True,
+        )
+        precision = torch.float16
+        return model, eval_transform, precision
+
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
     "conch_v15": Conchv15InferenceEncoder,
@@ -1256,7 +1442,10 @@ encoder_registry = {
     "virchow2": Virchow2InferenceEncoder,
     "hoptimus0": HOptimus0InferenceEncoder,
     "hoptimus1": HOptimus1InferenceEncoder,
+    "h0-mini": H0MiniInferenceEncoder,
     "musk": MuskInferenceEncoder,
+    "openmidnight": OpenMidnightInferenceEncoder,
+    "gpfm": GPFMInferenceEncoder,
     "hibou_l": HibouLInferenceEncoder,
     "kaiko-vitb8": KaikoB8InferenceEncoder,
     "kaiko-vitb16": KaikoB16InferenceEncoder,

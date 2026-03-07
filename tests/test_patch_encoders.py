@@ -88,9 +88,19 @@ class TestPatchEncoders(unittest.TestCase):
 
     def test_hoptimus1_forward(self):
         self._test_encoder_forward('hoptimus1')
+    
+    def test_h0mini_forward(self):
+        self._test_encoder_forward('h0-mini')
+        self._test_encoder_forward('h0-mini', return_type="cls+mean")
 
     def test_musk_forward(self):
         self._test_encoder_forward('musk')
+    
+    def test_openmidnight_forward(self):
+        self._test_encoder_forward('openmidnight')
+    
+    def test_gpfm_forward(self):
+        self._test_encoder_forward('gpfm')
     
     def test_hibou_l_forward(self):
         self._test_encoder_forward('hibou_l')
