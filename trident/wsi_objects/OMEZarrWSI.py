@@ -63,7 +63,7 @@ class OMEZarrWSI(WSI):
 
         _get_W_and_H = lambda ngffimg: (ngffimg.data.shape[-1], ngffimg.data.shape[-2])
 
-        if not self.lazy_init:
+        if not self._initialized:
             try:
                 self.img = nz.from_ngff_zarr(self.slide_path) # Multiscales dataclass from ngff-zarr
  
@@ -80,7 +80,7 @@ class OMEZarrWSI(WSI):
                 self.mag = self._fetch_magnification()
                 self.properties = self.img.metadata # Properties here are limited to OME rather than the whole zarrfile
 
-                self.lazy_init = True
+                self._initialized = True
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize WSI with ngff-zarr: {e}") from e
@@ -148,7 +148,7 @@ class OMEZarrWSI(WSI):
         x, y = location_
         width_size, height_size = size
 
-        # WSI images are cyx, so [: -> c, y:y+height_size, x:x+width_size, ]
+        # imgs are ordered cyx, so [: -> c, y:y+height_size, x:x+width_size, ]
         # also convert cyx to desired H,W,C
         region = self.img.images[level].data[:, y:y+height_size, x:x+width_size].compute().transpose(1, 2, 0)
 
@@ -173,5 +173,12 @@ class OMEZarrWSI(WSI):
         PIL.Image.Image
             RGB thumbnail as a PIL Image.
         """
-        bottomlevel_image = self.img.images[-1].data.compute().transpose(1, 2, 0)
-        return Image.fromarray(bottomlevel_image).convert('RGB').resize(size)
+        width, height = size
+        # takes the average ratio between the thumbsize and the object's (level dimension) size then applies abs(x - 1) so min finds
+        # the size ratio closest to 1
+        get_dim_to_size_adjusted_ratio = lambda x: abs((((x[0]/width) + (x[1]/height)) / 2) - 1)
+        # get the min index rather than value
+        closest_level = min(range(self.level_count), key=lambda i: list(map(get_dim_to_size_adjusted_ratio, self.level_dimensions))[i])
+
+        thumbimg_data = self.img.images[closest_level].data.compute().transpose(1, 2, 0)
+        return Image.fromarray(thumbimg_data).convert('RGB').resize(size)
