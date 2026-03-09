@@ -11,7 +11,7 @@ import pandas as pd
 from trident import load_wsi, WSIReaderType
 from trident.IO import create_lock, remove_lock, is_locked, update_log, collect_valid_slides, splitext
 from trident.Maintenance import deprecated
-from trident.wsi_objects.WSIFactory import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS, SDPC_EXTENSIONS
+from trident.wsi_objects.WSIFactory import OPENSLIDE_EXTENSIONS, PIL_EXTENSIONS, SDPC_EXTENSIONS, OMEZARR_EXTENSIONS
 
 
 class Processor:
@@ -74,7 +74,7 @@ class Processor:
                 Maximum number of workers for data loading. If None, the default behavior will be used.
                 Defaults to None.
             reader_type (WSIReaderType, optional):
-                Force the image reader engine to use. Options are are ["openslide", "image", "cucim"]. Defaults to None
+                Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr"]. Defaults to None
                 (auto-determine the right engine based on image extension).
             search_nested (bool, optional):  
                 If True, the processor will recursively search for WSIs within all subdirectories of `wsi_source`.
@@ -108,7 +108,7 @@ class Processor:
 
         self.job_dir = job_dir
         self.wsi_source = wsi_source
-        self.wsi_ext = wsi_ext or (list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS) + list(SDPC_EXTENSIONS))
+        self.wsi_ext = wsi_ext or (list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS) + list(SDPC_EXTENSIONS) + list(OMEZARR_EXTENSIONS))
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
         self.max_workers = max_workers
