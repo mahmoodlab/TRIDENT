@@ -29,9 +29,10 @@ shapely = "*"
 requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
+ngff-zarr = ">=0.12" # Minimally support zarr version 3.
+zarr = ">=3.0" # Further zarr3 enforcement as aicsimageio has strict reqs
 aicsimageio = "*"
 pyvips = "*"
-ngff-zarr = ">=0.12" # Minimally support zarr version 3.
 cf-units = ">=3.1" # Minimum for python 3.10 support.
 
 # Core model dependencies (installed with `pip install -e .`)
