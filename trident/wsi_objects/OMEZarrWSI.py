@@ -55,7 +55,7 @@ class OMEZarrWSI(WSI):
         - `level_count`: number of resolution levels in the image pyramid.
         - `level_downsamples`: downsampling factors for each level.
         - `level_dimensions`: image dimensions at each level.
-        - `properties`: metadata dictionary from OpenSlide.
+        - `properties`: metadata object from ngff-zarr.
         - `mpp`: microns per pixel, inferred if not manually specified.
         - `mag`: estimated magnification level (via WSI.py).
         - `gdf_contours`: loaded from `tissue_seg_path` if provided (via WSI.py).

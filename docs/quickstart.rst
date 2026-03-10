@@ -123,7 +123,7 @@ WSI discovery and reading
 - ``--search_nested``: recursively discover slides in nested subfolders.
 - ``--custom_list_of_wsis``: CSV subset list to process selected slides only.
 - ``--custom_mpp_keys``: metadata keys to read MPP from non-standard slide headers.
-- ``--reader_type``: force backend reader (``openslide``, ``cucim``, ``image``, ``sdpc``).
+- ``--reader_type``: force backend reader (``openslide``, ``cucim``, ``image``, ``sdpc``, ``omezarr``).
 
 When to change:
 
