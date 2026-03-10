@@ -5,6 +5,8 @@ from cf_units import Unit as cf_Unit
 from PIL import Image
 import numpy as np
 
+import dask
+
 class OMEZarrWSI(WSI):
     """
     WSI implementation for reading zarrfiles following the OME specification.
@@ -148,9 +150,11 @@ class OMEZarrWSI(WSI):
         x, y = location_
         width_size, height_size = size
 
-        # imgs are ordered cyx, so [: -> c, y:y+height_size, x:x+width_size, ]
-        # also convert cyx to desired H,W,C
-        region = self.img.images[level].data[:, y:y+height_size, x:x+width_size].compute().transpose(1, 2, 0)
+        # prevent deadlock that occurs when reading while nested in pytorch's distributed operations
+        with dask.config.set(scheduler='synchronous'):
+            # imgs are ordered cyx, so [: -> c, y:y+height_size, x:x+width_size, ]
+            # also convert cyx to desired H,W,C
+            region = self.img.images[level].data[:, y:y+height_size, x:x+width_size].compute().transpose(1, 2, 0)
 
         if read_as == 'pil':
             return Image.fromarray(region).convert('RGB')
@@ -158,7 +162,18 @@ class OMEZarrWSI(WSI):
             return region
         else:
             raise ValueError(f"Invalid `read_as` value: {read_as}. Must be 'pil', 'numpy'.")
-        
+    
+    def get_dimensions(self) -> Tuple[int, int]:
+        """
+        Return the dimensions (width, height) of the WSI.
+
+        Returns
+        -------
+        tuple of int
+            (width, height) in pixels.
+        """
+        return self.dimensions
+    
     def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
         """
         Generate a thumbnail of the WSI.

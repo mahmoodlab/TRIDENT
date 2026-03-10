@@ -12,7 +12,7 @@ OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn'
 CUCIM_EXTENSIONS = {'.svs', '.tif', '.tiff'}
 SDPC_EXTENSIONS = {'.sdpc'}
 PIL_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
-OMEZARR_EXTENSIONS = {'.ome.zarr'}
+OMEZARR_EXTENSIONS = {'.zarr'}
 
 
 def load_wsi(
@@ -55,7 +55,7 @@ def load_wsi(
     """
     ext = os.path.splitext(slide_path)[1].lower()
 
-    assert reader_type in ['openslide', 'image', 'cucim', 'sdpc', None], f"Unknown reader_type: {reader_type}. Choose from 'openslide', 'image', 'cucim', or 'sdpc'."
+    assert reader_type in ['openslide', 'image', 'cucim', 'sdpc', 'omezarr', None], f"Unknown reader_type: {reader_type}. Choose from 'openslide', 'image', 'cucim', or 'sdpc' 'omezarr'."
 
     if reader_type == 'openslide':
         return OpenSlideWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
