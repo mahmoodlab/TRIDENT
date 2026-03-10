@@ -4,7 +4,7 @@ from trident.wsi_objects.WSI import WSI, ReadMode
 from cf_units import Unit as cf_Unit
 from PIL import Image
 import numpy as np
-
+import zarr
 import dask
 
 class OMEZarrWSI(WSI):
@@ -80,7 +80,10 @@ class OMEZarrWSI(WSI):
                 if self.mpp is None:
                     self.mpp = self._fetch_mpp()
                 self.mag = self._fetch_magnification()
-                self.properties = self.img.metadata # Properties here are limited to OME rather than the whole zarrfile
+                try:
+                    self.properties = dict(zarr.open(self.slide_path).attrs) # Properties here are limited to OME rather than the whole zarrfile
+                except:
+                    self.properties = None 
 
                 self._initialized = True
 
