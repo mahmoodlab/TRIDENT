@@ -18,7 +18,7 @@ class OMEZarrWSI(WSI):
         Parameters
         ----------
         slide_path : str
-            Path to an .ome.zarr multiscale file.
+            Path to an .zarr OME multiscale file.
         **kwargs : dict
             Additional keyword arguments forwarded to the base `WSI` class.
             - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
