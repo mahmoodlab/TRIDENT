@@ -81,7 +81,7 @@ class OMEZarrWSI(WSI):
                     self.mpp = self._fetch_mpp()
                 self.mag = self._fetch_magnification()
                 try:
-                    self.properties = dict(zarr.open(self.slide_path).attrs) # Properties here are limited to OME rather than the whole zarrfile
+                    self.properties = dict(zarr.open(self.slide_path).attrs) # get the whole zarr.json object
                 except:
                     self.properties = None 
 
