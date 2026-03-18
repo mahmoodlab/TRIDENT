@@ -30,7 +30,7 @@ requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
 ngff-zarr = ">=0.12" # Minimally support zarr version 3.
-zarr = ">=3.0" # Further zarr3 enforcement as aicsimageio has strict reqs
+zarr = ">=3.0.0a0" # Further zarr3 enforcement as aicsimageio has strict reqs
 dask = ">=2024.10" # Minimum for Zarr-Python 3
 aicsimageio = "*"
 pyvips = "*"
