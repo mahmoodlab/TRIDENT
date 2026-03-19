@@ -1,16 +1,24 @@
-import ngff_zarr as nz
 from typing import Tuple, Union, Optional, Any
 from trident.wsi_objects.WSI import WSI, ReadMode
-from cf_units import Unit as cf_Unit
 from PIL import Image
 import numpy as np
-import zarr
-import dask
+
+try:
+    from zarr import open as zarr_open
+    from dask.config import set as dask_config_set
+    from ngff_zarr import from_ngff_zarr
+    from cf_units import Unit as cf_Unit
+
+    _HAS_OME_ZARR = True
+except ImportError:
+    _HAS_OME_ZARR = False
+
 
 class OMEZarrWSI(WSI):
     """
     WSI implementation for reading zarrfiles following the OME specification.
     """
+
     def __init__(self, slide_path: str, **kwargs: Any) -> None:
         """
         Initialize a OMEZarr instance for OME-Zarr whole-slide images.
@@ -44,7 +52,7 @@ class OMEZarrWSI(WSI):
         FileNotFoundError
             If the WSI file or the tissue segmentation mask cannot be found.
         RuntimeError
-            If an unexpected error occurs during WSI initialization. Including if there 
+            If an unexpected error occurs during WSI initialization. Including if there
             are not 3 dimensions in an image, as read_region depends on this property.
 
         Notes
@@ -63,16 +71,41 @@ class OMEZarrWSI(WSI):
 
         super()._lazy_initialize()
 
-        _get_W_and_H = lambda ngffimg: (ngffimg.data.shape[-1], ngffimg.data.shape[-2])
-
         if not self._initialized:
-            try:
-                self.img = nz.from_ngff_zarr(self.slide_path) # Multiscales dataclass from ngff-zarr
- 
-                toplevel_image = self.img.images[0] # a possibly cyx shape NgffImage object
-                assert len(toplevel_image.data.shape) == 3, "Err, read_region expects 3 dimensional image data"
 
-                self.dimensions = _get_W_and_H(toplevel_image) # based on cyx array storage x -> width, y -> height
+            if not _HAS_OME_ZARR:
+                raise ImportError("Please install the omezarr optionals")
+
+            try:
+                self.img = from_ngff_zarr(
+                    self.slide_path
+                )  # Multiscales dataclass from ngff-zarr
+
+                dimnames = self.img.metadata.dimension_names
+                assert (len(dimnames) == 3) and (
+                    set(dimnames) == {"x", "y", "c"}
+                ), "Err, read_region expects 3 dimensional image data with c,y,x dim names"
+
+                _dimname_to_index = {
+                    name: i for i, name in enumerate(self.img.metadata.dimension_names)
+                }
+                self._idx_x, self._idx_y, self._idx_c = (
+                    _dimname_to_index["x"],
+                    _dimname_to_index["y"],
+                    _dimname_to_index["c"],
+                )
+
+                self._transpose_order = (self._idx_y, self._idx_x, self._idx_c)
+
+                # x -> width, y -> height
+                _get_W_and_H = lambda ngffimg: (
+                    ngffimg.data.shape[self._idx_x],
+                    ngffimg.data.shape[self._idx_y],
+                )
+                self.dimensions = _get_W_and_H(
+                    self.img.images[0]
+                )  # use the top level image (largest resolution)
+
                 self.width, self.height = self.dimensions
                 self.level_count = len(self.img.images)
                 self.level_dimensions = tuple(map(_get_W_and_H, self.img.images))
@@ -81,14 +114,18 @@ class OMEZarrWSI(WSI):
                     self.mpp = self._fetch_mpp()
                 self.mag = self._fetch_magnification()
                 try:
-                    self.properties = dict(zarr.open(self.slide_path).attrs) # get the whole zarr.json object
+                    self.properties = dict(
+                        zarr_open(self.slide_path).attrs
+                    )  # get the whole zarr.json object
                 except:
-                    self.properties = None 
+                    self.properties = None
 
                 self._initialized = True
 
             except Exception as e:
-                raise RuntimeError(f"Failed to initialize WSI with ngff-zarr: {e}") from e
+                raise RuntimeError(
+                    f"Failed to initialize WSI with ngff-zarr: {e}"
+                ) from e
 
     def _fetch_mpp(self):
         """
@@ -100,12 +137,35 @@ class OMEZarrWSI(WSI):
         np.float64
             MPP value in microns per pixel.
         """
-        scale, scale_unit = self.img.images[0].scale['x'], self.img.images[0].axes_units['x']
-        return cf_Unit(scale_unit).convert(scale, cf_Unit('micrometers')) # mpp for the x axis at the highest res image
-    
+        scale, scale_unit = (
+            self.img.images[0].scale["x"],
+            self.img.images[0].axes_units["x"],
+        )
+        return cf_Unit(scale_unit).convert(
+            scale, cf_Unit("micrometers")
+        )  # mpp for the x axis at the highest res image
+
     def _fetch_downsamples(self):
-        return tuple( [1.] 
-            + [(self.img.images[0].data.shape[-1] / ngff_img.data.shape[-1]) for ngff_img in self.img.images[1:]]
+        """
+        Calculate the downsampling factors for each resolution level.
+
+        Computes the ratio of the highest resolution level's x-axis dimension to 
+        each subsequent level's x-axis dimension. The base level defaults to 1.0.
+
+        Returns
+        -------
+        Tuple[float]
+            Downsample factors for each level in the image pyramid.
+        """
+        return tuple(
+            [1.0]
+            + [
+                (
+                    self.img.images[0].data.shape[self._idx_x]
+                    / ngff_img.data.shape[self._idx_x]
+                )
+                for ngff_img in self.img.images[1:]
+            ]
         )
 
     def read_region(
@@ -113,7 +173,7 @@ class OMEZarrWSI(WSI):
         location: Tuple[int, int],
         level: int,
         size: Tuple[int, int],
-        read_as: ReadMode = 'pil',
+        read_as: ReadMode = "pil",
     ) -> Union[Image.Image, np.ndarray]:
         """
         Extract a specific region from the whole-slide image (WSI).
@@ -148,24 +208,39 @@ class OMEZarrWSI(WSI):
         (512, 512, 3)
         """
         # 'location' is relative to the level as calls are made to the data array
-        location_ = (int(location[0] / self.level_downsamples[level]), int(location[1] / self.level_downsamples[level]))
+        downsample_factor = self.level_downsamples[level]
+        location_ = (
+            int(location[0] / downsample_factor),
+            int(location[1] / downsample_factor),
+        )
 
         x, y = location_
         width_size, height_size = size
 
-        # prevent deadlock that occurs when reading while nested in pytorch's distributed operations
-        with dask.config.set(scheduler='synchronous'):
-            # imgs are ordered cyx, so [: -> c, y:y+height_size, x:x+width_size, ]
-            # also convert cyx to desired H,W,C
-            region = self.img.images[level].data[:, y:y+height_size, x:x+width_size].compute().transpose(1, 2, 0)
+        slice_init = [None, None, None]
+        slice_init[self._idx_y] = slice(y, y + height_size)
+        slice_init[self._idx_x] = slice(x, x + width_size)
+        slice_init[self._idx_c] = slice(None)
+        slice_init = tuple(slice_init)
 
-        if read_as == 'pil':
-            return Image.fromarray(region).convert('RGB')
-        elif read_as == 'numpy':
+        # prevent deadlock that occurs when reading while nested in pytorch's distributed operations
+        with dask_config_set(scheduler="synchronous"):
+            region = (
+                self.img.images[level]
+                .data[slice_init]
+                .compute()
+                .transpose(self._transpose_order)
+            )
+
+        if read_as == "pil":
+            return Image.fromarray(region).convert("RGB")
+        elif read_as == "numpy":
             return region
         else:
-            raise ValueError(f"Invalid `read_as` value: {read_as}. Must be 'pil', 'numpy'.")
-    
+            raise ValueError(
+                f"Invalid `read_as` value: {read_as}. Must be 'pil', 'numpy'."
+            )
+
     def get_dimensions(self) -> Tuple[int, int]:
         """
         Return the dimensions (width, height) of the WSI.
@@ -176,7 +251,7 @@ class OMEZarrWSI(WSI):
             (width, height) in pixels.
         """
         return self.dimensions
-    
+
     def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
         """
         Generate a thumbnail of the WSI.
@@ -194,9 +269,20 @@ class OMEZarrWSI(WSI):
         width, height = size
         # takes the average ratio between the thumbsize and the object's (level dimension) size then applies abs(x - 1) so min finds
         # the size ratio closest to 1
-        get_dim_to_size_adjusted_ratio = lambda x: abs((((x[0]/width) + (x[1]/height)) / 2) - 1)
+        get_dim_to_size_adjusted_ratio = lambda x: abs(
+            (((x[0] / width) + (x[1] / height)) / 2) - 1
+        )
         # get the min index rather than value
-        closest_level = min(range(self.level_count), key=lambda i: list(map(get_dim_to_size_adjusted_ratio, self.level_dimensions))[i])
+        closest_level = min(
+            range(self.level_count),
+            key=lambda i: list(
+                map(get_dim_to_size_adjusted_ratio, self.level_dimensions)
+            )[i],
+        )
 
-        thumbimg_data = self.img.images[closest_level].data.compute().transpose(1, 2, 0)
-        return Image.fromarray(thumbimg_data).convert('RGB').resize(size)
+        thumbimg_data = (
+            self.img.images[closest_level]
+            .data.compute()
+            .transpose(self._transpose_order)
+        )
+        return Image.fromarray(thumbimg_data).convert("RGB").resize(size)
