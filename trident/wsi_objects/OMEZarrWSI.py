@@ -1,4 +1,4 @@
-from typing import Tuple, Union, Optional, Any
+from typing import Tuple, Union, Any
 from trident.wsi_objects.WSI import WSI, ReadMode
 from PIL import Image
 import numpy as np
@@ -10,8 +10,10 @@ try:
     from cf_units import Unit as cf_Unit
 
     _HAS_OME_ZARR = True
-except ImportError:
+    _EXCEPT_MESSAGE = None
+except ImportError as e: # ModuleNotFoundError is likely
     _HAS_OME_ZARR = False
+    _EXCEPT_MESSAGE = e
 
 
 class OMEZarrWSI(WSI):
@@ -74,26 +76,20 @@ class OMEZarrWSI(WSI):
         if not self._initialized:
 
             if not _HAS_OME_ZARR:
-                raise ImportError("Please install the omezarr optionals")
+                raise ImportError(
+                    "ngff-zarr, zarr, dask, and cf_units are required for omezarr support. "
+                    "Install them with pip, or pip install .[omezarr] when installing TRIDENT. "
+                    f"When trying to import, got message {_EXCEPT_MESSAGE}"
+                )
 
             try:
                 self.img = from_ngff_zarr(
                     self.slide_path
                 )  # Multiscales dataclass from ngff-zarr
 
-                dimnames = self.img.metadata.dimension_names
-                assert (len(dimnames) == 3) and (
-                    set(dimnames) == {"x", "y", "c"}
-                ), "Err, read_region expects 3 dimensional image data with c,y,x dim names"
-
-                _dimname_to_index = {
-                    name: i for i, name in enumerate(self.img.metadata.dimension_names)
-                }
-                self._idx_x, self._idx_y, self._idx_c = (
-                    _dimname_to_index["x"],
-                    _dimname_to_index["y"],
-                    _dimname_to_index["c"],
-                )
+                idx_tuple, dimname_tuple = self._fetch_dimension_metadata()
+                self._idx_x, self._idx_y, self._idx_c = idx_tuple
+                self._xname, self._yname, self._cname = dimname_tuple
 
                 self._transpose_order = (self._idx_y, self._idx_x, self._idx_c)
 
@@ -129,21 +125,33 @@ class OMEZarrWSI(WSI):
 
     def _fetch_mpp(self):
         """
-        Retrieve microns per pixel (MPP) from OME Zarr metadata. Conforming to the OME zarr
-        specification requires scale and UDUNITS-2, so custom_mpp_keys not requried.
+        Retrieve microns per pixel (MPP) from OME Zarr metadata. The OME spec
+        has a designated axes unit property in UDUNITS-2, so custom_mpp_keys not requried.
 
         Returns
         -------
         np.float64
             MPP value in microns per pixel.
         """
-        scale, scale_unit = (
-            self.img.images[0].scale["x"],
-            self.img.images[0].axes_units["x"],
-        )
-        return cf_Unit(scale_unit).convert(
-            scale, cf_Unit("micrometers")
-        )  # mpp for the x axis at the highest res image
+        try:
+            scale, scale_unit = (
+                self.img.images[0].scale[self._xname],
+                self.img.images[0].axes_units[self._xname],
+            )
+            return cf_Unit(scale_unit).convert(
+                scale, cf_Unit("micrometers")
+            )  # mpp for the x axis at the highest res image
+        except:
+            raise ValueError(
+                f"Unable to extract MPP from slide metadata: '{self.slide_path}'.\n"
+                "Suggestions:\n"
+                "- Set the unit in the x/width axes metadata of the OME-Zarr Multiscales "
+                "(likely having to update the corresponding scale property).\n"
+                "- Set the MPP explicitly via the class constructor.\n"
+                "- If using the `run_batch_of_slides.py` script, pass the MPP via the "
+                "`--custom_list_of_wsis` argument in a CSV file. Refer to TRIDENT/README/Q&A."
+            )
+
 
     def _fetch_downsamples(self):
         """
@@ -167,6 +175,56 @@ class OMEZarrWSI(WSI):
                 for ngff_img in self.img.images[1:]
             ]
         )
+
+    def _fetch_dimension_metadata(self):
+        """
+        Parse dimension metadata to identify spatial and channel axes.
+
+        Extracts and maps the indices and original string names for the x-axis, 
+        y-axis, and channel dimensions from the image metadata.
+
+        Returns
+        -------
+        Tuple[Tuple[int, int, int], Tuple[str, str, str]]
+            A pair of tuples containing the integer indices (idx_x, idx_y, idx_c) 
+            and the matched string names (x_name, y_name, c_name), respectively.
+
+        Raises
+        ------
+        AssertionError
+            If the image does not have exactly 3 dimensions or contains unrecognized dimension names.
+        ValueError
+            If the dimensions do not consist of exactly one X-type, one Y-type, and one C-type axis.
+        """
+
+        dimnames = self.img.metadata.dimension_names
+        possible_dimnames_lowercase = {"x", "y", "c", "width", "height", 'channel'}
+
+        strlower = lambda x: x.lower()
+        assert (len(dimnames) == 3) and (
+            set(map(strlower, dimnames)).issubset(possible_dimnames_lowercase)
+        ), f"Err, read_region expects 3 dimensional image data with {possible_dimnames_lowercase} dim names, found {dimnames}"
+
+        try:
+            _xname = next(d for d in dimnames if d.lower() in {"x", "width"})
+            _yname = next(d for d in dimnames if d.lower() in {"y", "height"})
+            _cname = next(d for d in dimnames if d.lower() in {"c", "channel"})
+        except:
+            raise ValueError(
+                "Err, expecting one of each space/channel type dim in "
+                f"{possible_dimnames_lowercase}, found {dimnames}."
+            )
+
+        _dimname_to_index = {
+            name: i for i, name in enumerate(self.img.metadata.dimension_names)
+        }
+        _idx_x, _idx_y, _idx_c = (
+            _dimname_to_index[_xname],
+            _dimname_to_index[_yname],
+            _dimname_to_index[_cname],
+        )
+
+        return (_idx_x, _idx_y, _idx_c), (_xname, _yname, _cname)
 
     def read_region(
         self,
@@ -217,17 +275,17 @@ class OMEZarrWSI(WSI):
         x, y = location_
         width_size, height_size = size
 
-        slice_init = [None, None, None]
-        slice_init[self._idx_y] = slice(y, y + height_size)
-        slice_init[self._idx_x] = slice(x, x + width_size)
-        slice_init[self._idx_c] = slice(None)
-        slice_init = tuple(slice_init)
+        region_as_slice = [None, None, None]
+        region_as_slice[self._idx_y] = slice(y, y + height_size)
+        region_as_slice[self._idx_x] = slice(x, x + width_size)
+        region_as_slice[self._idx_c] = slice(None)
+        region_as_slice = tuple(region_as_slice)
 
         # prevent deadlock that occurs when reading while nested in pytorch's distributed operations
         with dask_config_set(scheduler="synchronous"):
             region = (
                 self.img.images[level]
-                .data[slice_init]
+                .data[region_as_slice]
                 .compute()
                 .transpose(self._transpose_order)
             )
