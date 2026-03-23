@@ -119,5 +119,8 @@ class TestPatchEncoders(unittest.TestCase):
         self._test_encoder_forward('midnight12k')
         self._test_encoder_forward('midnight12k', return_type="cls+mean")
 
+    def test_genbio_pathfm_forward(self):
+        self._test_encoder_forward('genbio-pathfm')
+    
 if __name__ == '__main__':
     unittest.main()

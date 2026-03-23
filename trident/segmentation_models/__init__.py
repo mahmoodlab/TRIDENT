@@ -4,9 +4,9 @@ from trident.segmentation_models.load import (
     HESTSegmenter,
     GrandQCSegmenter,
     GrandQCArtifactSegmenter,
-)
-from trident.segmentation_models.otsu import (
     OtsuSegmenter,
+)
+from trident.segmentation_models.model_zoo.otsu import (
     apply_otsu_thresholding,
     mask_rgb,
 )

@@ -48,6 +48,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vits16"
         - "kaiko-vitl14"
         - "lunit-vits8"
+        - "genbio-pathfm"
 
     **kwargs : dict
         Optional keyword arguments passed directly to the encoder constructor. These
@@ -1428,6 +1429,65 @@ class GPFMInferenceEncoder(BasePatchEncoder):
         precision = torch.float16
         return model, eval_transform, precision
 
+
+class GenBioPathFMInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        GenBio-PathFM initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from huggingface_hub import hf_hub_download
+        from torchvision.transforms import InterpolationMode
+        from trident.patch_encoder_models.model_zoo.genbio_pathfm.genbio_pathfm import GenBioPathFMInference
+
+        self.enc_name = "genbio-pathfm"
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                weights_path = hf_hub_download(
+                    repo_id="genbio-ai/genbio-pathfm",
+                    filename="model.pth",
+                )
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download GenBio-PathFM model. "
+                    "You can manually download 'model.pth' from: "
+                    "https://huggingface.co/genbio-ai/genbio-pathfm and set the path in local_ckpts.json."
+                )
+
+        try:
+            model = GenBioPathFMInference(weights_path, device="cpu")
+        except:
+            traceback.print_exc()
+            raise Exception(
+                f"Failed to create GenBio-PathFM model from local checkpoint at '{weights_path}'. "
+                "You can download the required 'model.pth' from: "
+                "https://huggingface.co/genbio-ai/genbio-pathfm."
+            )
+
+        mean, std = get_constants("genbio_pathfm")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BILINEAR,
+            max_size=None,
+            antialias=True,
+        )
+
+        precision = torch.bfloat16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        return self.model(x)
+
+
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
     "conch_v15": Conchv15InferenceEncoder,
@@ -1454,4 +1514,5 @@ encoder_registry = {
     "kaiko-vitl14": KaikoL14InferenceEncoder,
     "lunit-vits8": LunitS8InferenceEncoder,
     "midnight12k": Midnight12kInferenceEncoder,
+    "genbio-pathfm": GenBioPathFMInferenceEncoder,
 }
