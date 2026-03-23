@@ -1,5 +1,27 @@
 """
-Credits to original CTransPath implementation: https://github.com/Xiyue-Wang/TransPath/blob/main/ctran.py
+CTransPath / TransPath attribution
+
+This file is adapted from the upstream TransPath implementation:
+https://github.com/Xiyue-Wang/TransPath/blob/main/ctran.py
+
+Upstream authors (citation):
+@article{wang2022,
+  title={Transformer-based Unsupervised Contrastive Learning for Histopathological Image Classification},
+  author={Wang, Xiyue and Yang, Sen and Zhang, Jun and Wang, Minghui and Zhang, Jing and Yang, Wei and Huang, Junzhou and Han, Xiao},
+  journal={Medical Image Analysis},
+  year={2022},
+  publisher={Elsevier}
+}
+
+@inproceedings{wang2021transpath,
+  title={TransPath: Transformer-Based Self-supervised Learning for Histopathological Image Classification},
+  author={Wang, Xiyue and Yang, Sen and Zhang, Jun and Wang, Minghui and Zhang, Jing and Huang, Junzhou and Yang, Wei and Han, Xiao},
+  booktitle={International Conference on Medical Image Computing and Computer-Assisted Intervention},
+  pages={186--195},
+  year={2021},
+  organization={Springer}
+}
+
 """
 
 from timm_ctp.models.layers.helpers import to_2tuple

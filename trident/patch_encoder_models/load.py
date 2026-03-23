@@ -1440,8 +1440,8 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
 
     def _build(self):
         from huggingface_hub import hf_hub_download
-        from torchvision import transforms
-        from trident.patch_encoder_models.model_zoo.genbio_pathfm.genbio_pathfm import GenBio_PathFM_Inference
+        from torchvision.transforms import InterpolationMode
+        from trident.patch_encoder_models.model_zoo.genbio_pathfm.genbio_pathfm import GenBioPathFMInference
 
         self.enc_name = "genbio-pathfm"
         weights_path = self._get_weights_path()
@@ -1462,7 +1462,7 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
                 )
 
         try:
-            model = GenBio_PathFM_Inference(weights_path, device="cpu")
+            model = GenBioPathFMInference(weights_path, device="cpu")
         except:
             traceback.print_exc()
             raise Exception(
@@ -1471,14 +1471,15 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
                 "https://huggingface.co/genbio-ai/genbio-pathfm."
             )
 
-        eval_transform = transforms.Compose([
-            transforms.Resize(224),  
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.697, 0.575, 0.728), 
-                std=(0.188, 0.240, 0.187)
-            ),
-        ])
+        mean, std = get_constants("genbio_pathfm")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BILINEAR,
+            max_size=None,
+            antialias=True,
+        )
 
         precision = torch.bfloat16
         return model, eval_transform, precision

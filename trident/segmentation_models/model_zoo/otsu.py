@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 import cv2
 import numpy as np
 import skimage.color as sk_color
 import skimage.filters as sk_filters
 import skimage.morphology as sk_morphology
-import torch
-from torch import nn
-from torchvision import transforms
-
-from trident.segmentation_models.load import SegmentationModel
 
 
 def mask_rgb(rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -64,36 +57,3 @@ def apply_otsu_thresholding(tile: np.ndarray) -> np.ndarray:
     otsu_thr = ~otsu_masking
     return otsu_thr.astype(np.uint8)
 
-
-class OtsuSegmenter(SegmentationModel):
-    """
-    Classical image-processing tissue segmenter based on two-pass Otsu thresholding.
-    """
-
-    def __init__(self, **build_kwargs):
-        super().__init__(**build_kwargs)
-
-    def _build(self) -> Tuple[nn.Module, transforms.Compose]:
-        # Keep API aligned with other segmenters used by WSI._segment_semantic.
-        self.input_size = 512
-        self.precision = torch.float32
-        self.target_mag = 1.25
-        eval_transforms = transforms.Compose([transforms.ToTensor()])
-        return None, eval_transforms
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        if image.ndim != 4:
-            raise ValueError(f"Input must be 4D tensor (B, C, H, W), got shape={tuple(image.shape)}")
-
-        preds = []
-        for i in range(image.shape[0]):
-            img_np = image[i].detach().permute(1, 2, 0).cpu().numpy()
-            img_np = np.clip(img_np * 255.0, 0, 255).astype(np.uint8)
-
-            # apply_otsu_thresholding returns background mask (1=background).
-            # TRIDENT expects tissue mask (1=tissue), so invert here.
-            background_mask = apply_otsu_thresholding(img_np)
-            tissue_mask = (1 - background_mask).astype(np.uint8)
-            preds.append(tissue_mask)
-
-        return torch.from_numpy(np.stack(preds, axis=0))

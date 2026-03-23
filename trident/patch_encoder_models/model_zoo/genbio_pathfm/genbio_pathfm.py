@@ -1,14 +1,30 @@
-import logging
+# -----------------------------------------------------------------------------
+# GenBio-PathFM
+# -----------------------------------------------------------------------------
+# This module is taken from the upstream GenBio-PathFM repository:
+# https://github.com/genbio-ai/genbio-pathfm
+#
+# If you use this work, please consider citing:
+#   @article{kapse2026genbiopathfm,
+#     title={GenBio-PathFM: A State-of-the-Art Foundation Model for Histopathology},
+#     author={Kapse, Saarthak and Aygun, Mehmet and Cole, Elijah and Lundberg, Emma and Song, Le and Xing, Eric P.},
+#     journal={bioRxiv},
+#     year={2026}
+#   }
+#
+# License notice (required by the GenBio AI Community License):
+#   This is licensed under the GenBio AI Community License Agreement,
+#   Copyright © GENBIO.AI, INC. All Rights Reserved.
+# -----------------------------------------------------------------------------
+
 import math
 from functools import partial
 from typing import Any, Callable, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from torchvision import transforms
 
 
 # ──────────────────────────────────────────────────────────────
@@ -561,10 +577,10 @@ class VisionTransformer(nn.Module):
 
 
 # ──────────────────────────────────────────────────────────────
-# GenBio_PathFM_Inference
+# GenBioPathFMInference
 # ──────────────────────────────────────────────────────────────
 
-class GenBio_PathFM_Inference(nn.Module):
+class GenBioPathFMInference(nn.Module):
     """
     Loads a GenBio-PathFM checkpoint and runs RGB inference.
 
@@ -578,8 +594,8 @@ class GenBio_PathFM_Inference(nn.Module):
     """
 
     def __init__(self, weights_path: str, device: str = "cuda"):
-        super().__init__()                           # <-- nn.Module init
-        self.device = device
+        super().__init__()
+        self.device = torch.device(device)
 
 
         self.model = VisionTransformer(
@@ -602,9 +618,8 @@ class GenBio_PathFM_Inference(nn.Module):
         )
 
         state_dict = torch.load(weights_path, map_location="cpu", weights_only=True)
-        msg = self.model.load_state_dict(state_dict, strict=True)
-        print("load message:", msg)
-        self.to(self.device).eval()                  # move the whole nn.Module
+        self.model.load_state_dict(state_dict, strict=True)
+        self.to(self.device).eval()
 
     def _encode(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Process a batch of single-channel [B,1,H,W] images."""
@@ -613,9 +628,10 @@ class GenBio_PathFM_Inference(nn.Module):
         for blk in self.model.blocks:
             tokens = blk(tokens, rope)
         tokens = self.model.norm(tokens)
+        n_storage_tokens = self.model.n_storage_tokens
         return {
             "x_norm_clstoken":    tokens[:, 0],
-            "x_norm_patchtokens": tokens[:, 5:],   # skip CLS + 4 storage tokens
+            "x_norm_patchtokens": tokens[:, n_storage_tokens + 1 :],
         }
 
     def forward(self, x_rgb: torch.Tensor) -> torch.Tensor:
@@ -628,9 +644,12 @@ class GenBio_PathFM_Inference(nn.Module):
             ``[B, embed_dim * 3]`` – CLS features from R, G, B channels
             concatenated along the feature dimension.
         """
+        if x_rgb.ndim != 4 or x_rgb.shape[1] != 3:
+            raise ValueError(f"Expected input shape [B, 3, H, W], got {tuple(x_rgb.shape)}")
+
         b, _c, h, w = x_rgb.shape
         # Stack all channels into a single-channel batch → [B*3, 1, H, W]
-        features = self._encode(x_rgb.view(b * 3, 1, h, w))
+        features = self._encode(x_rgb.reshape(b * 3, 1, h, w))
 
         cls = features["x_norm_clstoken"].view(b, 3, -1)            # [B, 3, D]
         return torch.cat([cls[:, 0], cls[:, 1], cls[:, 2]], dim=-1) # [B, 3*D]
@@ -645,8 +664,11 @@ class GenBio_PathFM_Inference(nn.Module):
             cls_out:   ``[B, embed_dim * 3]``
             patch_out: ``[B, num_patches, embed_dim * 3]``
         """
+        if x_rgb.ndim != 4 or x_rgb.shape[1] != 3:
+            raise ValueError(f"Expected input shape [B, 3, H, W], got {tuple(x_rgb.shape)}")
+
         b, _c, h, w = x_rgb.shape
-        features = self._encode(x_rgb.view(b * 3, 1, h, w))
+        features = self._encode(x_rgb.reshape(b * 3, 1, h, w))
 
         cls = features["x_norm_clstoken"].view(b, 3, -1)
         cls_out = torch.cat([cls[:, 0], cls[:, 1], cls[:, 2]], dim=-1)
