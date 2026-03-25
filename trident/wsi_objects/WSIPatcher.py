@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple, Optional, Any
+from typing import Tuple, Optional, Any, Literal
 import warnings
 import cv2
 import numpy as np
@@ -78,6 +78,7 @@ class WSIPatcher:
         custom_coords: Optional[Any] = None,
         threshold: float = 0.,
         pil: bool = False,
+        scan_order: Literal["row-major", "col-major"] = "row-major",
     ):
         """ Initialize patcher, compute number of (masked) rows, columns.
 
@@ -109,6 +110,10 @@ class WSIPatcher:
             This argument is ignored if mask=None, passing threshold=0 will be faster. Defaults to 0.0.
         pil : bool, optional
             Whether to get patches as `PIL.Image` (numpy array by default). Defaults to False.
+        scan_order : {"row-major", "col-major"}, optional
+            Scan order used when generating the default coordinate grid (only when `custom_coords is None`).
+            - "row-major": iterate row by row (Y -> X). Typically best for disk locality on tiled WSI formats.
+            - "col-major": iterate column by column (X -> Y). Legacy behavior.
         """
         self.wsi = wsi
         self.overlap = overlap
@@ -120,6 +125,7 @@ class WSIPatcher:
         self.custom_coords = custom_coords
         self.pil = pil
         self.dst_mag = dst_mag
+        self.scan_order = scan_order
 
         # set src magnification and pixel size. 
         if src_pixel_size is not None:
@@ -144,13 +150,27 @@ class WSIPatcher:
         
         if custom_coords is None: 
             self.cols, self.rows = self._compute_cols_rows()
-            
-            col_rows = np.array([
-                [col, row] 
-                for col in range(self.cols) 
-                for row in range(self.rows)
-            ])
-            coords = np.array([self._colrow_to_xy(xy[0], xy[1]) for xy in col_rows])
+
+            if self.scan_order not in ("row-major", "col-major"):
+                raise ValueError(
+                    f"Invalid scan_order '{self.scan_order}'. Expected 'row-major' or 'col-major'."
+                )
+
+            # Generate (col, row) indices in the requested scan order.
+            # Use vectorized generation to avoid Python loops.
+            cols = np.arange(self.cols, dtype=np.int64)
+            rows = np.arange(self.rows, dtype=np.int64)
+            rr, cc = np.meshgrid(rows, cols, indexing="ij")  # rr/cc shape: (rows, cols)
+            if self.scan_order == "row-major":
+                col_rows = np.stack([cc.ravel(order="C"), rr.ravel(order="C")], axis=1)
+            else:  # "col-major"
+                col_rows = np.stack([cc.ravel(order="F"), rr.ravel(order="F")], axis=1)
+
+            # Convert (col, row) -> (x, y) in level-0 coordinates.
+            step = self.patch_size_src - self.overlap_src
+            coords = np.empty_like(col_rows)
+            coords[:, 0] = col_rows[:, 0] * step
+            coords[:, 1] = col_rows[:, 1] * step
         else:
             coords = np.asarray(custom_coords)
             if coords.size == 0:
