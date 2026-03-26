@@ -107,6 +107,7 @@ class TestPatchScanOrderBenchmark(unittest.TestCase):
 
     HF_REPO = "MahmoodLab/unit-testing"
     OUT_DIR = os.path.join("test_benchmark_output", "wsis")
+    TEST_SLIDE_NAME = "CMU-1.tiff"
 
     @classmethod
     def setUpClass(cls):
@@ -115,21 +116,13 @@ class TestPatchScanOrderBenchmark(unittest.TestCase):
             repo_id=cls.HF_REPO,
             repo_type="dataset",
             local_dir=cls.OUT_DIR,
-            allow_patterns=["*svs"],
+            allow_patterns=[cls.TEST_SLIDE_NAME],
         )
-
-        # pick any .svs file that was downloaded
-        cls.slide_path = None
-        for root, _dirs, files in os.walk(cls.local_wsi_dir):
-            for f in files:
-                if f.lower().endswith(".svs"):
-                    cls.slide_path = os.path.join(root, f)
-                    break
-            if cls.slide_path:
-                break
-
-        if cls.slide_path is None:
-            raise RuntimeError(f"No .svs found in downloaded dataset at {cls.local_wsi_dir}")
+        cls.slide_path = os.path.join(cls.local_wsi_dir, cls.TEST_SLIDE_NAME)
+        if not os.path.exists(cls.slide_path):
+            raise RuntimeError(
+                f"Expected benchmark slide '{cls.TEST_SLIDE_NAME}' not found in {cls.local_wsi_dir}"
+            )
 
     def test_benchmark(self):
         slide_path = self.slide_path

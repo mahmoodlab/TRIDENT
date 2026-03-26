@@ -64,7 +64,8 @@ TRIDENT_RUN_INTEGRATION_TESTS=1 TRIDENT_RUN_BENCHMARKS=1 python -m unittest disc
 ### Patch scan order benchmark (row-major vs col-major)
 
 This benchmark compares patch extraction speed for `WSIPatcher(scan_order="row-major")` vs
-`WSIPatcher(scan_order="col-major")` on a real `.svs` slide downloaded from Hugging Face.
+`WSIPatcher(scan_order="col-major")` on a real `CMU-1.tiff` slide downloaded from
+`MahmoodLab/unit-testing` on Hugging Face.
 
 Example run (recommended defaults):
 
