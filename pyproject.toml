@@ -51,6 +51,10 @@ musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
 gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
 madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
 pylibCZIrw = { version = "*", optional = true }
+cf-units = { version = ">=3.1", optional = true }
+ngff-zarr = { version = ">=0.12", optional = true }
+zarr = { version = ">=3.0.0a0", optional = true }
+dask = { version = ">=2024.10", optional = true }
 
 [tool.poetry.extras]
 patch-encoders = [
@@ -81,6 +85,12 @@ full = [
     "gigapath",
     "madeleine",
     "pylibCZIrw",
+]
+omezarr = [
+    "ngff-zarr",
+    "dask",
+    "cf-units",
+    "zarr"
 ]
 
 [tool.poetry.dev-dependencies]

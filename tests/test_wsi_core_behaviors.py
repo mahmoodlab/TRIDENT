@@ -37,6 +37,11 @@ class TestSplitExt(unittest.TestCase):
         self.assertEqual(stem, "slide")
         self.assertEqual(ext, ".svs")
 
+    def test_splitext_handles_ome_zarr(self):
+        stem, ext = splitext("slide.ome.zarr")
+        self.assertEqual(stem, "slide")
+        self.assertEqual(ext, ".ome.zarr")
+
 
 class TestWSIFactoryRouting(unittest.TestCase):
     def test_auto_reader_routes_ome_tif_to_openslide(self):

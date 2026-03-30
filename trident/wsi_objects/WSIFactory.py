@@ -6,11 +6,13 @@ from trident.wsi_objects.OpenSlideWSI import OpenSlideWSI
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.CuCIMWSI import CuCIMWSI
 from trident.wsi_objects.SDPCWSI import SDPCWSI
-WSIReaderType = Literal['openslide', 'image', 'cucim', 'sdpc']
+from trident.wsi_objects.OMEZarrWSI import OMEZarrWSI
+WSIReaderType = Literal['openslide', 'image', 'cucim', 'sdpc', 'omezarr']
 OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs'}
 CUCIM_EXTENSIONS = {'.svs', '.tif', '.tiff'}
 SDPC_EXTENSIONS = {'.sdpc'}
 PIL_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
+OMEZARR_EXTENSIONS = {'.zarr'}
 
 
 def load_wsi(
@@ -18,7 +20,7 @@ def load_wsi(
     reader_type: Optional[WSIReaderType] = None,
     lazy_init: bool = False,
     **kwargs
-) -> Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI]:
+) -> Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI, OMEZarrWSI]:
     """
     Load a whole-slide image (WSI) using the appropriate backend.
 
@@ -30,7 +32,7 @@ def load_wsi(
     ----------
     slide_path : str
         Path to the whole-slide image.
-    reader_type : {'openslide', 'image', 'cucim', 'sdpc'}, optional
+    reader_type : {'openslide', 'image', 'cucim', 'sdpc', 'omezarr'}, optional
         Manually specify the WSI reader to use. If None (default), selection
         is automatic based on file extension.
     lazy_init : bool, optional
@@ -41,7 +43,7 @@ def load_wsi(
 
     Returns
     -------
-    Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI]
+    Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI, OMEZarrWSI]
         An instance of the appropriate WSI reader.
 
     Raises
@@ -53,7 +55,7 @@ def load_wsi(
     """
     ext = os.path.splitext(slide_path)[1].lower()
 
-    assert reader_type in ['openslide', 'image', 'cucim', 'sdpc', None], f"Unknown reader_type: {reader_type}. Choose from 'openslide', 'image', 'cucim', or 'sdpc'."
+    assert reader_type in ['openslide', 'image', 'cucim', 'sdpc', 'omezarr', None], f"Unknown reader_type: {reader_type}. Choose from 'openslide', 'image', 'cucim', or 'sdpc' 'omezarr'."
 
     if reader_type == 'openslide':
         return OpenSlideWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
@@ -78,11 +80,22 @@ def load_wsi(
                 f"Unsupported file format '{ext}' for CuCIM. "
                 f"Supported whole-slide image formats are: {', '.join(CUCIM_EXTENSIONS)}."
             )
- 
+    
+    elif reader_type == 'omezarr':
+        if ext in OMEZARR_EXTENSIONS:
+            return OMEZarrWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
+        else:
+            raise ValueError(
+                f"Unsupported file format '{ext}' for Ome-Zarr. "
+                f"Supported whole-slide image formats are: {', '.join(OMEZARR_EXTENSIONS)}."
+            )
+        
     elif reader_type is None:
         if ext in OPENSLIDE_EXTENSIONS:
             return OpenSlideWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         elif ext in SDPC_EXTENSIONS:
             return SDPCWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
+        elif ext in OMEZARR_EXTENSIONS:
+            return OMEZarrWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)
         else:
             return ImageWSI(slide_path=slide_path, lazy_init=lazy_init, **kwargs)

@@ -40,6 +40,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 Optional install profiles:
 - `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
 - `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
+- `pip install -e ".[omezarr]"` for OME Zarr WSI reader support
 - `pip install -e ".[convert]"` for slide conversion dependencies.
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
 
@@ -232,7 +233,7 @@ main()
    - **A**: Yes using the `--custom_list_of_wsis` argument. Provide a list of WSI names in a CSV (with slide extension, `wsi`). Optionally, provide the mpp (field `mpp`)
  
  - **Q**: Do I need to install any additional packages to use Trident?
-   - **A**: `pip install -e .` installs core dependencies. Some optional components still require extra installs. Use profiles (`.[patch-encoders]`, `.[slide-encoders]`, `.[convert]`, or `.[full]`) and run `trident-doctor` for preflight checks.
+   - **A**: `pip install -e .` installs core dependencies. Some optional components still require extra installs. Use profiles (`.[patch-encoders]`, `.[slide-encoders]`, `.[convert]`, `.[omezarr]` or `.[full]`) and run `trident-doctor` for preflight checks.
 
 ## License and Terms of Use
 
