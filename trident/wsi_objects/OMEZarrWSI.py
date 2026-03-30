@@ -2,6 +2,7 @@ from typing import Tuple, Union, Any
 from trident.wsi_objects.WSI import WSI, ReadMode
 from PIL import Image
 import numpy as np
+import warnings
 
 try:
     from zarr import open as zarr_open
@@ -157,24 +158,39 @@ class OMEZarrWSI(WSI):
         """
         Calculate the downsampling factors for each resolution level.
 
-        Computes the ratio of the highest resolution level's x-axis dimension to 
-        each subsequent level's x-axis dimension. The base level defaults to 1.0.
+        For OME-Zarr, x and y downsampling should be consistent across pyramid
+        levels. Some stores can drift slightly due to rounding, so we compute
+        both x and y ratios, validate they match within tolerance, and return
+        the average when they differ.
 
         Returns
         -------
         Tuple[float]
             Downsample factors for each level in the image pyramid.
         """
-        return tuple(
-            [1.0]
-            + [
-                (
-                    self.img.images[0].data.shape[self._idx_x]
-                    / ngff_img.data.shape[self._idx_x]
+        base_x = self.img.images[0].data.shape[self._idx_x]
+        base_y = self.img.images[0].data.shape[self._idx_y]
+
+        rtol = 1e-3
+
+        downsamples: list[float] = [1.0]
+        for ngff_img in self.img.images[1:]:
+            lvl_x = ngff_img.data.shape[self._idx_x]
+            lvl_y = ngff_img.data.shape[self._idx_y]
+
+            down_x = base_x / lvl_x
+            down_y = base_y / lvl_y
+
+            if not np.isclose(down_x, down_y, rtol=rtol, atol=0.0):
+                warnings.warn(
+                    "OMEZarrWSI: x/y downsample mismatch between pyramid levels "
+                    f"(down_x={down_x:.6f}, down_y={down_y:.6f}); using average.",
+                    RuntimeWarning,
                 )
-                for ngff_img in self.img.images[1:]
-            ]
-        )
+
+            downsamples.append((down_x + down_y) / 2.0)
+
+        return tuple(downsamples)
 
     def _fetch_dimension_metadata(self):
         """

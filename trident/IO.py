@@ -13,7 +13,7 @@ from geopandas import gpd
 from shapely import Polygon
 
 
-COMPOUND_EXTENSIONS = {'.ome.tif', '.ome.tiff'}
+COMPOUND_EXTENSIONS = {'.ome.tif', '.ome.tiff', '.ome.zarr'}
 
 
 def splitext(path: str) -> tuple:
