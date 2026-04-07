@@ -296,6 +296,10 @@ class Processor:
         saveto: str | None = None, 
         visualize: bool = True,
         min_tissue_proportion: float = 0.,
+        dump_patches: bool = False,
+        dump_patches_max: int = 0,
+        dump_patches_format: str = "png",
+        dump_patches_jpeg_quality: int = 90,
     ) -> str:
         """
         The `run_patching_job` function extracts patches from the segmented tissue regions of slides. 
@@ -389,6 +393,17 @@ class Processor:
                     overlap=overlap,
                     min_tissue_proportion=min_tissue_proportion,
                 )
+
+                # optionally dump patch images for debugging/inspection
+                if dump_patches:
+                    coords_fp = os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5')
+                    wsi.dump_patches(
+                        coords_path=coords_fp,
+                        save_patches_dir=os.path.join(self.job_dir, saveto, "patch_images"),
+                        max_patches=dump_patches_max,
+                        image_format=dump_patches_format,
+                        jpeg_quality=dump_patches_jpeg_quality,
+                    )
 
                 # save tissue coords visualization
                 if visualize:  

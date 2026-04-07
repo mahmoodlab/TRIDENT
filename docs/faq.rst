@@ -52,6 +52,8 @@ This page explains common calls in plain language and when to use them.
    - Patching:
      - CPU-only; usually fast, but can be CPU-intensive on very large slides or heavy overlap settings.
      - Use ``--min_tissue_proportion`` to require more tissue overlap and reduce weak/edge patches.
+     - For debugging, you can also dump patch images during the coords task using:
+       ``--dump_patches --dump_patches_format {png,jpg} --dump_patches_jpeg_quality 90 --dump_patches_max 100``.
    - Feature extraction:
      - Patch-level and slide-level feature extraction require GPU in practice.
 

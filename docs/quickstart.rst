@@ -70,6 +70,19 @@ Recommended choices:
 
     python run_batch_of_slides.py --task coords --wsi_dir input_wsis --job_dir output --mag 20 --patch_size 256
 
+To additionally dump the patch *images* (useful for debugging), enable:
+
+- ``--dump_patches``: write patch images under ``<job_dir>/<coords_dir>/patch_images/<slide_name>/``
+- ``--dump_patches_max``: cap number of patches written per slide (0 = no limit)
+- ``--dump_patches_format``: ``png`` (default) or ``jpg``
+- ``--dump_patches_jpeg_quality``: JPEG quality (1-100) when using ``jpg``
+
+Example (dump first 100 patches as JPEGs):
+
+.. code-block:: bash
+
+    python run_batch_of_slides.py --task coords --wsi_dir input_wsis --job_dir output --mag 20 --patch_size 256 --dump_patches --dump_patches_max 100 --dump_patches_format jpg --dump_patches_jpeg_quality 90
+
 To control how strict tissue overlap should be during patch selection, use:
 
 - ``--min_tissue_proportion`` (0.0 to 1.0)
@@ -156,6 +169,10 @@ Patching arguments
 - ``--overlap``: absolute patch overlap in pixels.
 - ``--min_tissue_proportion``: minimum tissue overlap ratio (0.0 to 1.0) to keep a patch.
 - ``--coords_dir``: custom coordinates directory to read/write.
+- ``--dump_patches``: dump patch images to disk during the coords task.
+- ``--dump_patches_max``: max patch images to dump per slide (0 = unlimited).
+- ``--dump_patches_format``: patch image format (``png`` or ``jpg``).
+- ``--dump_patches_jpeg_quality``: JPEG quality (1-100) when dumping ``jpg``.
 
 When to change:
 
