@@ -757,6 +757,87 @@ class WSI:
         img.save(viz_coords_path)
         return viz_coords_path
 
+    def dump_patches(
+        self,
+        coords_path: str,
+        save_patches_dir: str,
+        max_patches: int = 0,
+        image_format: str = "png",
+        jpeg_quality: int = 90,
+    ) -> str:
+        """
+        Dump patch images to disk for debugging/inspection.
+
+        This reads a Trident coords H5 file (or legacy coords if needed), iterates the
+        corresponding patches, and writes them under `save_patches_dir/<slide_name>/`.
+
+        Parameters
+        ----------
+        coords_path : str
+            Path to a coords .h5 file produced by TRIDENT.
+        save_patches_dir : str
+            Output directory to store patch PNGs.
+        max_patches : int, optional
+            If > 0, cap the number of patches written. Defaults to 0 (no cap).
+        image_format : {"png", "jpg"}, optional
+            Image format to write. Defaults to "png".
+        jpeg_quality : int, optional
+            JPEG quality (1-100). Only used when image_format="jpg". Defaults to 90.
+
+        Returns
+        -------
+        str
+            Directory where patches were written.
+        """
+        self._lazy_initialize()
+
+        image_format = image_format.lower().strip()
+        if image_format not in {"png", "jpg"}:
+            raise ValueError(f"Unsupported image_format='{image_format}'. Expected 'png' or 'jpg'.")
+        if not (1 <= int(jpeg_quality) <= 100):
+            raise ValueError(f"jpeg_quality must be between 1 and 100, got {jpeg_quality}.")
+
+        try:
+            coords_attrs, coords = read_coords(coords_path)  # coords are level-0
+            patch_size = coords_attrs.get("patch_size", None)
+            level0_magnification = coords_attrs.get("level0_magnification", None)
+            target_magnification = coords_attrs.get("target_magnification", None)
+            overlap = coords_attrs.get("overlap", 0)
+            if None in (patch_size, level0_magnification, target_magnification):
+                raise KeyError("Missing essential attributes in coords_attrs.")
+        except (KeyError, FileNotFoundError, ValueError) as e:
+            warnings.warn(
+                f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod."
+            )
+            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=False, pil=True)
+        else:
+            patcher = self.create_patcher(
+                patch_size=patch_size,
+                src_mag=level0_magnification,
+                dst_mag=target_magnification,
+                custom_coords=coords,
+                coords_only=False,
+                overlap=int(overlap) if overlap is not None else 0,
+                pil=True,
+            )
+
+        out_dir = os.path.join(save_patches_dir, self.name)
+        os.makedirs(out_dir, exist_ok=True)
+
+        written = 0
+        for tile, x, y in patcher:
+            # tile is a PIL Image when pil=True
+            out_fp = os.path.join(out_dir, f"{written:06d}_x{x}_y{y}.{image_format}")
+            if image_format == "jpg":
+                tile.save(out_fp, format="JPEG", quality=int(jpeg_quality), optimize=True)
+            else:
+                tile.save(out_fp)
+            written += 1
+            if max_patches and written >= max_patches:
+                break
+
+        return out_dir
+
     @torch.inference_mode()
     def extract_patch_features(
         self,

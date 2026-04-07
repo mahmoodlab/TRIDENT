@@ -46,6 +46,22 @@ def parse_arguments():
                         help='Absolute overlap for patching in pixels. Defaults to 0. ')
     parser.add_argument('--batch_size', type=int, default=32, 
                         help='Batch size for feature extraction. Defaults to 32.')
+    parser.add_argument(
+        '--dump_patches', action='store_true', default=False,
+        help='During the patching step, also dump patch images (PNGs) to disk.'
+    )
+    parser.add_argument(
+        '--dump_patches_max', type=int, default=0,
+        help='Max number of patch images to dump (0 = no limit).'
+    )
+    parser.add_argument(
+        '--dump_patches_format', type=str, default="png", choices=["png", "jpg"],
+        help='Patch image format to dump (png or jpg). Defaults to png.'
+    )
+    parser.add_argument(
+        '--dump_patches_jpeg_quality', type=int, default=90,
+        help='JPEG quality (1-100) when --dump_patches_format=jpg. Defaults to 90.'
+    )
     return parser.parse_args()
 
 
@@ -99,6 +115,16 @@ def process_slide(args):
             save_coords=save_coords
         )
         print(f"Tissue coordinates extracted and saved to {coords_path}.")
+
+        if getattr(args, "dump_patches", False):
+            dumped_dir = slide.dump_patches(
+                coords_path=coords_path,
+                save_patches_dir=os.path.join(save_coords, "patch_images"),
+                max_patches=getattr(args, "dump_patches_max", 0),
+                image_format=getattr(args, "dump_patches_format", "png"),
+                jpeg_quality=getattr(args, "dump_patches_jpeg_quality", 90),
+            )
+            print(f"Dumped patch images to {dumped_dir}.")
 
         # Step 3: Visualize patching
         viz_coords_path = slide.visualize_coords(
