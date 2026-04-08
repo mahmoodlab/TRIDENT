@@ -28,30 +28,25 @@ def load_wsi(
     and ImageWSI for others. Users may override this behavior by explicitly
     specifying a reader using the `reader_type` argument.
 
-    Parameters
-    ----------
-    slide_path : str
-        Path to the whole-slide image.
-    reader_type : {'openslide', 'image', 'cucim', 'sdpc', 'omezarr'}, optional
-        Manually specify the WSI reader to use. If None (default), selection
-        is automatic based on file extension.
-    lazy_init : bool, optional
-        Whether to defer backend initialization. Defaults to False for API convenience:
-        `load_wsi("slide.svs")` returns an initialized slide object by default.
-    **kwargs : dict
-        Additional keyword arguments passed to the WSI reader constructor.
+    Parameters:
+        slide_path (str):
+            Path to the whole-slide image.
+        reader_type ({'openslide', 'image', 'cucim', 'sdpc', 'omezarr'}, optional):
+            Manually specify the WSI reader to use. If None (default), selection is automatic based on file extension.
+        lazy_init (bool, optional):
+            Whether to defer backend initialization. Defaults to False for API convenience:
+            `load_wsi("slide.svs")` returns an initialized slide object by default.
+        **kwargs (dict):
+            Additional keyword arguments passed to the WSI reader constructor.
 
-    Returns
-    -------
-    Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI, OMEZarrWSI]
-        An instance of the appropriate WSI reader.
+    Returns:
+        Union[OpenSlideWSI, ImageWSI, CuCIMWSI, SDPCWSI, OMEZarrWSI]:
+            An instance of the appropriate WSI reader.
 
-    Raises
-    ------
-    ValueError
-        If `reader_type` is 'cucim' but the cucim package is not installed.
-        Or if `reader_type` is 'sdpc' but the sdpc package is not installed.
-        Or if an unknown reader type is specified.
+    Raises:
+        ValueError:
+            If `reader_type` is 'cucim' but the cucim package is not installed, if `reader_type` is 'sdpc' but the
+            sdpc package is not installed, or if an unknown reader type is specified.
     """
     ext = os.path.splitext(slide_path)[1].lower()
 

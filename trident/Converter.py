@@ -44,9 +44,11 @@ class AnyToTiffConverter:
         """
         Initializes the Converter with a job directory and BigTIFF support.
 
-        Args:
-            job_dir (str): The directory where converted images will be saved.
-            bigtiff (bool): Enable or disable BigTIFF file creation.
+        Parameters:
+            job_dir (str):
+                The directory where converted images will be saved.
+            bigtiff (bool, optional):
+                Enable or disable BigTIFF file creation. Defaults to False.
         """
         self.job_dir = job_dir
         self.bigtiff = bigtiff
@@ -57,10 +59,13 @@ class AnyToTiffConverter:
         """
         Process a single image file to convert it into TIFF format.
 
-        Args:
-            input_file (str): Path to the input image file.
-            mpp (float): Microns per pixel value for the output image.
-            zoom (float): Zoom factor for image resizing, e.g., 0.5 is reducing the image by a factor.
+        Parameters:
+            input_file (str):
+                Path to the input image file.
+            mpp (float):
+                Microns per pixel value for the output image.
+            zoom (float):
+                Zoom factor for image resizing (e.g., 0.5 reduces the image by a factor of 2).
         """
         try:
             embedded_mpp = self._detect_embedded_mpp(input_file)
@@ -136,10 +141,8 @@ class AnyToTiffConverter:
         """
         Attempt a streaming conversion with pyvips.
 
-        Returns
-        -------
-        bool
-            True if conversion succeeded, False if caller should fallback.
+        Returns:
+            bool: True if conversion succeeded, False if caller should fallback.
         """
         # Keep CZI on the dedicated reader path for compatibility.
         if input_file.lower().endswith(".czi"):
@@ -163,9 +166,11 @@ class AnyToTiffConverter:
         """
         Read and resize an image from the given path.
 
-        Args:
-            file_path (str): Path to the image file.
-            zoom (float): Zoom factor for resizing, e.g., 0.5 is reducing the image by a factor.
+        Parameters:
+            file_path (str):
+                Path to the image file.
+            zoom (float, optional):
+                Zoom factor for resizing (e.g., 0.5 reduces the image by a factor of 2). Defaults to 1.
 
         Returns:
             np.ndarray: Array representing the resized image.
@@ -213,9 +218,11 @@ class AnyToTiffConverter:
         """
         Retrieve the MPP (Microns per Pixel) value for a specific file from a DataFrame.
 
-        Args:
-            mpp_data (pd.DataFrame): DataFrame containing MPP values.
-            input_file (str): Filename to search for in the DataFrame.
+        Parameters:
+            mpp_data (pd.DataFrame):
+                DataFrame containing MPP values.
+            input_file (str):
+                Filename to search for in the DataFrame.
 
         Returns:
             float: MPP value for the file.
@@ -233,10 +240,13 @@ class AnyToTiffConverter:
         """
         Save an image as a pyramidal TIFF image.
 
-        Args:
-            img (np.ndarray): Image data to save as a numpy array.
-            img_name (str): Image name (without extensions). 
-            mpp (float): Microns per pixel value of the output TIFF image.
+        Parameters:
+            img (np.ndarray):
+                Image data to save as a numpy array.
+            img_name (str):
+                Image name (without extensions).
+            mpp (float):
+                Microns per pixel value of the output TIFF image.
         """
         save_path = os.path.join(self.job_dir, f"{img_name}.tiff")
         try:
@@ -265,11 +275,16 @@ class AnyToTiffConverter:
         """
         Process all eligible image files in a directory to convert them to pyramidal TIFF.
 
-        Args:
-            input_dir (str): Directory containing image files to process.
-            mpp_csv (str): Path to a CSV file with 2 field: "wsi" with fnames with extensions and "mpp" with the micron per pixel values.
-            downscale_by (int): Factor to downscale images by, e.g., to save a 40x image into a 20x one, set downscale_by to 2. 
-            num_workers (int): Number of parallel workers. Use 1 for sequential mode.
+        Parameters:
+            input_dir (str):
+                Directory containing image files to process.
+            mpp_csv (str):
+                Path to a CSV file with 2 fields: "wsi" (filenames with extensions) and "mpp" (microns per pixel).
+            downscale_by (int, optional):
+                Factor to downscale images by. For example, to save a 40x image into a 20x one, set `downscale_by=2`.
+                Defaults to 1.
+            num_workers (int, optional):
+                Number of parallel workers. Use 1 for sequential mode. Defaults to 1.
         """
         if downscale_by < 1:
             raise ValueError(f"downscale_by must be >= 1, got {downscale_by}.")

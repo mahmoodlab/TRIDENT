@@ -20,10 +20,9 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
     `model_name`. Each encoder is designed for extracting representations from image patches
     using specific backbones or pretraining strategies.
 
-    Parameters
-    ----------
-    model_name : str
-        Name of the encoder to instantiate. Must be one of the following:
+    Parameters:
+        model_name (str):
+            Name of the encoder to instantiate. Must be one of the following:
         - "conch_v1"
         - "conch_v15"
         - "uni_v1"
@@ -50,26 +49,22 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "lunit-vits8"
         - "genbio-pathfm"
 
-    **kwargs : dict
-        Optional keyword arguments passed directly to the encoder constructor. These
-        may include parameters such as:
+        **kwargs (dict):
+            Optional keyword arguments passed directly to the encoder constructor. These may include parameters such as:
         - weights_path (str): Path to a local checkpoint (optional)
         - normalize (bool): Whether to normalize output embeddings (default: False)
         - with_proj (bool): Whether to apply the projection head (default: True)
         - any model-specific configuration parameters
 
-    Returns
+    Returns:
+        torch.nn.Module: An instance of the specified encoder model.
+
+    Raises:
+        ValueError:
+            If `model_name` is not among the recognized encoder names.
+
+    Example
     -------
-    torch.nn.Module
-        An instance of the specified encoder model.
-
-    Raises
-    ------
-    ValueError
-        If `model_name` is not among the recognized encoder names.
-
-    Examples
-    --------
     >>> # Load a high-performance vision transformer
     >>> encoder = encoder_factory("conch_v15")
     >>> 
@@ -93,25 +88,24 @@ class BasePatchEncoder(torch.nn.Module):
         """
         Initialize BasePatchEncoder.
 
-        Parameters
-        ----------
-        weights_path : Optional[str]
-            Optional path to local model weights. If None, the model is loaded from the model registry or downloaded from Hugging Face Hub.
-        **build_kwargs : dict
-            Additional keyword arguments passed to the `_build()` method to customize model creation.
+        Parameters:
+            weights_path (Optional[str]):
+                Optional path to local model weights. If None, the model is loaded from the model registry or
+                downloaded from Hugging Face Hub.
+            **build_kwargs (dict):
+                Additional keyword arguments passed to the `_build()` method to customize model creation.
 
-        Attributes
-        ----------
-        enc_name : Optional[str]
-            Name of the encoder architecture (set during `_build()`).
-        weights_path : Optional[str]
-            Path to local model weights (if provided).
-        model : nn.Module
-            The instantiated encoder model.
-        eval_transforms : Callable
-            Evaluation-time preprocessing transforms.
-        precision : torch.dtype
-            Precision used for inference.
+        Attributes:
+            enc_name (Optional[str]):
+                Name of the encoder architecture (set during `_build()`).
+            weights_path (Optional[str]):
+                Path to local model weights (if provided).
+            model (nn.Module):
+                The instantiated encoder model.
+            eval_transforms (Callable):
+                Evaluation-time preprocessing transforms.
+            precision (torch.dtype):
+                Precision used for inference.
         """
 
         super().__init__()
@@ -167,15 +161,14 @@ class CustomInferenceEncoder(BasePatchEncoder):
         This class is used when the model, transforms, and precision are pre-instantiated externally 
         and should be injected directly into the encoder wrapper.
 
-        Parameters
-        ----------
-        enc_name : str
-            A unique name or identifier for the encoder (used for registry or logging).
-        model : torch.nn.Module
-            A PyTorch model instance to use for inference.
-        transforms : Callable 
+        Parameters:
+            enc_name (str):
+                A unique name or identifier for the encoder (used for registry or logging).
+            model (torch.nn.Module):
+                A PyTorch model instance to use for inference.
+            transforms (Callable):
                 A callable (e.g., torchvision or timm transform) to preprocess input images for evaluation.
-            precision (torch.dtype): 
+            precision (torch.dtype):
                 The precision to use for inference (e.g., torch.float32, torch.float16).
         """
         super().__init__()

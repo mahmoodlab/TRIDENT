@@ -42,30 +42,27 @@ def collect_valid_slides(
     """
     Retrieve all valid WSI file paths from a directory, optionally filtered by a custom list.
 
-    Parameters
-    ----------
-    wsi_dir : str
-        Path to the directory containing WSIs.
-    custom_list_path : Optional[str]
-        Path to a CSV file with 'wsi' column of relative slide paths.
-    wsi_ext : Optional[List[str]]
-        Allowed file extensions.
-    search_nested : bool
-        Whether to search subdirectories.
-    max_workers : int
-        Threads to use when checking file existence.
-    return_relative_paths : bool
-        Whether to also return relative paths.
+    Parameters:
+        wsi_dir (str):
+            Path to the directory containing WSIs.
+        custom_list_path (Optional[str]):
+            Path to a CSV file with 'wsi' column of relative slide paths.
+        wsi_ext (Optional[List[str]]):
+            Allowed file extensions.
+        search_nested (bool):
+            Whether to search subdirectories.
+        max_workers (int):
+            Threads to use when checking file existence.
+        return_relative_paths (bool):
+            Whether to also return relative paths.
 
-    Returns
-    -------
-    Union[List[str], Tuple[List[str], List[str]]]
-        Full paths to valid WSIs, or (full paths, relative paths) if return_relative_paths is True.
-    
-    Raises
-    ------
-    ValueError
-        If custom CSV is invalid or files not found.
+    Returns:
+        Union[List[str], Tuple[List[str], List[str]]]:
+            Full paths to valid WSIs, or (full paths, relative paths) if return_relative_paths is True.
+
+    Raises:
+        ValueError:
+            If custom CSV is invalid or files not found.
     """
     valid_rel_paths: List[str] = []
 
@@ -143,10 +140,9 @@ def set_dir(d: Union[str, os.PathLike]) -> None:
     r"""
     Optionally set the Trident cache directory used to save downloaded models & weights.
     
-    Parameters
-    ----------
-    d : Union[str, os.PathLike]
-        Path to a local folder to save downloaded models & weights.
+    Parameters:
+        d (Union[str, os.PathLike]):
+            Path to a local folder to save downloaded models & weights.
     """
     global _cache_dir
     _cache_dir = os.path.expanduser(d)
@@ -194,17 +190,14 @@ def get_weights_path(model_type: str, encoder_name: str) -> str:
     returns that path. If the path is relative, it joins the relative path with
     the provided weights_root directory.
     
-    Parameters
-    ----------
-    model_type : str
-        The type of model ('patch', 'slide', or 'seg').
-    encoder_name : str
-        The name of the model whose weights path is to be retrieved.
-        
-    Returns
-    -------
-    str
-        The absolute path to the weights file.
+    Parameters:
+        model_type (str):
+            The type of model ('patch', 'slide', or 'seg').
+        encoder_name (str):
+            The name of the model whose weights path is to be retrieved.
+
+    Returns:
+        str: The absolute path to the weights file.
     """
 
     assert model_type in ['patch', 'slide', 'seg'], f"Encoder type must be 'patch' or 'slide' or 'seg', not '{model_type}'"
@@ -233,16 +226,15 @@ def create_lock(path: str, suffix: Optional[str] = None) -> None:
     is currently being worked on. This is especially useful in multiprocessing or distributed 
     systems to avoid conflicts or multiple processes working on the same resource.
 
-    Parameters
-    ----------
-    path : str
-        The path to the file or resource being locked.
-    suffix : str, optional
-        An additional suffix to append to the lock file name. This allows for creating distinct 
-        lock files for similar resources. Defaults to None.
+    Parameters:
+        path (str):
+            The path to the file or resource being locked.
+        suffix (str, optional):
+            An additional suffix to append to the lock file name. This allows for creating distinct
+            lock files for similar resources. Defaults to None.
 
-    Examples
-    --------
+    Example
+    -------
     >>> create_lock("/path/to/resource")
     >>> # Creates a file named "/path/to/resource.lock" to indicate the resource is locked.
     """
@@ -259,15 +251,14 @@ def remove_lock(path: str, suffix: Optional[str] = None) -> None:
     Remove a lock file, signaling that the file or process 
     is no longer in use and is available for other operations.
 
-    Parameters
-    ----------
-    path : str
-        The path to the file or resource whose lock needs to be removed.
-    suffix : str, optional
-        An additional suffix to identify the lock file. Defaults to None.
+    Parameters:
+        path (str):
+            The path to the file or resource whose lock needs to be removed.
+        suffix (str, optional):
+            An additional suffix to identify the lock file. Defaults to None.
 
-    Examples
-    --------
+    Example
+    -------
     >>> remove_lock("/path/to/resource")
     >>> # Removes the file "/path/to/resource.lock", indicating the resource is unlocked.
     """
@@ -283,20 +274,17 @@ def is_locked(path: str, suffix: Optional[str] = None) -> bool:
     Check if a resource is currently locked by verifying 
     the existence of a `.lock` file.
 
-    Parameters
-    ----------
-    path : str
-        The path to the file or resource to check for a lock.
-    suffix : str, optional
-        An additional suffix to identify the lock file. Defaults to None.
+    Parameters:
+        path (str):
+            The path to the file or resource to check for a lock.
+        suffix (str, optional):
+            An additional suffix to identify the lock file. Defaults to None.
 
-    Returns
+    Returns:
+        bool: True if the `.lock` file exists (resource is locked), False otherwise.
+
+    Example
     -------
-    bool
-        True if the `.lock` file exists, indicating the resource is locked. False otherwise.
-
-    Examples
-    --------
     >>> is_locked("/path/to/resource")
     False
     >>> create_lock("/path/to/resource")

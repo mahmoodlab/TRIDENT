@@ -20,10 +20,8 @@ def build_parser() -> argparse.ArgumentParser:
     """
     Parse command-line arguments for the Trident processing script.
 
-    Returns
-    -------
-    argparse.ArgumentParser
-        Configured argument parser with all Trident processing options.
+    Returns:
+        argparse.ArgumentParser: Configured argument parser with all Trident processing options.
     """
     parser = argparse.ArgumentParser(description='Run Trident')
 
@@ -135,10 +133,8 @@ def parse_arguments() -> argparse.Namespace:
     """
     Parse command-line arguments and return the parsed namespace.
 
-    Returns
-    -------
-    argparse.Namespace
-        Parsed command-line arguments.
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
     """
     return build_parser().parse_args()
 
@@ -147,10 +143,8 @@ def generate_help_text() -> str:
     """
     Generate the command-line help text for documentation purposes.
     
-    Returns
-    -------
-    str
-        The full help message string from the argument parser.
+    Returns:
+        str: The full help message string from the argument parser.
     """
     parser = build_parser()
     return parser.format_help()
@@ -160,15 +154,12 @@ def initialize_processor(args: argparse.Namespace) -> Processor:
     """
     Initialize the Trident Processor with arguments set in `run_batch_of_slides`.
 
-    Parameters
-    ----------
-    args : argparse.Namespace
-        Parsed command-line arguments containing processor configuration.
+    Parameters:
+        args (argparse.Namespace):
+            Parsed command-line arguments containing processor configuration.
 
-    Returns
-    -------
-    Processor
-        Initialized Trident Processor instance.
+    Returns:
+        Processor: Initialized Trident Processor instance.
     """
     return Processor(
         job_dir=args.job_dir,
@@ -188,12 +179,11 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
     """
     Execute the specified task using the Trident Processor.
 
-    Parameters
-    ----------
-    processor : Processor
-        Initialized Trident Processor instance.
-    args : argparse.Namespace
-        Parsed command-line arguments containing task configuration.
+    Parameters:
+        processor (Processor):
+            Initialized Trident Processor instance.
+        args (argparse.Namespace):
+            Parsed command-line arguments containing task configuration.
     """
 
     if args.task == 'seg':

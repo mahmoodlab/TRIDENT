@@ -17,23 +17,20 @@ def create_overlay(
     """
     Create the heatmap overlay based on scores and coordinates.
     
-    Parameters
-    ----------
-    scores : np.ndarray
-        Normalized scores.
-    coords : np.ndarray
-        Coordinates of patches.
-    patch_size_level0 : int
-        Patch size at level 0.
-    scale : np.ndarray
-        Scaling factors.
-    region_size : Tuple[int, int]
-        Dimensions of the region.
-    
-    Returns
-    -------
-    np.ndarray
-        Heatmap overlay.
+    Parameters:
+        scores (np.ndarray):
+            Normalized scores.
+        coords (np.ndarray):
+            Coordinates of patches.
+        patch_size_level0 (int):
+            Patch size at level 0.
+        scale (np.ndarray):
+            Scaling factors.
+        region_size (Tuple[int, int]):
+            Dimensions of the region.
+
+    Returns:
+        np.ndarray: Heatmap overlay.
     """
     patch_size = np.ceil(np.array([patch_size_level0, patch_size_level0]) * scale).astype(int)
     coords = np.ceil(coords * scale).astype(int)
@@ -56,17 +53,14 @@ def apply_colormap(overlay: np.ndarray, cmap_name: str) -> np.ndarray:
     """
     Apply a colormap to the heatmap overlay.
     
-    Parameters
-    ----------
-    overlay : np.ndarray
-        Heatmap overlay.
-    cmap_name : str
-        Colormap name.
+    Parameters:
+        overlay (np.ndarray):
+            Heatmap overlay.
+        cmap_name (str):
+            Colormap name.
 
-    Returns
-    -------
-    np.ndarray
-        Colored overlay image.
+    Returns:
+        np.ndarray: Colored overlay image.
     """
     cmap = plt.get_cmap(cmap_name)
     overlay_colored = np.zeros((*overlay.shape, 3), dtype=np.uint8)
@@ -93,37 +87,35 @@ def visualize_heatmap(
     """
     Generate a heatmap visualization overlayed on a whole slide image (WSI).
     
-    Parameters
-    ----------
-    wsi : WSI
-        Whole slide image object.
-    scores : np.ndarray
-        Scores associated with each coordinate.
-    coords : np.ndarray
-        Coordinates of patches at level 0.
-    patch_size_level0 : int
-        Patch size at level 0.
-    vis_level : Optional[int]
-        Visualization level.
-    cmap : str
-        Colormap to use for the heatmap.
-    normalize : bool
-        Whether to normalize the scores.
-    num_top_patches_to_save : int
-        Number of high-score patches to save. If set to -1, do not save any. Defaults to -1.
-    output_dir : Optional[str]
-        Directory to save heatmap and top-k patches.
-    vis_mag : Optional[int]
-        Visualization Magnification. This will overwrite vis_level.
-    overlay_only : bool
-        Whether to save the overlay only. If set to True, save the overlay on top of downscaled version of the WSI. Defaults to False.
-    filename : str
-        File will be saved in `output_dir`/`filename`.
+    Parameters:
+        wsi (WSI):
+            Whole slide image object.
+        scores (np.ndarray):
+            Scores associated with each coordinate.
+        coords (np.ndarray):
+            Coordinates of patches at level 0.
+        patch_size_level0 (int):
+            Patch size at level 0.
+        vis_level (Optional[int]):
+            Visualization level.
+        cmap (str):
+            Colormap to use for the heatmap.
+        normalize (bool):
+            Whether to normalize the scores.
+        num_top_patches_to_save (int):
+            Number of high-score patches to save. If set to -1, do not save any. Defaults to -1.
+        output_dir (Optional[str]):
+            Directory to save heatmap and top-k patches.
+        vis_mag (Optional[int]):
+            Visualization magnification. This overwrites `vis_level`.
+        overlay_only (bool):
+            Whether to save the overlay only. If True, saves the overlay on top of a downscaled version of the WSI.
+            Defaults to False.
+        filename (str):
+            File will be saved in `output_dir`/`filename`.
 
-    Returns
-    -------
-    str
-        Path to the saved heatmap image.
+    Returns:
+        str: Path to the saved heatmap image.
     """
 
     if normalize:
