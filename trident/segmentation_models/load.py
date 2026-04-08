@@ -17,26 +17,21 @@ class SegmentationModel(torch.nn.Module):
         """
         Initialize Segmentation model wrapper.
 
-        Parameters
-        ----------
-        freeze : bool, optional
-            If True, the model's parameters are frozen 
-            (i.e., not trainable) and the model is set to evaluation mode. 
-            Defaults to True.
-        confidence_thresh : float, optional
-            Threshold for prediction confidence. 
-            Predictions below this threshold may be filtered out or ignored. 
-            Default is 0.5. Set to 0.4 to keep more tissue.
-        **build_kwargs : dict
-            Additional keyword arguments passed to the internal 
-            `_build` method.
+        Parameters:
+            freeze (bool, optional):
+                If True, the model's parameters are frozen (i.e., not trainable) and the model is set to evaluation
+                mode. Defaults to True.
+            confidence_thresh (float, optional):
+                Threshold for prediction confidence. Predictions below this threshold may be filtered out or ignored.
+                Default is 0.5. Set to 0.4 to keep more tissue.
+            **build_kwargs (dict):
+                Additional keyword arguments passed to the internal `_build` method.
 
-        Attributes
-        ----------
-        model : torch.nn.Module
-            The constructed model.
-        eval_transforms : Callable
-            Transformations to apply to input data during inference.
+        Attributes:
+            model (torch.nn.Module):
+                The constructed model.
+            eval_transforms (Callable):
+                Transformations to apply to input data during inference.
         """
         super().__init__()
         self.model, self.eval_transforms = self._build(**build_kwargs)
@@ -75,10 +70,8 @@ class HESTSegmenter(SegmentationModel):
         """
         Build and load HESTSegmenter model.
 
-        Returns
-        -------
-        Tuple[nn.Module, transforms.Compose]
-            Model and preprocessing transforms.
+        Returns:
+            Tuple[nn.Module, transforms.Compose]: Model and preprocessing transforms.
         """
 
         from torchvision.models.segmentation import deeplabv3_resnet50

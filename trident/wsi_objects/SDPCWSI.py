@@ -11,18 +11,17 @@ class SDPCWSI(WSI):
         """
         Initialize an SDPCWSI instance.
 
-        Parameters
-        ----------
-        slide_path : str
-            Path to the WSI file.
-        **kwargs : dict
-            Keyword arguments forwarded to the base `WSI` class. Most important key is:
-            - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
+        Parameters:
+            slide_path (str):
+                Path to the WSI file.
+            **kwargs (dict):
+                Keyword arguments forwarded to the base `WSI` class. Most important key is:
+                - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
 
         Please refer to WSI constructor for all parameters. 
 
-        Examples
-        --------
+        Example
+        -------
         >>> wsi = SDPCWSI(slide_path="path/to/wsi.svs", lazy_init=False)
         >>> print(wsi)
         <width=100000, height=80000, backend=SDPCWSI, mpp=0.25, mag=40>
@@ -37,15 +36,13 @@ class SDPCWSI(WSI):
         key metadata including dimensions, magnification, and multiresolution pyramid
         information. If a tissue segmentation mask is provided, it is also loaded.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the WSI file or the tissue segmentation mask cannot be found.
-        Exception
-            If an unexpected error occurs during WSI initialization.
+        Raises:
+            FileNotFoundError:
+                If the WSI file or the tissue segmentation mask cannot be found.
+            Exception:
+                If an unexpected error occurs during WSI initialization.
 
-        Notes
-        -----
+        Notes:
         After initialization, the following attributes are set:
         - `width` and `height`: spatial dimensions of the base level.
         - `dimensions`: (width, height) tuple from the highest resolution.
@@ -87,18 +84,14 @@ class SDPCWSI(WSI):
         Determine the most appropriate pyramid level for generating a thumbnail
         of the specified size.
 
-        Parameters
-        ----------
-        size : tuple of int
-            Desired (width, height) of the thumbnail.
+        Parameters:
+            size (tuple[int, int]):
+                Desired (width, height) of the thumbnail.
 
-        Returns
-        -------
-        int
-            Pyramid level index that best matches the requested thumbnail size.
+        Returns:
+            int: Pyramid level index that best matches the requested thumbnail size.
 
-        Notes
-        -----
+        Notes:
         This method selects the highest resolution level where both dimensions
         are greater than or equal to the requested size. If no such level exists,
         it returns the lowest resolution level (highest index).
@@ -119,31 +112,27 @@ class SDPCWSI(WSI):
         """
         Extract a specific region from the whole-slide image (WSI).
 
-        Parameters
-        ----------
-        location : Tuple[int, int]
-            (x, y) coordinates of the top-left corner of the region to extract.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            (width, height) of the region to extract.
-        read_as : {'pil', 'numpy'}, optional
-            Output format for the region:
-            - 'pil': returns a PIL Image (default)
-            - 'numpy': returns a NumPy array (H, W, 3)
+        Parameters:
+            location (Tuple[int, int]):
+                (x, y) coordinates of the top-left corner of the region to extract.
+            level (int):
+                Pyramid level to read from.
+            size (Tuple[int, int]):
+                (width, height) of the region to extract.
+            read_as ({'pil', 'numpy'}, optional):
+                Output format for the region:
+                - 'pil': returns a PIL Image (default)
+                - 'numpy': returns a NumPy array (H, W, 3)
 
-        Returns
+        Returns:
+            Union[PIL.Image.Image, np.ndarray]: Extracted image region in the specified format.
+
+        Raises:
+            ValueError:
+                If `read_as` is not one of 'pil' or 'numpy'.
+
+        Example
         -------
-        Union[PIL.Image.Image, np.ndarray]
-            Extracted image region in the specified format.
-
-        Raises
-        ------
-        ValueError
-            If `read_as` is not one of 'pil' or 'numpy'.
-
-        Examples
-        --------
         >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), read_as='numpy')
         >>> print(region.shape)
         (512, 512, 3)
@@ -161,10 +150,8 @@ class SDPCWSI(WSI):
         """
         Return the dimensions (width, height) of the WSI.
 
-        Returns
-        -------
-        tuple of int
-            (width, height) in pixels.
+        Returns:
+            tuple[int, int]: (width, height) in pixels.
         """
         return self.img.level_dimensions[0]
 
@@ -172,15 +159,12 @@ class SDPCWSI(WSI):
         """
         Generate a thumbnail of the WSI.
 
-        Parameters
-        ----------
-        size : tuple of int
-            Desired (width, height) of the thumbnail.
+        Parameters:
+            size (tuple[int, int]):
+                Desired (width, height) of the thumbnail.
 
-        Returns
-        -------
-        PIL.Image.Image
-            RGB thumbnail as a PIL Image.
+        Returns:
+            PIL.Image.Image: RGB thumbnail as a PIL Image.
         """
         closest_level = self._get_closed_thumbnail_level(size)
         level_width, level_height = self.level_dimensions[closest_level]

@@ -11,17 +11,14 @@ def cache_batch(wsis: List[str], dest_dir: str) -> List[str]:
     """
     Copies WSIs to a local cache directory. Handles .mrxs subdirectories if present.
 
-    Parameters
-    ----------
-    wsis : List[str]
-        List of WSI file paths to copy.
-    dest_dir : str
-        Destination directory for cached WSIs.
+    Parameters:
+        wsis (List[str]):
+            List of WSI file paths to copy.
+        dest_dir (str):
+            Destination directory for cached WSIs.
 
-    Returns
-    -------
-    List[str]
-        Paths to copied WSIs.
+    Returns:
+        List[str]: Paths to copied WSIs.
     """
     os.makedirs(dest_dir, exist_ok=True)
     copied = []
@@ -50,18 +47,17 @@ def batch_producer(
     """
     Produces and caches batches of slides. Sends batch IDs to a queue for downstream processing.
 
-    Parameters
-    ----------
-    queue : Queue
-        Queue to communicate with the consumer.
-    valid_slides : List[str]
-        List of valid WSI paths.
-    start_idx : int
-        Index in `valid_slides` to start batching from.
-    batch_size : int
-        Number of slides per batch.
-    cache_dir : str
-        Root directory where batches will be cached.
+    Parameters:
+        queue (Queue):
+            Queue to communicate with the consumer.
+        valid_slides (List[str]):
+            List of valid WSI paths.
+        start_idx (int):
+            Index in `valid_slides` to start batching from.
+        batch_size (int):
+            Number of slides per batch.
+        cache_dir (str):
+            Root directory where batches will be cached.
     """
     for i in range(start_idx, len(valid_slides), batch_size):
         batch_paths = valid_slides[i:i + batch_size]
@@ -84,18 +80,17 @@ def batch_consumer(
     """
     Consumes cached batches from the queue, processes them, and optionally clears cache.
 
-    Parameters
-    ----------
-    queue : Queue[int]
-        Queue from the producer.
-    task : str
-        Task name ('seg', 'coords', 'feat', or 'all').
-    cache_dir : str
-        Directory containing cached batches.
-    processor_factory : Callable[[str], Any]
-        Function that creates a processor given a WSI dir.
-    run_task_fn : Callable[[Any, str], None]
-        Function to run a task given a processor and task name.
+    Parameters:
+        queue (Queue[int]):
+            Queue from the producer.
+        task (str):
+            Task name ('seg', 'coords', 'feat', or 'all').
+        cache_dir (str):
+            Directory containing cached batches.
+        processor_factory (Callable[[str], Any]):
+            Function that creates a processor given a WSI dir.
+        run_task_fn (Callable[[Any, str], None]):
+            Function to run a task given a processor and task name.
     """
 
     while True:

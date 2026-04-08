@@ -26,13 +26,12 @@ class OMEZarrWSI(WSI):
         """
         Initialize a OMEZarr instance for OME-Zarr whole-slide images.
 
-        Parameters
-        ----------
-        slide_path : str
-            Path to an .zarr OME multiscale file.
-        **kwargs : dict
-            Additional keyword arguments forwarded to the base `WSI` class.
-            - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
+        Parameters:
+            slide_path (str):
+                Path to an .zarr OME multiscale file.
+            **kwargs (dict):
+                Additional keyword arguments forwarded to the base `WSI` class.
+                - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
 
         Example
         -------
@@ -50,16 +49,14 @@ class OMEZarrWSI(WSI):
         key metadata including dimensions, magnification, and multiresolution pyramid
         information. If a tissue segmentation mask is provided, it is also loaded.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the WSI file or the tissue segmentation mask cannot be found.
-        RuntimeError
-            If an unexpected error occurs during WSI initialization. Including if there
-            are not 3 dimensions in an image, as read_region depends on this property.
+        Raises:
+            FileNotFoundError:
+                If the WSI file or the tissue segmentation mask cannot be found.
+            RuntimeError:
+                If an unexpected error occurs during WSI initialization. Including if there
+                are not 3 dimensions in an image, as read_region depends on this property.
 
-        Notes
-        -----
+        Notes:
         After initialization, the following attributes are set:
         - `width` and `height`: spatial dimensions of the base level.
         - `dimensions`: (width, height) tuple from the highest resolution.
@@ -129,10 +126,8 @@ class OMEZarrWSI(WSI):
         Retrieve microns per pixel (MPP) from OME Zarr metadata. The OME spec
         has a designated axes unit property in UDUNITS-2, so custom_mpp_keys not requried.
 
-        Returns
-        -------
-        np.float64
-            MPP value in microns per pixel.
+        Returns:
+            np.float64: MPP value in microns per pixel.
         """
         try:
             scale, scale_unit = (
@@ -163,10 +158,8 @@ class OMEZarrWSI(WSI):
         both x and y ratios, validate they match within tolerance, and return
         the average when they differ.
 
-        Returns
-        -------
-        Tuple[float]
-            Downsample factors for each level in the image pyramid.
+        Returns:
+            Tuple[float]: Downsample factors for each level in the image pyramid.
         """
         base_x = self.img.images[0].data.shape[self._idx_x]
         base_y = self.img.images[0].data.shape[self._idx_y]
@@ -199,18 +192,16 @@ class OMEZarrWSI(WSI):
         Extracts and maps the indices and original string names for the x-axis, 
         y-axis, and channel dimensions from the image metadata.
 
-        Returns
-        -------
-        Tuple[Tuple[int, int, int], Tuple[str, str, str]]
-            A pair of tuples containing the integer indices (idx_x, idx_y, idx_c) 
-            and the matched string names (x_name, y_name, c_name), respectively.
+        Returns:
+            Tuple[Tuple[int, int, int], Tuple[str, str, str]]:
+                A pair of tuples containing the integer indices (idx_x, idx_y, idx_c) and the matched string names
+                (x_name, y_name, c_name), respectively.
 
-        Raises
-        ------
-        AssertionError
-            If the image does not have exactly 3 dimensions or contains unrecognized dimension names.
-        ValueError
-            If the dimensions do not consist of exactly one X-type, one Y-type, and one C-type axis.
+        Raises:
+            AssertionError:
+                If the image does not have exactly 3 dimensions or contains unrecognized dimension names.
+            ValueError:
+                If the dimensions do not consist of exactly one X-type, one Y-type, and one C-type axis.
         """
 
         dimnames = self.img.metadata.dimension_names
@@ -252,31 +243,27 @@ class OMEZarrWSI(WSI):
         """
         Extract a specific region from the whole-slide image (WSI).
 
-        Parameters
-        ----------
-        location : Tuple[int, int]
-            (x, y) coordinates of the top-left corner of the region to extract.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            (width, height) of the region to extract.
-        read_as : {'pil', 'numpy'}, optional
-            Output format for the region:
-            - 'pil': returns a PIL Image (default)
-            - 'numpy': returns a NumPy array (H, W, 3)
+        Parameters:
+            location (Tuple[int, int]):
+                (x, y) coordinates of the top-left corner of the region to extract.
+            level (int):
+                Pyramid level to read from.
+            size (Tuple[int, int]):
+                (width, height) of the region to extract.
+            read_as ({'pil', 'numpy'}, optional):
+                Output format for the region:
+                - 'pil': returns a PIL Image (default)
+                - 'numpy': returns a NumPy array (H, W, 3)
 
-        Returns
+        Returns:
+            Union[PIL.Image.Image, np.ndarray]: Extracted image region in the specified format.
+
+        Raises:
+            ValueError:
+                If `read_as` is not one of 'pil' or 'numpy'.
+
+        Example
         -------
-        Union[PIL.Image.Image, np.ndarray]
-            Extracted image region in the specified format.
-
-        Raises
-        ------
-        ValueError
-            If `read_as` is not one of 'pil' or 'numpy'.
-
-        Examples
-        --------
         >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), read_as='numpy')
         >>> print(region.shape)
         (512, 512, 3)
@@ -319,10 +306,8 @@ class OMEZarrWSI(WSI):
         """
         Return the dimensions (width, height) of the WSI.
 
-        Returns
-        -------
-        tuple of int
-            (width, height) in pixels.
+        Returns:
+            tuple[int, int]: (width, height) in pixels.
         """
         return self.dimensions
 
@@ -330,15 +315,12 @@ class OMEZarrWSI(WSI):
         """
         Generate a thumbnail of the WSI.
 
-        Parameters
-        ----------
-        size : tuple of int
-            Desired (width, height) of the thumbnail.
+        Parameters:
+            size (tuple[int, int]):
+                Desired (width, height) of the thumbnail.
 
-        Returns
-        -------
-        PIL.Image.Image
-            RGB thumbnail as a PIL Image.
+        Returns:
+            PIL.Image.Image: RGB thumbnail as a PIL Image.
         """
         width, height = size
         # takes the average ratio between the thumbsize and the object's (level dimension) size then applies abs(x - 1) so min finds

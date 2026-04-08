@@ -12,18 +12,17 @@ class CuCIMWSI(WSI):
         """
         Initialize a WSI instance using CuCIM as a backend.
 
-        Parameters
-        ----------
-        slide_path : str
-            Path to the WSI file.
-        **kwargs : dict
-            Keyword arguments forwarded to the base `WSI` class. Most important key is:
-            - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
+        Parameters:
+            slide_path (str):
+                Path to the WSI file.
+            **kwargs (dict):
+                Keyword arguments forwarded to the base `WSI` class. Most important key is:
+                - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
 
         Please refer to WSI constructor for all parameters. 
 
-        Examples
-        --------
+        Example
+        -------
         >>> wsi = CuCIMWSI(slide_path="path/to/wsi.svs", lazy_init=False)
         >>> print(wsi)
         <width=100000, height=80000, backend=CuCIMWSI, mpp=0.25, mag=40>
@@ -40,17 +39,15 @@ class CuCIMWSI(WSI):
         magnification, and microns-per-pixel (MPP). If a tissue segmentation
         mask is available, it is also loaded.
 
-        Raises
-        ------
-        ImportError
-            If `cupy` and/or `cucim` are not installed.
-        FileNotFoundError
-            If the WSI file or required segmentation mask is missing.
-        Exception
-            For any other errors that occur while initializing the WSI.
+        Raises:
+            ImportError:
+                If `cupy` and/or `cucim` are not installed.
+            FileNotFoundError:
+                If the WSI file or required segmentation mask is missing.
+            Exception:
+                For any other errors that occur while initializing the WSI.
 
-        Notes
-        -----
+        Notes:
         After initialization, the following attributes are set:
         - `width` and `height`: spatial dimensions of the WSI.
         - `mpp`: microns per pixel, inferred if not already set.
@@ -97,20 +94,16 @@ class CuCIMWSI(WSI):
         """
         Fetch the microns per pixel (MPP) from CuImage metadata.
 
-        Parameters
-        ----------
-        custom_keys : dict, optional
-            Optional dictionary with keys for 'mpp_x' and 'mpp_y' metadata fields to check first.
+        Parameters:
+            custom_keys (dict, optional):
+                Optional dictionary with keys for 'mpp_x' and 'mpp_y' metadata fields to check first.
 
-        Returns
-        -------
-        float
-            MPP value in microns per pixel.
+        Returns:
+            float: MPP value in microns per pixel.
 
-        Raises
-        ------
-        ValueError
-            If MPP cannot be determined from metadata.
+        Raises:
+            ValueError:
+                If MPP cannot be determined from metadata.
         """
         import json
 
@@ -182,15 +175,12 @@ class CuCIMWSI(WSI):
         """
         Generate a thumbnail image of the WSI.
 
-        Parameters
-        ----------
-        size : tuple[int, int]
-            A tuple specifying the desired width and height of the thumbnail.
+        Parameters:
+            size (tuple[int, int]):
+                A tuple specifying the desired width and height of the thumbnail.
 
-        Returns
-        -------
-        Image.Image
-            The thumbnail as a PIL Image in RGB format.
+        Returns:
+            Image.Image: The thumbnail as a PIL Image in RGB format.
         """
         target_width, target_height = size
 
@@ -224,31 +214,27 @@ class CuCIMWSI(WSI):
         """
         Extract a specific region from the whole-slide image (WSI) using CuCIM.
 
-        Parameters
-        ----------
-        location : Tuple[int, int]
-            (x, y) coordinates of the top-left corner of the region to extract.
-        level : int
-            Pyramid level to read from.
-        size : Tuple[int, int]
-            (width, height) of the region to extract.
-        read_as : {'pil', 'numpy'}, optional
-            Output format for the region:
-            - 'pil': returns a PIL Image (default)
-            - 'numpy': returns a NumPy array (H, W, 3)
+        Parameters:
+            location (Tuple[int, int]):
+                (x, y) coordinates of the top-left corner of the region to extract.
+            level (int):
+                Pyramid level to read from.
+            size (Tuple[int, int]):
+                (width, height) of the region to extract.
+            read_as ({'pil', 'numpy'}, optional):
+                Output format for the region:
+                - 'pil': returns a PIL Image (default)
+                - 'numpy': returns a NumPy array (H, W, 3)
 
-        Returns
+        Returns:
+            Union[PIL.Image.Image, np.ndarray]: The extracted region in the specified format.
+
+        Raises:
+            ValueError:
+                If `read_as` is not one of the supported options.
+
+        Example
         -------
-        Union[PIL.Image.Image, np.ndarray]
-            The extracted region in the specified format.
-
-        Raises
-        ------
-        ValueError
-            If `read_as` is not one of the supported options.
-
-        Examples
-        --------
         >>> region = wsi.read_region((1000, 1000), level=0, size=(512, 512), read_as='pil')
         >>> region.show()
         """
@@ -277,13 +263,11 @@ class CuCIMWSI(WSI):
         """
         Return the (width, height) dimensions of the CuCIM-managed WSI.
 
-        Returns
-        -------
-        Tuple[int, int]
-            A tuple containing the width and height of the WSI in pixels.
+        Returns:
+            Tuple[int, int]: A tuple containing the width and height of the WSI in pixels.
 
-        Examples
-        --------
+        Example
+        -------
         >>> wsi.get_dimensions()
         (100000, 80000)
         """

@@ -314,12 +314,21 @@ class Processor:
             overlap (int, optional): 
                 The amount of overlap between adjacent patches, specified in pixels. Defaults to 0.
             saveto (str, optional): 
-                The directory where patch data and visualizations will be saved. If not provided, a directory 
-                name will be generated automatically. Defaults to None.
+                The directory where patch data and visualizations will be saved (relative to ``job_dir``). If not 
+                provided, a directory name will be generated automatically. Defaults to None.
             visualize (bool, optional): 
                 Whether to generate and save visualizations of the patches. Defaults to True.
-            min_tissue_proportion: float, optional 
+            min_tissue_proportion (float, optional): 
                 Minimum proportion of the patch under tissue to be kept. Defaults to 0. 
+            dump_patches (bool, optional): 
+                If True, also writes patch images to disk under ``<saveto>/patch_images/<slide_name>/`` for debugging. 
+                Defaults to False.
+            dump_patches_max (int, optional): 
+                Maximum number of patch images to write per slide (0 = no limit). Defaults to 0.
+            dump_patches_format (str, optional): 
+                Image format for dumped patches: ``png`` or ``jpg``. Defaults to ``png``.
+            dump_patches_jpeg_quality (int, optional): 
+                JPEG quality (1-100) when ``dump_patches_format`` is ``jpg``. Defaults to 90.
 
         Returns:
             str: Absolute path to directory containing patch coordinates.

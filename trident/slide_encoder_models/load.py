@@ -16,21 +16,18 @@ def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = Tru
         """
         Build a slide encoder model.
 
-        Parameters
-        ----------
-        model_name : str
-            Name of the model to build.
-        pretrained : bool
-            Whether to load pretrained weights.
-        freeze : bool
-            Whether to freeze the weights of the model.
-        **kwargs : dict
-            Additional arguments to pass to the model constructor.
+        Parameters:
+            model_name (str):
+                Name of the model to build.
+            pretrained (bool):
+                Whether to load pretrained weights.
+            freeze (bool):
+                Whether to freeze the weights of the model.
+            **kwargs (dict):
+                Additional arguments to pass to the model constructor.
 
-        Returns
-        -------
-        torch.nn.Module
-            The slide encoder model.
+        Returns:
+            torch.nn.Module: The slide encoder model.
         """
 
         if model_name.startswith('mean-'):
@@ -101,17 +98,15 @@ class CustomSlideEncoder(BaseSlideEncoder):
         This class is used when the model and precision are pre-instantiated externally 
         and should be injected directly into the encoder wrapper.
 
-        Parameters
-        ----------
-        enc_name : str
-            A unique name or identifier for the encoder.
-        model : torch.nn.Module 
+        Parameters:
+            enc_name (str):
+                A unique name or identifier for the encoder.
+            model (torch.nn.Module):
                 A PyTorch model instance to use for slide-level inference.
-            precision (torch.dtype, optional): 
+            precision (torch.dtype, optional):
                 The precision to use for inference (e.g., torch.float32, torch.float16).
-            embedding_dim (int, optional): 
-                The output embedding dimension. If not provided, will attempt to use 
-                `model.embedding_dim` if it exists.
+            embedding_dim (int, optional):
+                The output embedding dimension. If not provided, will attempt to use `model.embedding_dim` if it exists.
         """
         super().__init__(freeze=False)  # Freezing should be handled externally
         self.enc_name = enc_name

@@ -26,42 +26,41 @@ class WSI:
     patching, and feature extraction. The class handles various WSI file formats and 
     offers utilities for integration with AI models.
 
-    Attributes
-    ----------
-    slide_path : str
-        Path to the WSI file.
-    name : str
-        Name of the WSI (inferred from the file path if not provided).
-    custom_mpp_keys : dict
-        Custom keys for extracting microns per pixel (MPP) and magnification metadata.
-    lazy_init : bool
-        User preference indicating whether initialization should be deferred.
-    _initialized : bool
-        Internal runtime flag indicating whether the backend has been initialized.
-    tissue_seg_path : str
-        Path to a tissue segmentation mask (if available).
-    width : int
-        Width of the WSI in pixels (set during lazy initialization).
-    height : int
-        Height of the WSI in pixels (set during lazy initialization).
-    dimensions : Tuple[int, int]
-        (width, height) tuple of the WSI (set during lazy initialization).
-    mpp : float
-        Microns per pixel (set during lazy initialization or inferred).
-    mag : float
-        Estimated magnification level (set during lazy initialization or inferred).
-    level_count : int
-        Number of resolution levels in the WSI (set during lazy initialization).
-    level_downsamples : List[float]
-        Downsampling factors for each pyramid level (set during lazy initialization).
-    level_dimensions : List[Tuple[int, int]]
-        Dimensions of the WSI at each pyramid level (set during lazy initialization).
-    properties : dict
-        Metadata properties extracted from the image backend (set during lazy initialization).
-    img : Any
-        Backend-specific image object used for reading regions (set during lazy initialization).
-    gdf_contours : geopandas.GeoDataFrame
-        Tissue segmentation mask as a GeoDataFrame, if available (set during lazy initialization).
+    Attributes:
+        slide_path (str):
+            Path to the WSI file.
+        name (str):
+            Name of the WSI (inferred from the file path if not provided).
+        custom_mpp_keys (dict):
+            Custom keys for extracting microns per pixel (MPP) and magnification metadata.
+        lazy_init (bool):
+            User preference indicating whether initialization should be deferred.
+        _initialized (bool):
+            Internal runtime flag indicating whether the backend has been initialized.
+        tissue_seg_path (str):
+            Path to a tissue segmentation mask (if available).
+        width (int):
+            Width of the WSI in pixels (set during lazy initialization).
+        height (int):
+            Height of the WSI in pixels (set during lazy initialization).
+        dimensions (Tuple[int, int]):
+            (width, height) tuple of the WSI (set during lazy initialization).
+        mpp (float):
+            Microns per pixel (set during lazy initialization or inferred).
+        mag (float):
+            Estimated magnification level (set during lazy initialization or inferred).
+        level_count (int):
+            Number of resolution levels in the WSI (set during lazy initialization).
+        level_downsamples (List[float]):
+            Downsampling factors for each pyramid level (set during lazy initialization).
+        level_dimensions (List[Tuple[int, int]]):
+            Dimensions of the WSI at each pyramid level (set during lazy initialization).
+        properties (dict):
+            Metadata properties extracted from the image backend (set during lazy initialization).
+        img (Any):
+            Backend-specific image object used for reading regions (set during lazy initialization).
+        gdf_contours (geopandas.GeoDataFrame):
+            Tissue segmentation mask as a GeoDataFrame, if available (set during lazy initialization).
     """
 
     def __init__(
@@ -77,22 +76,21 @@ class WSI:
         """
         Initialize the `WSI` object for working with a Whole Slide Image (WSI).
 
-        Parameters
-        ----------
-        slide_path : str
-            Path to the WSI file.
-        name : str, optional
-            Optional name for the WSI. Defaults to the filename (without extension).
-        tissue_seg_path : str, optional
-            Path to the tissue segmentation mask file. Defaults to None.
-        custom_mpp_keys : Optional[List[str]]
-            Custom keys for extracting MPP and magnification metadata. Defaults to None.
-        lazy_init : bool, optional
-            If True, defer loading the WSI until required. Defaults to True.
-        mpp : float, optional
-            If not None, will be the reference micron per pixel (mpp). Handy when mpp is not provided in the WSI.
-        max_workers : Optional[int]
-            Maximum number of workers for data loading.
+        Parameters:
+            slide_path (str):
+                Path to the WSI file.
+            name (str, optional):
+                Optional name for the WSI. Defaults to the filename (without extension).
+            tissue_seg_path (str, optional):
+                Path to the tissue segmentation mask file. Defaults to None.
+            custom_mpp_keys (Optional[List[str]]):
+                Custom keys for extracting MPP and magnification metadata. Defaults to None.
+            lazy_init (bool, optional):
+                If True, defer loading the WSI until required. Defaults to True.
+            mpp (float, optional):
+                If not None, will be the reference micron per pixel (mpp). Handy when mpp is not provided in the WSI.
+            max_workers (Optional[int]):
+                Maximum number of workers for data loading.
 
         """
         self.slide_path = slide_path
@@ -138,13 +136,11 @@ class WSI:
         It sets default values for key image attributes and optionally loads a tissue segmentation mask
         if a path is provided. Subclasses must override this method to implement backend-specific behavior.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the tissue segmentation mask file is provided but cannot be found.
+        Raises:
+            FileNotFoundError:
+                If the tissue segmentation mask file is provided but cannot be found.
 
-        Notes
-        -----
+        Notes:
         This method sets the following attributes:
         - `img`, `dimensions`, `width`, `height`: placeholder image properties (set to None).
         - `level_count`, `level_downsamples`, `level_dimensions`: multiresolution placeholders (None).
@@ -185,38 +181,35 @@ class WSI:
         """
         Create a patcher object for extracting patches from the WSI.
 
-        Parameters
-        ----------
-        patch_size : int
-            Size of each patch in pixels.
-        src_pixel_size : float, optional
-            Source pixel size. Defaults to None.
-        dst_pixel_size : float, optional
-            Destination pixel size. Defaults to None.
-        src_mag : int, optional
-            Source magnification. Defaults to None.
-        dst_mag : int, optional
-            Destination magnification. Defaults to None.
-        overlap : int, optional
-            Overlap between patches in pixels. Defaults to 0.
-        mask : Optional[gpd.GeoDataFrame]
-            Mask for patching. Defaults to None.
-        coords_only : bool, optional
-            Whether to only return coordinates. Defaults to False.
-        custom_coords : Optional[np.ndarray]
-            Custom coordinates to use. Defaults to None.
-        threshold : float, optional
-            Threshold for tissue detection. Defaults to 0.15.
-        pil : bool, optional
-            Whether to use PIL for image reading. Defaults to False.
+        Parameters:
+            patch_size (int):
+                Size of each patch in pixels.
+            src_pixel_size (float, optional):
+                Source pixel size. Defaults to None.
+            dst_pixel_size (float, optional):
+                Destination pixel size. Defaults to None.
+            src_mag (int, optional):
+                Source magnification. Defaults to None.
+            dst_mag (int, optional):
+                Destination magnification. Defaults to None.
+            overlap (int, optional):
+                Overlap between patches in pixels. Defaults to 0.
+            mask (Optional[gpd.GeoDataFrame]):
+                Mask for patching. Defaults to None.
+            coords_only (bool, optional):
+                Whether to only return coordinates. Defaults to False.
+            custom_coords (Optional[np.ndarray]):
+                Custom coordinates to use. Defaults to None.
+            threshold (float, optional):
+                Threshold for tissue detection. Defaults to 0.15.
+            pil (bool, optional):
+                Whether to use PIL for image reading. Defaults to False.
 
-        Returns
+        Returns:
+            WSIPatcher: An object for extracting patches.
+
+        Example
         -------
-        WSIPatcher
-            An object for extracting patches.
-
-        Examples
-        --------
         >>> patcher = wsi.create_patcher(patch_size=512, src_pixel_size=0.25, dst_pixel_size=0.5)
         >>> for patch in patcher:
         ...     process(patch)
@@ -233,23 +226,19 @@ class WSI:
         approximated to commonly used values such as 80x, 40x, 20x, etc. If the MPP is unavailable or insufficient 
         for calculation, it attempts to fallback to metadata-based values.
 
-        Parameters
-        ----------
-        custom_mpp_keys : Optional[List[str]], optional
-            Custom keys to search for MPP values in the WSI properties. Defaults to None.
+        Parameters:
+            custom_mpp_keys (Optional[List[str]], optional):
+                Custom keys to search for MPP values in the WSI properties. Defaults to None.
 
-        Returns
+        Returns:
+            Optional[int]: The approximated magnification level, or None if the magnification could not be determined.
+
+        Raises:
+            ValueError:
+                If the identified MPP is too low for valid magnification values.
+
+        Example
         -------
-        Optional[int]
-            The approximated magnification level, or None if the magnification could not be determined.
-
-        Raises
-        ------
-        ValueError
-            If the identified MPP is too low for valid magnification values.
-
-        Examples
-        --------
         >>> mag = wsi._fetch_magnification()
         >>> print(mag)
         40
@@ -289,32 +278,30 @@ class WSI:
         """
         Segment semantic regions in the WSI using a specified segmentation model.
 
-        Parameters
-        ----------
-        segmentation_model : SegmentationModel
-            Model to use for segmentation.
-        target_mag : int
-            Perform segmentation at this magnification.
-        verbose : bool, optional
-            Whether to print segmentation progress. Defaults to False.
-        device : str
-            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
-        batch_size : int, optional
-            Batch size for processing patches. Defaults to 16.
-        collate_fn : optional
-            Custom collate function used in the dataloader, it must return a dictionary containing at least 'xcoords' and 'ycoords' as keys (level 0 coordinates)
-            and 'img' if inference_fn is not provided.
-        num_workers : Optional[int], optional
-            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
-        inference_fn : optional
-            Function used during inference, it will be called like this internally: `inference_fn(model, batch, device)`
-            where batch is the batch returned by collate_fn if provided or img, (xcoords, ycoords) if not provided
-            this function must return a tensor with shape: (B, H, W) and dtype uint8
+        Parameters:
+            segmentation_model (SegmentationModel):
+                Model to use for segmentation.
+            target_mag (int):
+                Perform segmentation at this magnification.
+            verbose (bool, optional):
+                Whether to print segmentation progress. Defaults to False.
+            device (str):
+                The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+            batch_size (int, optional):
+                Batch size for processing patches. Defaults to 16.
+            collate_fn (optional):
+                Custom collate function used in the dataloader. It must return a dictionary containing at least
+                `xcoords` and `ycoords` (level-0 coordinates), and `img` if `inference_fn` is not provided.
+            num_workers (Optional[int], optional):
+                Number of workers to use for the tile dataloader. If None, the number of workers is automatically
+                inferred. Defaults to None.
+            inference_fn (optional):
+                Function used during inference. Called as `inference_fn(model, batch, device)` where `batch` is the
+                batch returned by `collate_fn` (if provided) or `(img, (xcoords, ycoords))` otherwise. Must return a
+                tensor with shape `(B, H, W)` and dtype `uint8`.
 
-        Returns
-        -------
-        Tuple[np.ndarray, float]
-            A downscaled H x W np.ndarray containing class predictions and its downscale factor.
+        Returns:
+            Tuple[np.ndarray, float]: A downscaled H x W np.ndarray containing class predictions and its downscale factor.
         """
         # Get patch iterator
         destination_mpp = 10 / target_mag
@@ -393,33 +380,31 @@ class WSI:
         It processes the WSI at a target magnification level, optionally 
         treating holes in the mask as tissue. The segmented regions are saved as thumbnails and GeoJSON contours.
 
-        Parameters
-        ----------
-        segmentation_model : SegmentationModel
-            The model used for tissue segmentation.
-        target_mag : int, optional
-            Target magnification level for segmentation. Defaults to 10.
-        holes_are_tissue : bool, optional
-            Whether to treat holes in the mask as tissue. Defaults to True.
-        job_dir : Optional[str], optional
-            Directory to save the segmentation results, if None, this method directly returns the contours as a GeoDataframe without saving files. Defaults to None.
-        batch_size : int, optional
-            Batch size for processing patches. Defaults to 16.
-        device : str
-            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
-        verbose : bool, optional
-            Whether to print segmentation progress. Defaults to False.
-        num_workers : Optional[int], optional
-            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
+        Parameters:
+            segmentation_model (SegmentationModel):
+                The model used for tissue segmentation.
+            target_mag (int, optional):
+                Target magnification level for segmentation. Defaults to 10.
+            holes_are_tissue (bool, optional):
+                Whether to treat holes in the mask as tissue. Defaults to True.
+            job_dir (Optional[str], optional):
+                Directory to save the segmentation results. If None, this method directly returns the contours as a
+                GeoDataFrame without saving files. Defaults to None.
+            batch_size (int, optional):
+                Batch size for processing patches. Defaults to 16.
+            device (str):
+                The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+            verbose (bool, optional):
+                Whether to print segmentation progress. Defaults to False.
+            num_workers (Optional[int], optional):
+                Number of workers to use for the tile dataloader. If None, the number of workers is automatically
+                inferred. Defaults to None.
 
+        Returns:
+            Union[str, gpd.GeoDataFrame]: The absolute path to the GeoJSON if `job_dir` is not None; otherwise a GeoDataFrame.
 
-        Returns
+        Example
         -------
-        Union[str, gpd.GeoDataFrame]
-            The absolute path to where the segmentation as GeoJSON is saved if `job_dir` is not None, else, a GeoDataFrame object.
-            
-        Examples
-        --------
         >>> wsi.segment_tissue(segmentation_model, target_mag=10, job_dir="output_dir")
         >>> # Results saved in "output_dir"
         """
@@ -504,38 +489,37 @@ class WSI:
         """
         Segment semantic regions in the WSI using a specified segmentation model.
 
-        Parameters
-        ----------
-        segmentation_model : SegmentationModel
-            The model used for tissue segmentation.
-        target_mag : int, optional
-            Target magnification level for segmentation. Defaults to 10.
-        batch_size : int, optional
-            Batch size for processing patches. Defaults to 16.
-        device : str
-            The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
-        verbose : bool, optional
-            Whether to print segmentation progress. Defaults to False.
-        num_workers : Optional[int], optional
-            Number of workers to use for the tile dataloader, if set to None the number of workers is automatically inferred. Defaults to None.
-        collate_fn : optional
-            Custom collate function used in the dataloader, it must return a dictionary containing at least 'xcoords' and 'ycoords' as keys (level 0 coordinates)
-            and 'img' if inference_fn is not provided.
-        inference_fn : optional
-            Function used during inference, it will be called like this internally: `inference_fn(model, batch, device)`
-            where batch is the batch returned by collate_fn if provided or img, (xcoords, ycoords) if not provided
-            this function must return a tensor with shape: (B, H, W) and dtype uint8
-        return_contours : bool, optional
-            Whether to return the contours of each class in a GeoDataframe. Defaults to False
-            
+        Parameters:
+            segmentation_model (SegmentationModel):
+                The model used for tissue segmentation.
+            target_mag (int, optional):
+                Target magnification level for segmentation. Defaults to 10.
+            batch_size (int, optional):
+                Batch size for processing patches. Defaults to 16.
+            device (str):
+                The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+            verbose (bool, optional):
+                Whether to print segmentation progress. Defaults to False.
+            num_workers (Optional[int], optional):
+                Number of workers to use for the tile dataloader. If None, the number of workers is automatically
+                inferred. Defaults to None.
+            collate_fn (optional):
+                Custom collate function used in the dataloader. It must return a dictionary containing at least
+                `xcoords` and `ycoords` (level-0 coordinates), and `img` if `inference_fn` is not provided.
+            inference_fn (optional):
+                Function used during inference. Called as `inference_fn(model, batch, device)` where `batch` is the
+                batch returned by `collate_fn` (if provided) or `(img, (xcoords, ycoords))` otherwise. Must return a
+                tensor with shape `(B, H, W)` and dtype `uint8`.
+            return_contours (bool, optional):
+                Whether to return the contours of each class in a GeoDataFrame. Defaults to False.
 
-        Returns
+        Returns:
+            Union[Tuple[np.ndarray, float], Tuple[np.ndarray, float, gpd.GeoDataFrame]]:
+                A downscaled H x W np.ndarray containing class predictions and its downscale factor. If
+                `return_contours` is True, also returns the contours of each class in a GeoDataFrame.
+
+        Example
         -------
-        Union[Tuple[np.ndarray, float], Tuple[np.ndarray, float, gpd.GeoDataFrame]]
-            A downscaled H x W np.ndarray containing class predictions and its downscale factor. Also returns the contours of each class in a GeoDataframe if return_contours is provided.
-            
-        Examples
-        --------
         >>> wsi.segment_tissue(segmentation_model, target_mag=10, job_dir="output_dir")
         >>> # Results saved in "output_dir"
         """
@@ -590,25 +574,21 @@ class WSI:
         """
         Determine the best level and custom downsample factor to approximate a desired downsample value.
 
-        Parameters
-        ----------
-        downsample : float
-            The desired downsample factor.
-        tolerance : float, optional
-            Tolerance for rounding differences. Defaults to 0.01.
+        Parameters:
+            downsample (float):
+                The desired downsample factor.
+            tolerance (float, optional):
+                Tolerance for rounding differences. Defaults to 0.01.
 
-        Returns
+        Returns:
+            Tuple[int, float]: The closest resolution level and the custom downsample factor.
+
+        Raises:
+            ValueError:
+                If no suitable resolution level is found for the specified downsample factor.
+
+        Example
         -------
-        Tuple[int, float]
-            The closest resolution level and the custom downsample factor.
-
-        Raises
-        ------
-        ValueError
-            If no suitable resolution level is found for the specified downsample factor.
-
-        Examples
-        --------
         >>> level, custom_downsample = wsi.get_best_level_and_custom_downsample(2.5)
         >>> print(level, custom_downsample)
         2, 1.1
@@ -656,26 +636,23 @@ class WSI:
         It generates coordinates of patches at the specified 
         magnification and saves the results in an HDF5 file.
 
-        Parameters
-        ----------
-        target_mag : int
-            Target magnification level for the patches.
-        patch_size : int
-            Size of each patch at the target magnification.
-        save_coords : str
-            Directory path to save the extracted coordinates.
-        overlap : int, optional
-            Overlap between patches in pixels. Defaults to 0.
-        min_tissue_proportion : float, optional
-            Minimum proportion of the patch under tissue to be kept. Defaults to 0. 
+        Parameters:
+            target_mag (int):
+                Target magnification level for the patches.
+            patch_size (int):
+                Size of each patch at the target magnification.
+            save_coords (str):
+                Directory path to save the extracted coordinates.
+            overlap (int, optional):
+                Overlap between patches in pixels. Defaults to 0.
+            min_tissue_proportion (float, optional):
+                Minimum proportion of the patch under tissue to be kept. Defaults to 0.
 
-        Returns
+        Returns:
+            str: The absolute file path to the saved HDF5 file containing the patch coordinates.
+
+        Example
         -------
-        str
-            The absolute file path to the saved HDF5 file containing the patch coordinates.
-
-        Examples
-        --------
         >>> coords_path = wsi.extract_tissue_coords(20, 256, "output_coords", overlap=32)
         >>> print(coords_path)
         output_coords/patches/sample_name_patches.h5
@@ -705,20 +682,17 @@ class WSI:
         """
         Overlay patch coordinates onto a scaled thumbnail of the WSI.
         
-        Parameters
-        ----------
-        coords_path : str
-            Path to the file containing the patch coordinates.
-        save_patch_viz : str
-            Directory path to save the visualization image.
+        Parameters:
+            coords_path (str):
+                Path to the file containing the patch coordinates.
+            save_patch_viz (str):
+                Directory path to save the visualization image.
 
-        Returns
+        Returns:
+            str: The file path to the saved visualization image.
+
+        Example
         -------
-        str
-            The file path to the saved visualization image.
-
-        Examples
-        --------
         >>> viz_path = wsi.visualize_coords("output_coords/sample_name_patches.h5", "output_viz")
         >>> print(viz_path)
         output_viz/sample_name.png
@@ -771,23 +745,20 @@ class WSI:
         This reads a Trident coords H5 file (or legacy coords if needed), iterates the
         corresponding patches, and writes them under `save_patches_dir/<slide_name>/`.
 
-        Parameters
-        ----------
-        coords_path : str
-            Path to a coords .h5 file produced by TRIDENT.
-        save_patches_dir : str
-            Output directory to store patch PNGs.
-        max_patches : int, optional
-            If > 0, cap the number of patches written. Defaults to 0 (no cap).
-        image_format : {"png", "jpg"}, optional
-            Image format to write. Defaults to "png".
-        jpeg_quality : int, optional
-            JPEG quality (1-100). Only used when image_format="jpg". Defaults to 90.
+        Parameters:
+            coords_path (str):
+                Path to a coords .h5 file produced by TRIDENT.
+            save_patches_dir (str):
+                Output directory to store patch images.
+            max_patches (int, optional):
+                If > 0, cap the number of patches written. Defaults to 0 (no cap).
+            image_format ({"png", "jpg"}, optional):
+                Image format to write. Defaults to "png".
+            jpeg_quality (int, optional):
+                JPEG quality (1-100). Only used when image_format="jpg". Defaults to 90.
 
-        Returns
-        -------
-        str
-            Directory where patches were written.
+        Returns:
+            str: Directory where patches were written.
         """
         self._lazy_initialize()
 
@@ -852,30 +823,27 @@ class WSI:
         """
         Extract feature embeddings from the WSI using a specified patch encoder.
 
-        Parameters
-        ----------
-        patch_encoder : torch.nn.Module
-            The model used for feature extraction.
-        coords_path : str
-            Path to the file containing patch coordinates.
-        save_features : str
-            Directory path to save the extracted features.
-        device : str, optional
-            Device to run feature extraction on (e.g., 'cuda:0'). Defaults to 'cuda:0'.
-        saveas : str, optional
-            Format to save the features ('h5' or 'pt'). Defaults to 'h5'.
-        batch_limit : int, optional
-            Maximum batch size for feature extraction. Defaults to 512.
-        verbose : bool, optional
-            Whether to print patch embedding progress. Defaults to False.
+        Parameters:
+            patch_encoder (torch.nn.Module):
+                The model used for feature extraction.
+            coords_path (str):
+                Path to the file containing patch coordinates.
+            save_features (str):
+                Directory path to save the extracted features.
+            device (str, optional):
+                Device to run feature extraction on (e.g., 'cuda:0'). Defaults to 'cuda:0'.
+            saveas (str, optional):
+                Format to save the features ('h5' or 'pt'). Defaults to 'h5'.
+            batch_limit (int, optional):
+                Maximum batch size for feature extraction. Defaults to 512.
+            verbose (bool, optional):
+                Whether to print patch embedding progress. Defaults to False.
 
-        Returns
+        Returns:
+            str: The absolute file path to the saved feature file in the specified format.
+
+        Example
         -------
-        str
-            The absolute file path to the saved feature file in the specified format.
-
-        Examples
-        --------
         >>> features_path = wsi.extract_features(patch_encoder, "output_coords/sample_name_patches.h5", "output_features")
         >>> print(features_path)
         output_features/sample_name.h5
@@ -993,21 +961,18 @@ class WSI:
         generates a single feature vector representing the entire slide. The extracted features are
         saved to a specified directory in HDF5 format.
 
-        Parameters
-        ----------
-        patch_features_path : str
-            Path to the HDF5 file containing patch-level features and coordinates.
-        slide_encoder : torch.nn.Module
-            Pretrained slide encoder model for generating slide-level features.
-        save_features : str
-            Directory where the extracted slide features will be saved.
-        device : str, optional
-            Device to run computations on (e.g., 'cuda', 'cpu'). Defaults to 'cuda'.
+        Parameters:
+            patch_features_path (str):
+                Path to the HDF5 file containing patch-level features and coordinates.
+            slide_encoder (torch.nn.Module):
+                Pretrained slide encoder model for generating slide-level features.
+            save_features (str):
+                Directory where the extracted slide features will be saved.
+            device (str, optional):
+                Device to run computations on (e.g., 'cuda', 'cpu'). Defaults to 'cuda'.
 
-        Returns
-        -------
-        str
-            The absolute path to the slide-level features.
+        Returns:
+            str: The absolute path to the slide-level features.
 
         Workflow:
             1. Load the pretrained slide encoder model and set it to evaluation mode.
@@ -1017,15 +982,14 @@ class WSI:
             5. Save the slide-level features and associated metadata (e.g., coordinates) in an HDF5 file.
             6. Return the path to the saved slide features.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the `patch_features_path` does not exist.
-        RuntimeError
-            If there is an issue with the slide encoder or tensor operations.
+        Raises:
+            FileNotFoundError:
+                If the `patch_features_path` does not exist.
+            RuntimeError:
+                If there is an issue with the slide encoder or tensor operations.
 
-        Examples
-        --------
+        Example
+        -------
         >>> slide_features = extract_slide_features(
         ...     patch_features_path='path/to/patch_features.h5',
         ...     slide_encoder=pretrained_model,

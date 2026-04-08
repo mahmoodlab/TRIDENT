@@ -24,27 +24,26 @@ class WSIPatcher:
     The patcher automatically handles the complex calculations needed to extract patches
     at the desired magnification while respecting tissue boundaries and overlap requirements.
     
-    Attributes
-    ----------
-    wsi : WSI
-        The WSI object to extract patches from.
-    patch_size_target : int
-        Target patch size in pixels after rescaling.
-    overlap : int
-        Overlap between patches in pixels.
-    width : int
-        Width of the WSI at the source magnification.
-    height : int
-        Height of the WSI at the source magnification.
-    mask : Optional[gpd.GeoDataFrame]
-        Tissue mask for filtering patches.
-    coords_only : bool
-        Whether to return only coordinates or full patches.
-    pil : bool
-        Whether to return patches as PIL Images or numpy arrays.
-    
-    Examples
-    --------
+    Attributes:
+        wsi (WSI):
+            The WSI object to extract patches from.
+        patch_size_target (int):
+            Target patch size in pixels after rescaling.
+        overlap (int):
+            Overlap between patches in pixels.
+        width (int):
+            Width of the WSI at the source magnification.
+        height (int):
+            Height of the WSI at the source magnification.
+        mask (Optional[gpd.GeoDataFrame]):
+            Tissue mask for filtering patches.
+        coords_only (bool):
+            Whether to return only coordinates or full patches.
+        pil (bool):
+            Whether to return patches as PIL Images or numpy arrays.
+
+    Example
+    -------
     Basic patch extraction:
     
     >>> patcher = WSIPatcher(wsi, patch_size=512, dst_mag=20)
@@ -82,38 +81,40 @@ class WSIPatcher:
     ):
         """ Initialize patcher, compute number of (masked) rows, columns.
 
-        Parameters
-        ----------
-        wsi : WSI
-            WSI to patch.
-        patch_size : int
-            Patch width/height in pixel on the slide after rescaling.
-        src_pixel_size : float, optional
-            Pixel size in um/px of the slide before rescaling. Defaults to None. Deprecated, this argument will be removed in the next major version and will default to wsi.mpp.
-        dst_pixel_size : float, optional
-            Pixel size in um/px of the slide after rescaling. Defaults to None. 
-            If both dst_mag and dst_pixel_size are not None, dst_pixel_size will be used.
-        src_mag : int, optional
-            Level0 magnification of the slide before rescaling. Defaults to None. Deprecated, this argument will be removed in the next major version and will default to wsi.mag.
-        dst_mag : int, optional
-            Target magnification of the slide after rescaling. Defaults to None. If both dst_mag and dst_pixel_size are not None, dst_pixel_size will be used.
-        overlap : int, optional
-            Overlap between patches in pixels. Defaults to 0.
-        mask : gpd.GeoDataFrame, optional
-            Geopandas dataframe of Polygons. Defaults to None.
-        coords_only : bool, optional
-            Whether to extract only the coordinates instead of coordinates + tile. Defaults to False.
-        custom_coords : array-like, optional
-            Custom coordinates to use. Defaults to None.
-        threshold : float, optional
-            Minimum proportion of the patch under tissue to be kept.
-            This argument is ignored if mask=None, passing threshold=0 will be faster. Defaults to 0.0.
-        pil : bool, optional
-            Whether to get patches as `PIL.Image` (numpy array by default). Defaults to False.
-        scan_order : {"row-major", "col-major"}, optional
-            Scan order used when generating the default coordinate grid (only when `custom_coords is None`).
-            - "row-major": iterate row by row (Y -> X). Typically best for disk locality on tiled WSI formats.
-            - "col-major": iterate column by column (X -> Y). Legacy behavior.
+        Parameters:
+            wsi (WSI):
+                WSI to patch.
+            patch_size (int):
+                Patch width/height in pixel on the slide after rescaling.
+            src_pixel_size (float, optional):
+                Pixel size in um/px of the slide before rescaling. Defaults to None. Deprecated, this argument will be
+                removed in the next major version and will default to `wsi.mpp`.
+            dst_pixel_size (float, optional):
+                Pixel size in um/px of the slide after rescaling. Defaults to None.
+                If both `dst_mag` and `dst_pixel_size` are not None, `dst_pixel_size` is used.
+            src_mag (int, optional):
+                Level0 magnification of the slide before rescaling. Defaults to None. Deprecated, this argument will be
+                removed in the next major version and will default to `wsi.mag`.
+            dst_mag (int, optional):
+                Target magnification of the slide after rescaling. Defaults to None.
+                If both `dst_mag` and `dst_pixel_size` are not None, `dst_pixel_size` is used.
+            overlap (int, optional):
+                Overlap between patches in pixels. Defaults to 0.
+            mask (gpd.GeoDataFrame, optional):
+                GeoPandas dataframe of Polygons. Defaults to None.
+            coords_only (bool, optional):
+                Whether to extract only the coordinates instead of coordinates + tile. Defaults to False.
+            custom_coords (array-like, optional):
+                Custom coordinates to use. Defaults to None.
+            threshold (float, optional):
+                Minimum proportion of the patch under tissue to be kept. This argument is ignored if `mask is None`;
+                passing `threshold=0` will be faster. Defaults to 0.0.
+            pil (bool, optional):
+                Whether to get patches as `PIL.Image` (numpy array by default). Defaults to False.
+            scan_order ({"row-major", "col-major"}, optional):
+                Scan order used when generating the default coordinate grid (only when `custom_coords is None`).
+                - "row-major": iterate row by row (Y -> X). Typically best for disk locality on tiled WSI formats.
+                - "col-major": iterate column by column (X -> Y). Legacy behavior.
         """
         self.wsi = wsi
         self.overlap = overlap
@@ -203,27 +204,24 @@ class WSIPatcher:
         with CLAM or Fishing-Rod. These legacy coordinates parameters include: 
         `custom_downsample` and `patch_level` instead of the new `patch_size` and `dst_mag`/`dst_mpp` format.
 
-        Parameters
-        ----------
-        wsi : WSI
-            WSI to patch.
-        patch_size : int
-            The target patch size at the desired magnification.
-        patch_level : int
-            The patch level used when reading the slide.
-        custom_downsample : int
-            Any additional downsampling applied to the patches.
-        coords : np.array
-            An array of patch coordinates.
-        coords_only : bool, optional
-            Whether to extract only coordinates. Defaults to False.
-        pil : bool, optional
-            Whether to get patches as PIL.Image. Defaults to False.
+        Parameters:
+            wsi (WSI):
+                WSI to patch.
+            patch_size (int):
+                The target patch size at the desired magnification.
+            patch_level (int):
+                The patch level used when reading the slide.
+            custom_downsample (int):
+                Any additional downsampling applied to the patches.
+            coords (np.array):
+                An array of patch coordinates.
+            coords_only (bool, optional):
+                Whether to extract only coordinates. Defaults to False.
+            pil (bool, optional):
+                Whether to get patches as PIL.Image. Defaults to False.
 
-        Returns
-        -------
-        WSIPatcher
-            WSIPatcher created from the given legacy coordinates.
+        Returns:
+            WSIPatcher: WSIPatcher created from the given legacy coordinates.
         """
         src_mpp, dst_mpp, src_mag, dst_mag = None, None, None, None
         downsample_ratio = (wsi.level_downsamples[patch_level] * custom_downsample)
@@ -252,21 +250,19 @@ class WSIPatcher:
         Create a WSIPatcher from a legacy coordinates file generated 
         with CLAM or Fishing-Rod.
 
-        Parameters
-        ----------
-        wsi : WSI
-            WSI to patch.
-        coords_path : str
-            Path to legacy coordinates stored as .h5.
-        coords_only : bool, optional
-            Whether the legacy coordinates file only contains coordinates or if it also contains images. Defaults to False.
-        pil : bool, optional
-            PIL argument passed to the WSIPatcher constructor. Defaults to False.
+        Parameters:
+            wsi (WSI):
+                WSI to patch.
+            coords_path (str):
+                Path to legacy coordinates stored as .h5.
+            coords_only (bool, optional):
+                Whether the legacy coordinates file only contains coordinates or if it also contains images.
+                Defaults to False.
+            pil (bool, optional):
+                PIL argument passed to the WSIPatcher constructor. Defaults to False.
 
-        Returns
-        -------
-        WSIPatcher
-            WSIPatcher created from the given legacy coordinates.
+        Returns:
+            WSIPatcher: WSIPatcher created from the given legacy coordinates.
         """
         patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
 
@@ -377,10 +373,8 @@ class WSIPatcher:
     def get_cols_rows(self) -> Tuple[int, int]:
         """ Get the number of columns and rows in the associated WSI.
 
-        Returns
-        -------
-        Tuple[int, int]
-            (nb_columns, nb_rows).
+        Returns:
+            Tuple[int, int]: (nb_columns, nb_rows).
         """
         return self.cols, self.rows
       
@@ -405,17 +399,15 @@ class WSIPatcher:
     def get_tile(self, col: int, row: int) -> Tuple[np.ndarray, int, int]:
         """ Get tile at position (column, row).
 
-        Parameters
-        ----------
-        col : int
-            Column.
-        row : int
-            Row.
+        Parameters:
+            col (int):
+                Column.
+            row (int):
+                Row.
 
-        Returns
-        -------
-        Tuple[np.ndarray, int, int]
-            (tile, pixel x of top-left corner (before rescaling), pixel_y of top-left corner (before rescaling)).
+        Returns:
+            Tuple[np.ndarray, int, int]:
+                (tile, pixel x of top-left corner (before rescaling), pixel_y of top-left corner (before rescaling)).
         """
         if self.custom_coords is not None:
             raise ValueError("Can't use get_tile as 'custom_coords' was passed to the constructor")
@@ -444,13 +436,11 @@ class WSIPatcher:
         onto a scaled thumbnail of the WSI. It creates a visualization of the patcher coordinates 
         and returns it as an image.
 
-        Returns
-        -------
-        Image.Image
-            Patch visualization.
+        Returns:
+            Image.Image: Patch visualization.
 
-        Examples
-        --------
+        Example
+        -------
         >>> img = wsi_patcher.visualize()
         >>> img.save('test_vis.jpg')
         """

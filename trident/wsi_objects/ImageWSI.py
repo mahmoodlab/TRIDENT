@@ -12,24 +12,22 @@ class ImageWSI(WSI):
         """
         Initialize a WSI object from a standard image file (e.g., PNG, JPEG, etc.).
 
-        Parameters
-        ----------
-        slide_path : str
-            Path to the image file.
-        mpp : float
-            Microns per pixel. Required since standard image formats do not store this metadata.
-        name : str, optional
-            Optional name for the slide.
-        lazy_init : bool, default=True
-            Whether to defer initialization until the WSI is accessed.
+        Parameters:
+            slide_path (str):
+                Path to the image file.
+            mpp (float):
+                Microns per pixel. Required since standard image formats do not store this metadata.
+            name (str, optional):
+                Optional name for the slide.
+            lazy_init (bool, default=True):
+                Whether to defer initialization until the WSI is accessed.
 
-        Raises
-        ------
-        ValueError
-            If the required 'mpp' argument is not provided.
+        Raises:
+            ValueError:
+                If the required 'mpp' argument is not provided.
 
-        Examples
-        --------
+        Example
+        -------
         >>> wsi = ImageWSI("path/to/image.png", lazy_init=False, mpp=0.51)
         >>> print(wsi)
         <width=5120, height=3840, backend=ImageWSI, mpp=0.51, mag=20>
@@ -58,15 +56,13 @@ class ImageWSI(WSI):
         dimensions and magnification. It assumes a single-resolution image (no pyramid).
         If a tissue segmentation mask is available, it is also loaded.
 
-        Raises
-        ------
-        FileNotFoundError
-            If the WSI file or tissue segmentation mask is not found.
-        Exception
-            If an unexpected error occurs during initialization.
+        Raises:
+            FileNotFoundError:
+                If the WSI file or tissue segmentation mask is not found.
+            Exception:
+                If an unexpected error occurs during initialization.
 
-        Notes
-        -----
+        Notes:
         After initialization, the following attributes are set:
         - `width` and `height`: dimensions of the image.
         - `dimensions`: (width, height) tuple of the image.
@@ -105,15 +101,12 @@ class ImageWSI(WSI):
         """
         Generate a thumbnail of the image.
 
-        Parameters
-        ----------
-        size : tuple of int
-            Desired thumbnail size (width, height).
+        Parameters:
+            size (tuple[int, int]):
+                Desired thumbnail size (width, height).
 
-        Returns
-        -------
-        PIL.Image.Image
-            RGB thumbnail image.
+        Returns:
+            PIL.Image.Image: RGB thumbnail image.
         """
         self._ensure_image_open()
         img = self.img.copy()
@@ -130,31 +123,27 @@ class ImageWSI(WSI):
         """
         Extract a specific region from a single-resolution image (e.g., JPEG, PNG, TIFF).
 
-        Parameters
-        ----------
-        location : Tuple[int, int]
-            (x, y) coordinates of the top-left corner of the region to extract.
-        level : int
-            Pyramid level to read from. Only level 0 is supported for non-pyramidal images.
-        size : Tuple[int, int]
-            (width, height) of the region to extract.
-        read_as : {'pil', 'numpy'}, optional
-            Output format for the region:
-            - 'pil': returns a PIL Image (default)
-            - 'numpy': returns a NumPy array (H, W, 3)
+        Parameters:
+            location (Tuple[int, int]):
+                (x, y) coordinates of the top-left corner of the region to extract.
+            level (int):
+                Pyramid level to read from. Only level 0 is supported for non-pyramidal images.
+            size (Tuple[int, int]):
+                (width, height) of the region to extract.
+            read_as ({'pil', 'numpy'}, optional):
+                Output format for the region:
+                - 'pil': returns a PIL Image (default)
+                - 'numpy': returns a NumPy array (H, W, 3)
 
-        Returns
+        Returns:
+            Union[PIL.Image.Image, np.ndarray]: Extracted image region in the specified format.
+
+        Raises:
+            ValueError:
+                If `level` is not 0 or if `read_as` is not one of the supported options.
+
+        Example
         -------
-        Union[PIL.Image.Image, np.ndarray]
-            Extracted image region in the specified format.
-
-        Raises
-        ------
-        ValueError
-            If `level` is not 0 or if `read_as` is not one of the supported options.
-
-        Examples
-        --------
         >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), read_as='numpy')
         >>> print(region.shape)
         (512, 512, 3)
