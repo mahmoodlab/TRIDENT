@@ -266,9 +266,10 @@ class AnyToTiffConverter:
             tile_width=256,
             tile_height=256,
             compression='jpeg',
+            Q=95,
             resunit=pyvips_module.enums.ForeignTiffResunit.CM,
-            xres=1. / (mpp * 1e-4),
-            yres=1. / (mpp * 1e-4)
+            xres=1. / (mpp * 1e-3),
+            yres=1. / (mpp * 1e-3)
         )
 
     def process_all(self, input_dir: str, mpp_csv: str, downscale_by: int = 1, num_workers: int = 1) -> None:
