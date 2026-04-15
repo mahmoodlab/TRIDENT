@@ -9,7 +9,7 @@ from trident.wsi_objects.SDPCWSI import SDPCWSI
 from trident.wsi_objects.OMEZarrWSI import OMEZarrWSI
 from trident.wsi_objects.CZIWSI import CZIWSI
 WSIReaderType = Literal['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi']
-OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs'}
+OPENSLIDE_EXTENSIONS = {'.svs', '.tif', '.tiff', '.ndpi', '.vms', '.vmu', '.scn', '.mrxs', '.dcm'}
 CUCIM_EXTENSIONS = {'.svs', '.tif', '.tiff'}
 SDPC_EXTENSIONS = {'.sdpc'}
 PIL_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
