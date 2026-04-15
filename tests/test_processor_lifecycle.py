@@ -24,30 +24,37 @@ class _Ctx:
 
 class TestProcessorLifecycle(unittest.TestCase):
     def test_release_closes_exitstack_and_clears_wsis(self):
-        exit_calls = {"count": 0}
+        release_calls = {"count": 0}
 
-        def on_exit():
-            exit_calls["count"] += 1
+        def mark_release():
+            release_calls["count"] += 1
 
         slide1 = MagicMock(name="slide1")
         slide2 = MagicMock(name="slide2")
-        ctx1 = _Ctx(slide1, on_exit)
-        ctx2 = _Ctx(slide2, on_exit)
+        slide1.release = MagicMock(side_effect=mark_release)
+        slide2.release = MagicMock(side_effect=mark_release)
 
-        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
-             patch.object(processor_module, "load_wsi", side_effect=[ctx1, ctx2]), \
-             patch.object(processor_module.os.path, "exists", return_value=False):
+        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])),              patch.object(processor_module.os.path, "exists", return_value=False):
             processor = Processor(
                 job_dir="/tmp/job",
                 wsi_source="/tmp/wsi",
                 wsi_ext=[".svs"],
             )
 
+        self.assertEqual(len(processor.slide_specs), 2)
+        self.assertEqual(len(processor.wsis), 0)
+
+        with patch.object(processor_module, "load_wsi", side_effect=[slide1, slide2]):
+            w0 = processor._load_slide_from_spec(processor.slide_specs[0])
+            w1 = processor._load_slide_from_spec(processor.slide_specs[1])
+            processor.wsis.extend([w0, w1])
+
         self.assertEqual(len(processor.wsis), 2)
         processor.release()
-        self.assertEqual(exit_calls["count"], 2)
+        self.assertEqual(release_calls["count"], 2)
         self.assertEqual(len(processor.wsis), 0)
         self.assertIsNone(processor._wsi_stack)
+
 
     def test_release_is_idempotent(self):
         processor = Processor.__new__(Processor)
@@ -59,24 +66,28 @@ class TestProcessorLifecycle(unittest.TestCase):
         self.assertIsNone(processor._wsi_stack)
 
     def test_init_failure_closes_previously_entered_contexts(self):
-        exit_calls = {"count": 0}
+        release_calls = {"count": 0}
 
-        def on_exit():
-            exit_calls["count"] += 1
+        def mark_release():
+            release_calls["count"] += 1
 
-        ctx1 = _Ctx(MagicMock(name="slide1"), on_exit)
+        slide1 = MagicMock(name="slide1")
+        slide1.release = MagicMock(side_effect=mark_release)
 
-        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])), \
-             patch.object(processor_module, "load_wsi", side_effect=[ctx1, RuntimeError("boom")]), \
-             patch.object(processor_module.os.path, "exists", return_value=False):
+        with patch.object(processor_module, "collect_valid_slides", return_value=(["/tmp/a.svs", "/tmp/b.svs"], ["a.svs", "b.svs"])),              patch.object(processor_module.os.path, "exists", return_value=False):
+            processor = Processor(
+                job_dir="/tmp/job",
+                wsi_source="/tmp/wsi",
+                wsi_ext=[".svs"],
+            )
+
+        with patch.object(processor_module, "load_wsi", side_effect=[slide1, RuntimeError("boom")]):
+            self.assertIs(processor._load_slide_from_spec(processor.slide_specs[0]), slide1)
             with self.assertRaises(RuntimeError):
-                Processor(
-                    job_dir="/tmp/job",
-                    wsi_source="/tmp/wsi",
-                    wsi_ext=[".svs"],
-                )
+                processor._load_slide_from_spec(processor.slide_specs[1])
 
-        self.assertEqual(exit_calls["count"], 1)
+        self.assertEqual(release_calls["count"], 1)
+
 
     def test_slide_feature_job_skips_patch_extraction_when_already_processed(self):
         processor = Processor.__new__(Processor)

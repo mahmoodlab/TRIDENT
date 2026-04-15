@@ -28,6 +28,7 @@ from trident.patch_encoder_models.load import (
     OpenMidnightInferenceEncoder,
     GPFMInferenceEncoder,
     GenBioPathFMInferenceEncoder,
+    QuiltNetInferenceEncoder,
 )
 
 __all__ = [
@@ -60,4 +61,5 @@ __all__ = [
     "OpenMidnightInferenceEncoder",
     "GPFMInferenceEncoder",
     "GenBioPathFMInferenceEncoder",
+    "QuiltNetInferenceEncoder",
 ]

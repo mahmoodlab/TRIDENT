@@ -1,4 +1,5 @@
 from __future__ import annotations
+import sys
 import numpy as np
 import os 
 import warnings
@@ -17,6 +18,9 @@ from trident.IO import (
 )
 
 ReadMode = Literal['pil', 'numpy']
+
+# Sentinel: tissue contours not yet resolved (disk or explicit None).
+_GDF_UNRESOLVED = object()
 
 
 class WSI:
@@ -60,7 +64,8 @@ class WSI:
         img (Any):
             Backend-specific image object used for reading regions (set during lazy initialization).
         gdf_contours (geopandas.GeoDataFrame):
-            Tissue segmentation mask as a GeoDataFrame, if available (set during lazy initialization).
+            Tissue segmentation mask as a GeoDataFrame when available; loaded from ``tissue_seg_path``
+            on first access so workflows that only use precomputed patch coordinates avoid parsing GeoJSON at init.
     """
 
     def __init__(
@@ -69,7 +74,7 @@ class WSI:
         name: Optional[str] = None,
         tissue_seg_path: Optional[str] = None,
         custom_mpp_keys: Optional[List[str]] = None,
-        lazy_init: bool = True,
+        lazy_init: bool = False,
         mpp: Optional[float] = None,
         max_workers: Optional[int] = None,
     ):
@@ -127,25 +132,46 @@ class WSI:
         """Always release resources when leaving a context."""
         self.release()
         return False
-    
+
+    @property
+    def gdf_contours(self):
+        """Tissue contours from ``tissue_seg_path``, loaded on first access."""
+        cache = getattr(self, "_gdf_contours_cache", _GDF_UNRESOLVED)
+        if cache is not _GDF_UNRESOLVED:
+            return cache
+        if self.tissue_seg_path is None:
+            object.__setattr__(self, "_gdf_contours_cache", None)
+            return None
+        import geopandas as gpd
+        try:
+            gdf = gpd.read_file(self.tissue_seg_path, engine="pyogrio", use_arrow=True)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}") from None
+        object.__setattr__(self, "_gdf_contours_cache", gdf)
+        return gdf
+
+    @gdf_contours.setter
+    def gdf_contours(self, value) -> None:
+        object.__setattr__(self, "_gdf_contours_cache", value)
+
     def _lazy_initialize(self) -> None:
         """
         Perform lazy initialization of internal attributes for the WSI interface.
 
         This method is intended to be called by subclasses of `WSI`, and should not be used directly.
-        It sets default values for key image attributes and optionally loads a tissue segmentation mask
-        if a path is provided. Subclasses must override this method to implement backend-specific behavior.
+        It sets default values for key image attributes. Tissue contours stay lazy until ``gdf_contours``
+        is read. Subclasses must override this method to implement backend-specific behavior.
 
         Raises:
             FileNotFoundError:
-                If the tissue segmentation mask file is provided but cannot be found.
+                Raised when reading ``gdf_contours`` if ``tissue_seg_path`` is set but the file is missing.
 
         Notes:
         This method sets the following attributes:
         - `img`, `dimensions`, `width`, `height`: placeholder image properties (set to None).
         - `level_count`, `level_downsamples`, `level_dimensions`: multiresolution placeholders (None).
         - `properties`, `mag`: metadata and magnification (None).
-        - `gdf_contours`: loaded from `tissue_seg_path` if available.
+        - Lazy tissue mask cache reset; see ``gdf_contours`` property.
         """
 
         if not self._initialized:
@@ -157,12 +183,7 @@ class WSI:
             self.level_dimensions = None
             self.properties = None
             self.mag = None
-            if self.tissue_seg_path is not None:
-                import geopandas as gpd
-                try:
-                    self.gdf_contours = gpd.read_file(self.tissue_seg_path)
-                except FileNotFoundError:
-                    raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
+            object.__setattr__(self, "_gdf_contours_cache", _GDF_UNRESOLVED)
 
     def create_patcher(
         self, 
@@ -309,7 +330,7 @@ class WSI:
             patch_size = segmentation_model.input_size,
             src_pixel_size = self.mpp,
             dst_pixel_size = destination_mpp,
-            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
+            mask=self.gdf_contours if self.tissue_seg_path is not None else None
         )
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
@@ -362,6 +383,20 @@ class WSI:
                 patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
                 predicted_mask[y_start:y_end, x_start:x_end] += patch_pred
         return predicted_mask, mpp_reduction_factor
+    
+    from contextlib import contextmanager
+    import os
+    import sys
+
+    @contextmanager
+    def suppress_stderr(self):
+        with open(os.devnull, 'w') as devnull:
+            old_stderr = sys.stderr
+            sys.stderr = devnull
+            try:
+                yield
+            finally:
+                sys.stderr = old_stderr
 
     @torch.inference_mode()
     def segment_tissue(
@@ -421,17 +456,17 @@ class WSI:
         thumbnail = self.get_thumbnail((thumbnail_width, thumbnail_height))
 
         # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
-
-        predicted_mask, mpp_reduction_factor = self._segment_semantic(
-            segmentation_model,
-            target_mag,
-            verbose,
-            device,
-            batch_size,
-            None,
-            num_workers,
-            None
-        )
+        with self.suppress_stderr():
+            predicted_mask, mpp_reduction_factor = self._segment_semantic(
+                segmentation_model,
+                target_mag,
+                verbose,
+                device,
+                batch_size,
+                None,
+                num_workers,
+                None
+            )
         
         # Post-process the mask
         predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
@@ -664,7 +699,7 @@ class WSI:
             patch_size=patch_size,
             src_mag=self.mag,
             dst_mag=target_mag,
-            mask=self.gdf_contours if hasattr(self, "gdf_contours") else None,
+            mask=self.gdf_contours if self.tissue_seg_path is not None else None,
             coords_only=True,
             overlap=overlap,
             threshold=min_tissue_proportion,
@@ -818,10 +853,12 @@ class WSI:
         device: str = 'cuda:0',
         saveas: str = 'h5',
         batch_limit: int = 512,
-        verbose: bool = False
+        verbose: bool = False,
+        chunk_size: int = 2048
     ) -> str:
         """
         Extract feature embeddings from the WSI using a specified patch encoder.
+        Patches are processed in chunks to manage memory efficiently.
 
         Parameters:
             patch_encoder (torch.nn.Module):
@@ -838,6 +875,8 @@ class WSI:
                 Maximum batch size for feature extraction. Defaults to 512.
             verbose (bool, optional):
                 Whether to print patch embedding progress. Defaults to False.
+        chunk_size : int, optional
+            Number of patches to process per chunk. Defaults to 2048.
 
         Returns:
             str: The absolute file path to the saved feature file in the specified format.
@@ -865,86 +904,115 @@ class WSI:
 
         except (KeyError, FileNotFoundError, ValueError) as e:
             warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
+            # For legacy format, read all coords first
+            from trident.IO import read_coords_legacy
+            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
+            coords = np.array(coords)
+            # Create patcher to get magnification info
+            patcher_legacy = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
+            # Extract magnification info from patcher
+            level0_magnification = patcher_legacy.wsi.mag if hasattr(patcher_legacy.wsi, 'mag') else None
+            target_magnification = patcher_legacy.dst_mag
+            patch_size = patcher_legacy.patch_size_target
+            # Create dummy attrs for legacy format
+            coords_attrs = {}
 
-        else:
+        # Split coordinates into chunks of chunk_size
+        total_patches = len(coords)
+        num_chunks = (total_patches + chunk_size - 1) // chunk_size  # Ceiling division
+        
+        # Prepare output file path
+        os.makedirs(save_features, exist_ok=True)
+        output_path = os.path.join(save_features, f'{self.name}.{saveas}')
+        
+        # Initialize file for first chunk (will be overwritten if exists)
+        first_chunk = True
+        all_features = None  # For .pt format accumulation
+        
+        # Process each chunk
+        for chunk_idx in range(num_chunks):
+            start_idx = chunk_idx * chunk_size
+            end_idx = min(start_idx + chunk_size, total_patches)
+            chunk_coords = coords[start_idx:end_idx]
+            
+            if verbose:
+                print(f"Processing chunk {chunk_idx + 1}/{num_chunks} ({len(chunk_coords)} patches)")
+            
+            # Create patcher for this chunk
             patcher = self.create_patcher(
                 patch_size=patch_size,
                 src_mag=level0_magnification,
                 dst_mag=target_magnification,
-                custom_coords=coords,
+                custom_coords=chunk_coords,
                 coords_only=False,
                 pil=True,
-            )  
-
-
-        dataset = WSIPatcherDataset(patcher, patch_transforms)
-        if len(dataset) == 0:
-            warnings.warn(
-                f"No patch coordinates available for slide '{self.name}'. Saving empty features."
             )
-            coords_attrs = coords_attrs if 'coords_attrs' in locals() else {}
-            coords = np.empty((0, 2), dtype=np.int64)
-            embedding_dim = getattr(patch_encoder, "embedding_dim", None)
-            if embedding_dim is None:
-                features = np.empty((0,), dtype=np.float32)
-            else:
-                features = np.empty((0, int(embedding_dim)), dtype=np.float32)
-            os.makedirs(save_features, exist_ok=True)
+
+            # Process this chunk
+            dataset = WSIPatcherDataset(patcher, patch_transforms)
+            dataloader = DataLoader(
+                dataset, 
+                batch_size=batch_limit, 
+                num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), 
+                pin_memory=False
+            )
+
+            if verbose and chunk_idx == 0:
+                dataloader = tqdm(dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}")
+            elif verbose:
+                dataloader = tqdm(dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}", leave=False)
+
+            chunk_features = []
+            for imgs, _ in dataloader:
+                imgs = imgs.to(device)
+                with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
+                    batch_features = patch_encoder(imgs)  
+                chunk_features.append(batch_features.cpu().numpy())
+
+            # Concatenate features for this chunk
+            chunk_features = np.concatenate(chunk_features, axis=0)
+            
+            # Save chunk features
             if saveas == 'h5':
                 model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
-                save_h5(
-                    os.path.join(save_features, f'{self.name}.{saveas}'),
-                    assets={
-                        'features': features,
-                        'coords': coords,
-                    },
-                    attributes={
-                        'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
-                        'coords': coords_attrs,
-                    },
-                    mode='w'
-                )
+                save_mode = 'w' if first_chunk else 'a'
+                
+                # For first chunk, save both features and coords with attributes
+                if first_chunk:
+                    save_h5(output_path,
+                            assets={
+                                'features': chunk_features,
+                                'coords': chunk_coords,
+                            },
+                            attributes={
+                                'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
+                                'coords': coords_attrs
+                            },
+                            mode=save_mode)
+                    first_chunk = False
+                else:
+                    # For subsequent chunks, append features and coords
+                    save_h5(output_path,
+                            assets={
+                                'features': chunk_features,
+                                'coords': chunk_coords,
+                            },
+                            attributes=None,
+                            mode=save_mode)
             elif saveas == 'pt':
-                torch.save(features, os.path.join(save_features, f'{self.name}.{saveas}'))
+                # For .pt format, we need to accumulate all features
+                if all_features is None:
+                    all_features = chunk_features
+                else:
+                    all_features = np.concatenate([all_features, chunk_features], axis=0)
             else:
                 raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
-            return os.path.join(save_features, f'{self.name}.{saveas}')
 
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
+        # Save .pt file if needed (after all chunks processed)
+        if saveas == 'pt' and all_features is not None:
+            torch.save(all_features, output_path)
 
-        dataloader = tqdm(dataloader) if verbose else dataloader
-
-        features = []
-        for imgs, _ in dataloader:
-            imgs = imgs.to(device)
-            with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                batch_features = patch_encoder(imgs)  
-            features.append(batch_features.cpu().numpy())
-
-        # Concatenate features
-        features = np.concatenate(features, axis=0)
-
-        # Save the features to disk
-        os.makedirs(save_features, exist_ok=True)
-        if saveas == 'h5':
-            model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
-            save_h5(os.path.join(save_features, f'{self.name}.{saveas}'),
-                    assets = {
-                        'features' : features,
-                        'coords': coords,
-                    },
-                    attributes = {
-                        'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
-                        'coords': coords_attrs
-                    },
-                    mode='w')
-        elif saveas == 'pt':
-            torch.save(features, os.path.join(save_features, f'{self.name}.{saveas}'))
-        else:
-            raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
-
-        return os.path.join(save_features, f'{self.name}.{saveas}')
+        return output_path
 
     @torch.inference_mode()
     def extract_slide_features(
@@ -1083,8 +1151,11 @@ class WSI:
                 pass
             self.img = None
 
-        # The path is lightweight and needed for subsequent tasks
-        if hasattr(self, "gdf_contours"):
-            self.gdf_contours = None
+        # The path is lightweight and needed for subsequent tasks; drop cached contours only.
+        if hasattr(self, "_gdf_contours_cache"):
+            try:
+                delattr(self, "_gdf_contours_cache")
+            except AttributeError:
+                pass
 
         self._initialized = False

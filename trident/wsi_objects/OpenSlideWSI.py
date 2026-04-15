@@ -1,10 +1,16 @@
 from __future__ import annotations
 import numpy as np
 import openslide
+import os
+import sys
+from contextlib import contextmanager
 from PIL import Image
 from typing import List, Tuple, Union, Optional, Any
 
 from trident.wsi_objects.WSI import WSI, ReadMode
+
+# When MPP keys are missing, infer from openslide.objective-power (20x/40x).
+OBJECTIVE_POWER_TO_MPP_FALLBACK = {20: 0.25, 40: 0.1225}
 
 
 class OpenSlideWSI(WSI):
@@ -29,6 +35,17 @@ class OpenSlideWSI(WSI):
         <width=100000, height=80000, backend=OpenSlideWSI, mpp=0.25, mag=40>
         """
         super().__init__(slide_path, **kwargs)
+
+    @contextmanager
+    def _suppress_stderr(self):
+        """Context manager to suppress stderr output from OpenSlide/libTIFF warnings."""
+        with open(os.devnull, 'w') as devnull:
+            old_stderr = sys.stderr
+            sys.stderr = devnull
+            try:
+                yield
+            finally:
+                sys.stderr = old_stderr
 
     def _lazy_initialize(self) -> None:
         """
@@ -61,7 +78,8 @@ class OpenSlideWSI(WSI):
 
         if not self._initialized:
             try:
-                self.img = openslide.OpenSlide(self.slide_path)
+                with self._suppress_stderr():
+                    self.img = openslide.OpenSlide(self.slide_path)
                 # set openslide attrs as self
                 self.dimensions = self.get_dimensions()
                 self.width, self.height = self.dimensions
@@ -98,6 +116,8 @@ class OpenSlideWSI(WSI):
             'aperio.MPP',
             'hamamatsu.XResolution',
             'openslide.comment',
+            'openslide.mpp-x',
+            'openslide.mpp-y'
         ]
 
         if custom_mpp_keys:
@@ -110,7 +130,6 @@ class OpenSlideWSI(WSI):
                     return round(mpp_x, 4)
                 except ValueError:
                     continue
-
         x_resolution = self.img.properties.get('tiff.XResolution')
         unit = self.img.properties.get('tiff.ResolutionUnit')
 
@@ -122,6 +141,37 @@ class OpenSlideWSI(WSI):
                     return round(25400 / float(x_resolution), 4)
             except ValueError:
                 pass
+
+        # Infer MPP from OpenSlide objective power when MPP keys are absent (common on some scanners).
+        obj_key = openslide.PROPERTY_NAME_OBJECTIVE_POWER
+        if obj_key in self.img.properties:
+            try:
+                obj_pow = int(float(self.img.properties[obj_key]))
+            except (ValueError, TypeError):
+                obj_pow = None
+            if obj_pow is not None and obj_pow in OBJECTIVE_POWER_TO_MPP_FALLBACK:
+                return round(OBJECTIVE_POWER_TO_MPP_FALLBACK[obj_pow], 4)
+
+        # Before raising error, check for any key containing "mpp" substring (case-insensitive)
+        print("\nUnable to extract MPP from standard metadata keys. Available metadata:")
+        print("=" * 80)
+        for key, value in sorted(self.img.properties.items()):
+            print(f"  {key}: {value}")
+        print("=" * 80)
+        
+        # Search for any key containing "mpp" (case-insensitive)
+        mpp_substring_keys = [key for key in self.img.properties.keys() if 'mpp' in key.lower()]
+        if mpp_substring_keys:
+            print(f"\nFound {len(mpp_substring_keys)} metadata key(s) containing 'mpp' substring:")
+            for key in mpp_substring_keys:
+                print(f"  - {key}: {self.img.properties[key]}")
+                try:
+                    mpp_value = float(self.img.properties[key])
+                    print(f"  Using '{key}' with value {mpp_value} as MPP.")
+                    return round(mpp_value, 4)
+                except (ValueError, TypeError):
+                    print(f"  Warning: Could not convert '{key}' value '{self.img.properties[key]}' to float, trying next key...")
+                    continue
 
         raise ValueError(
             f"Unable to extract MPP from slide metadata: '{self.slide_path}'.\n"
@@ -196,7 +246,8 @@ class OpenSlideWSI(WSI):
         >>> print(region.shape)
         (512, 512, 3)
         """
-        region = self.img.read_region(location, level, size).convert('RGB')
+        with self._suppress_stderr():
+            region = self.img.read_region(location, level, size).convert('RGB')
 
         if read_as == 'pil':
             return region
@@ -225,4 +276,5 @@ class OpenSlideWSI(WSI):
         Returns:
             PIL.Image.Image: RGB thumbnail as a PIL Image.
         """
-        return self.img.get_thumbnail(size).convert('RGB')
+        with self._suppress_stderr():
+            return self.img.get_thumbnail(size).convert('RGB')
