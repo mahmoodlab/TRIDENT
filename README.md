@@ -13,22 +13,24 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
-- **Tissue Segmentation**: Extract tissue from background (H&E, IHC, etc.).
-- **Patch Extraction**: Extract tissue patches of any size and magnification.
-- **Patch Feature Extraction**: Extract patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) and more...
-- **Slide Feature Extraction**: Extract slide embeddings from 5+ slide foundation models, including [Threads](https://arxiv.org/abs/2501.16652) (coming soon!), [Titan](https://arxiv.org/abs/2411.19666), and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w). 
+- **Support multiple whole-slide readers**: OpenSlide (e.g., `.svs`, `.tiff`, `.ndpi`, `.mrxs`), standard images (`.png`, `.jpeg`), SDPC (`.sdpc`), OME-Zarr (`.zarr`), and Zeiss CZI (`.czi`).
+- **Tissue segmentation**: Tissue vs. background segmentation (**HEST**, **GrandQC**) and a fast classical fallback (**Otsu thresholding**) for lightweight CPU runs.
+- **Patch extraction**: Patch coordinates and on-demand patch reading at any patch size / magnification, with overlap control and tissue filtering.
+- **Patch feature extraction**: Patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), and more.
+- **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w) (and more via the model zoo).
+- **Scalable batch processing**: Batch-wise WSI caching to local SSD and nested WSI search (`--search_nested`) for large datasets.
 
-### Updates:
+<!-- ### Updates:
 - 07.25: Support for [Feather](https://github.com/mahmoodlab/MIL-Lab) model.
 - 05.25: New batch-wise WSI caching for scalable processing on limited SSD space + nested WSI search (`--search_nested`).
 - 04.25: Native support for PIL.Image and CuCIM (use `wsi = load_wsi(xxx.svs)`). Support for seg + patch encoding without Internet.
 - 04.25: Remove artifacts/penmarks from the tissue segmentation with `--remove_artifacts` and `--remove_penmarks`. 
 - 02.25: New image converter from `czi`, `png`, etc to `tiff`.
 - 02.25: Support for GrandQC([Citation necessary](https://www.nature.com/articles/s41467-024-54769-y), [Non-commercial use](https://creativecommons.org/licenses/by-nc-sa/4.0/), [Original repository](https://github.com/cpath-ukk/grandqc)) tissue vs. background segmentation.
-- 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models.
+- 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models. -->
 
-> [!NOTE]
-> GrandQC is integrated into Trident under the CC BY-NC-SA 4.0 license. If you use GrandQC, please cite their [original publication](https://www.nature.com/articles/s41467-024-54769-y).
+<!-- > [!NOTE]
+> GrandQC is integrated into Trident under the CC BY-NC-SA 4.0 license. If you use GrandQC, please cite their [original publication](https://www.nature.com/articles/s41467-024-54769-y). -->
 
 
 ### 🔨 1. **Installation**:
@@ -40,8 +42,9 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 Optional install profiles:
 - `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
 - `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
-- `pip install -e ".[omezarr]"` for OME Zarr WSI reader support
-- `pip install -e ".[convert]"` for slide conversion dependencies.
+- `pip install -e ".[omezarr]"` for OME Zarr WSI reader support.
+- `pip install -e ".[czi]"` for Zeiss CZI WSI reader support.
+- `pip install -e ".[convert]"` for slide conversion to tiff.
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
 
 Run checks before launching jobs:

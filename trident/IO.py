@@ -167,8 +167,8 @@ def has_internet_connection(timeout: float = 3.0) -> bool:
     
     try:
         # Fast socket-level check
-        socket.create_connection((endpoint, 443), timeout=timeout)
-        return True
+        with socket.create_connection((endpoint, 443), timeout=timeout):
+            return True
     except OSError:
         pass
 

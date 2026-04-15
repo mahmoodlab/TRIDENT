@@ -75,6 +75,9 @@ converter = [
 convert = [
     "pylibCZIrw",
 ]
+czi = [
+    "pylibCZIrw",
+]
 full = [
     "environs",
     "sacremoses",
