@@ -9,7 +9,7 @@ When to use the API vs CLI:
 - Use the API when embedding Trident in your own Python pipeline, custom loops, or experiments.
 - Start with the CLI first, then move to API once the workflow is validated.
 
-Minimal API usage (recommended patterns)
+Minimal API usage
 ----------------------------------------
 
 Load a slide and read regions

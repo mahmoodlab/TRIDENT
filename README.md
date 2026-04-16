@@ -41,11 +41,11 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
   - This installs the shared model stack (`transformers`, `timm`, `safetensors`, etc.).
 
 Optional install profiles:
-- `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras.
-- `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras.
-- `pip install -e ".[omezarr]"` for OME Zarr WSI reader support.
-- `pip install -e ".[czi]"` for Zeiss CZI WSI reader support.
-- `pip install -e ".[convert]"` for slide conversion to tiff.
+- `pip install -e ".[patch-encoders]"` for CONCH/MUSK/CTransPath-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF)).
+- `pip install -e ".[slide-encoders]"` for PRISM/GigaPath/Madeleine-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine)).
+- `pip install -e ".[omezarr]"` for OME Zarr WSI reader support ([OME-NGFF / OME-Zarr](https://ngff.openmicroscopy.org/latest/)).
+- `pip install -e ".[czi]"` for Zeiss CZI WSI reader support ([pylibCZIrw](https://pypi.org/project/pylibCZIrw/)).
+- `pip install -e ".[convert]"` for slide conversion to tiff (Bio-Formats-backed conversion via CZI/PNG/etc. to pyramidal TIFF).
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
 
 Run checks before launching jobs:
