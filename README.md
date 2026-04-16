@@ -14,12 +14,12 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **Support multiple whole-slide readers**: OpenSlide (e.g., `.svs`, `.tiff`, `.ndpi`, `.mrxs`), standard images (`.png`, `.jpeg`), SDPC (`.sdpc`), OME-Zarr (`.zarr`), and Zeiss CZI (`.czi`).
-- **Tissue segmentation**: Tissue vs. background segmentation (**HEST**, **GrandQC**) and a fast classical fallback (**Otsu thresholding**) for lightweight CPU runs.
-- **Patch extraction**: Patch coordinates and on-demand patch reading at any patch size / magnification, with overlap control and tissue filtering.
+- **Tissue segmentation**: Tissue vs. background segmentation: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc) or **Otsu** for lightweight CPU runs.
+- **Patch extraction**: Patch coordinates at any patch size / magnification.
 - **Patch feature extraction**: Patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), and more.
-- **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w) (and more via the model zoo).
-- **Scalable batch processing**: Batch-wise WSI caching to local SSD and nested WSI search (`--search_nested`) for large datasets.
-- **Run tracking (human + machine readable)**: Per-slide state JSONs in `wsi_states/` plus a per-run `summary.md` that explains what happened.
+- **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), and more.
+- **Scalable batch processing and logging**: Batch-wise WSI processing, per-slide states, and summaries that explain what happened.
+
 
 <!-- ### Updates:
 - 07.25: Support for [Feather](https://github.com/mahmoodlab/MIL-Lab) model.
@@ -216,23 +216,15 @@ Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutor
 - **Q**: I see weird messages when building models using timm. What is happening?
    - **A**: Make sure `timm==0.9.16` is installed. `timm==1.X.X` creates issues with most models. 
 
-- **Q**: How can I use `run_single_slide.py` and `run_batch_of_slides.py` in other repos with minimal work?
-  - **A**: Make sure `trident` is installed using `pip install -e .`. Then, both scripts are exposed and can be integrated into any Python code, e.g., as
+- **Q**: What’s the recommended way to run Trident from another project?
+  - **A**: Use the **CLI** (recommended for reproducibility). Install Trident, then call:
 
-```python
-import sys 
-from run_single_slide import main
-
-sys.argv = [
-    "run_single_slide",
-    '--slide_path', "output/wsis/394140.svs",
-    "--job_dir", 'output/',
-    "--mag", "20",
-    "--patch_size", '256'
-]
-
-main()
+```bash
+trident single -- --slide_path ./wsis/example.svs --job_dir ./job --patch_encoder uni_v1 --mag 20 --patch_size 256
+trident batch  -- --task all --wsi_dir ./wsis --job_dir ./job --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
+
+  - If you need to call Trident from Python, just use the public API (`Processor`, `load_wsi`).
 
 - **Q**: I am not satisfied with the tissue vs background segmentation. What can I do?
    - **A**: Trident uses GeoJSON to store and load segmentations. This format is natively supported by [QuPath](https://qupath.github.io/). You can load the Trident segmentation into QuPath, modify it using QuPath's annotation tools, and save the updated segmentation back to GeoJSON.
