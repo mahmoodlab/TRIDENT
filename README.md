@@ -60,20 +60,10 @@ Run checks before launching jobs:
 
 ### 🔨 2. **Running Trident**:
 
-CLI options (all are supported):
-- `python run_batch_of_slides.py ...` (existing command)
-- `python run_single_slide.py ...` (existing command)
-- `trident batch ...`, `trident single ...`, `trident convert ...`, and `trident doctor ...` (wrapper CLI)
-
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
 ```
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
-```
-
-Equivalent wrapper CLI:
-```
-trident batch -- --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
 **Run outputs (recommended starting point for debugging/resume):**
@@ -86,11 +76,6 @@ trident batch -- --task all --wsi_dir ./wsis --job_dir ./trident_processed --pat
 Run this command to perform all processing steps for a **single** slide:
 ```
 python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
-```
-
-Equivalent wrapper CLI:
-```
-trident single -- --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
 Convert images/WSIs to pyramidal TIFF:
@@ -127,7 +112,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - `--job_dir ./trident_processed`: Output dir for processed results.
    - `--mag 20`: Extracts patches at 20x magnification.
    - `--patch_size 256`: Each patch is 256x256 pixels.
-   - `--overlap 0`: Patches overlap by 0 pixels (**always** an absolute number in pixels, e.g., `--overlap 128` for 50% overlap for 256x256 patches.
+   - `--overlap 0`: Patches overlap by 0 pixels, **always** an absolute number in pixels, e.g., `--overlap 128` for 50% overlap for 256x256 patches.
  - **Outputs**:
    - Patch coordinates as h5 files in `./trident_processed/20x_256px/patches`.
    - WSI thumbnails annotated with patch borders in `./trident_processed/20x_256px/visualization`.
