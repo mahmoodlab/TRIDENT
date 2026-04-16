@@ -13,6 +13,7 @@ from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.Summary import start_run, finalize_run
 
 
 def parse_arguments():
@@ -153,7 +154,20 @@ def process_slide(args):
 
 def main():
     args = parse_arguments()
-    process_slide(args)
+    run_id = start_run(args.job_dir, tool="run_single_slide", args=vars(args))
+    run_status = "completed"
+    run_error = None
+    try:
+        process_slide(args)
+    except Exception as e:
+        run_status = "error"
+        run_error = str(e)
+        raise
+    finally:
+        try:
+            finalize_run(args.job_dir, run_id, status=run_status, error=run_error)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

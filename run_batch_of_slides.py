@@ -14,6 +14,7 @@ from typing import Any
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
+from trident.Summary import start_run, finalize_run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -262,63 +263,77 @@ def main() -> None:
     args = parse_arguments()
     args.device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
 
-    if args.wsi_cache:
-        # === Parallel pipeline with caching ===
+    run_id = start_run(args.job_dir, tool="run_batch_of_slides", args=vars(args))
+    run_status = "completed"
+    run_error = None
 
-        from queue import Queue
-        from threading import Thread
+    try:
+        if args.wsi_cache:
+            # === Parallel pipeline with caching ===
 
-        from trident.Concurrency import batch_producer, batch_consumer, cache_batch
-        from trident.IO import collect_valid_slides
+            from queue import Queue
+            from threading import Thread
 
-        queue = Queue(maxsize=1)
-        valid_slides = collect_valid_slides(
-            wsi_dir=args.wsi_dir,
-            custom_list_path=args.custom_list_of_wsis,
-            wsi_ext=args.wsi_ext,
-            search_nested=args.search_nested,
-            max_workers=args.max_workers
-        )
-        print(f"[MAIN] Found {len(valid_slides)} valid slides in {args.wsi_dir}.")
+            from trident.Concurrency import batch_producer, batch_consumer, cache_batch
+            from trident.IO import collect_valid_slides
 
-        warm = valid_slides[:args.cache_batch_size]
-        warmup_dir = os.path.join(args.wsi_cache, "batch_0")
-        print(f"[MAIN] Warmup caching batch: {warmup_dir}")
-        cache_batch(warm, warmup_dir)
-        queue.put(0)
+            queue = Queue(maxsize=1)
+            valid_slides = collect_valid_slides(
+                wsi_dir=args.wsi_dir,
+                custom_list_path=args.custom_list_of_wsis,
+                wsi_ext=args.wsi_ext,
+                search_nested=args.search_nested,
+                max_workers=args.max_workers
+            )
+            print(f"[MAIN] Found {len(valid_slides)} valid slides in {args.wsi_dir}.")
 
-        def processor_factory(wsi_dir: str) -> Processor:
-            local_args = argparse.Namespace(**vars(args))
-            local_args.wsi_dir = wsi_dir
-            local_args.wsi_cache = None
-            local_args.custom_list_of_wsis = None
-            local_args.search_nested = False
-            return initialize_processor(local_args)
+            warm = valid_slides[:args.cache_batch_size]
+            warmup_dir = os.path.join(args.wsi_cache, "batch_0")
+            print(f"[MAIN] Warmup caching batch: {warmup_dir}")
+            cache_batch(warm, warmup_dir)
+            queue.put(0)
 
-        def run_task_fn(processor: Processor, task_name: str) -> None:
-            args.task = task_name
-            run_task(processor, args)
+            def processor_factory(wsi_dir: str) -> Processor:
+                local_args = argparse.Namespace(**vars(args))
+                local_args.wsi_dir = wsi_dir
+                local_args.wsi_cache = None
+                local_args.custom_list_of_wsis = None
+                local_args.search_nested = False
+                return initialize_processor(local_args)
 
-        producer = Thread(target=batch_producer, args=(
-            queue, valid_slides, args.cache_batch_size, args.cache_batch_size, args.wsi_cache
-        ))
+            def run_task_fn(processor: Processor, task_name: str) -> None:
+                args.task = task_name
+                run_task(processor, args)
 
-        consumer = Thread(target=batch_consumer, args=(
-            queue, args.task, args.wsi_cache, processor_factory, run_task_fn
-        ))
+            producer = Thread(target=batch_producer, args=(
+                queue, valid_slides, args.cache_batch_size, args.cache_batch_size, args.wsi_cache
+            ))
 
-        print("[MAIN] Starting producer and consumer threads.")
-        producer.start()
-        consumer.start()
-        producer.join()
-        consumer.join()
-    else:
-        # === Sequential mode ===
-        processor = initialize_processor(args)
-        tasks = ['seg', 'coords', 'feat'] if args.task == 'all' else [args.task]
-        for task_name in tasks:
-            args.task = task_name
-            run_task(processor, args)
+            consumer = Thread(target=batch_consumer, args=(
+                queue, args.task, args.wsi_cache, processor_factory, run_task_fn
+            ))
+
+            print("[MAIN] Starting producer and consumer threads.")
+            producer.start()
+            consumer.start()
+            producer.join()
+            consumer.join()
+        else:
+            # === Sequential mode ===
+            processor = initialize_processor(args)
+            tasks = ['seg', 'coords', 'feat'] if args.task == 'all' else [args.task]
+            for task_name in tasks:
+                args.task = task_name
+                run_task(processor, args)
+    except Exception as e:
+        run_status = "error"
+        run_error = str(e)
+        raise
+    finally:
+        try:
+            finalize_run(args.job_dir, run_id, status=run_status, error=run_error)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

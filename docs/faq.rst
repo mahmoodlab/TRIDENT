@@ -18,7 +18,7 @@ This page explains common calls in plain language and when to use them.
 
    Example:
 
-   .. code-block:: csv
+   .. code-block:: text
 
       wsi,mpp
       TCGA-AJ-A8CV-01Z-00-DX1_1.png,0.25
@@ -52,8 +52,7 @@ This page explains common calls in plain language and when to use them.
    - Patching:
      - CPU-only; usually fast, but can be CPU-intensive on very large slides or heavy overlap settings.
      - Use ``--min_tissue_proportion`` to require more tissue overlap and reduce weak/edge patches.
-     - For debugging, you can also dump patch images during the coords task using:
-       ``--dump_patches --dump_patches_format {png,jpg} --dump_patches_jpeg_quality 90 --dump_patches_max 100``.
+     - For debugging, you can also dump patch images during the coords task using: ``--dump_patches --dump_patches_format {png,jpg} --dump_patches_jpeg_quality 90 --dump_patches_max 100``.
    - Feature extraction:
      - Patch-level and slide-level feature extraction require GPU in practice.
 
@@ -68,6 +67,50 @@ This page explains common calls in plain language and when to use them.
 .. dropdown:: **My WSIs are in multiple subfolders. How can I process them all?**
 
    By default, only the top-level directory is scanned. Use `--search_nested` to recursively search for WSIs in all nested folders and include them in processing.
+
+.. dropdown:: **Where can I see what TRIDENT has done (and what failed)?**
+
+   In your ``--job_dir``:
+
+   - ``summary.md``: appended once per run; compact counts and per-model breakdown, plus a short error list.
+   - ``runs/<run_id>.json``: per-run JSON manifest (args, timestamps, status).
+   - ``wsi_states/<slide>__<hash>.json``: per-slide state (task attempts, outputs, and resume info).
+
+.. dropdown:: **TRIDENT says “Found 0 valid slides”. Why?**
+
+   Common causes:
+
+   - Your folder is nested: add ``--search_nested``.
+   - Your extension filter is too strict: remove ``--wsi_ext`` or include the right extensions.
+   - You used ``--custom_list_of_wsis`` but the CSV is wrong:
+     - CSV must contain a ``wsi`` column
+     - values must be **relative paths under** ``--wsi_dir`` (e.g., ``patientA/slide.svs``)
+
+.. dropdown:: **What does `--reader_type` do? Which one should I use?**
+
+   TRIDENT can force a reader backend. Use this mostly for debugging:
+
+   - ``openslide``: default for many WSI formats (``.svs``, ``.tif/.tiff``, ``.ndpi``, ``.mrxs``, …; also ``.dcm`` if your OpenSlide build supports it)
+   - ``cucim``: GPU-friendly WSI reading (when available)
+   - ``image``: standard images via PIL (``.png``, ``.jpg/.jpeg``)
+   - ``sdpc``: SDPC files
+   - ``omezarr``: OME-Zarr / NGFF Zarr
+   - ``czi``: Zeiss CZI (requires the optional CZI dependency)
+
+.. dropdown:: **My job is slow. What are the usual bottlenecks?**
+
+   - **I/O bound** (common on network drives): enable ``--wsi_cache`` on a local SSD.
+   - **GPU bound** (feature extraction): reduce ``--feat_batch_size`` / ``--batch_size`` if you see OOM.
+   - **Too many patches**: increase ``--min_tissue_proportion`` or decrease overlap.
+
+.. dropdown:: **I’m running slide embeddings and it says “Patch features not found”.**
+
+   Slide encoders require a specific patch encoder (internal mapping).
+
+   Fix:
+
+   - run patch features for the required encoder under the same ``coords_dir``, or
+   - run slide features and let TRIDENT auto-extract missing patch features.
 
 .. dropdown:: **I work on a cluster without Internet access. How can I use models offline?**
 

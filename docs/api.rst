@@ -9,6 +9,60 @@ When to use the API vs CLI:
 - Use the API when embedding Trident in your own Python pipeline, custom loops, or experiments.
 - Start with the CLI first, then move to API once the workflow is validated.
 
+Minimal API usage (recommended patterns)
+----------------------------------------
+
+Load a slide and read regions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use ``load_wsi`` as a context manager so file handles are released:
+
+.. code-block:: python
+
+   from trident import load_wsi
+
+   with load_wsi("./wsis/example.svs", lazy_init=False) as wsi:
+       print(wsi.dimensions, wsi.mpp)
+       patch = wsi.read_region((0, 0), level=0, size=(512, 512))
+
+Run the pipeline with ``Processor``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The CLI entrypoints are thin wrappers around ``Processor``.
+
+.. code-block:: python
+
+   from trident import Processor
+   from trident.segmentation_models.load import segmentation_model_factory
+   from trident.patch_encoder_models.load import encoder_factory as patch_encoder_factory
+
+   processor = Processor(job_dir="./job", wsi_source="./wsis", search_nested=True, skip_errors=True)
+
+   seg = segmentation_model_factory("grandqc", confidence_thresh=0.5)
+   processor.run_segmentation_job(seg, device="cuda:0", batch_size=16)
+
+   processor.run_patching_job(target_magnification=20, patch_size=256, overlap=0, min_tissue_proportion=0.0)
+
+   enc = patch_encoder_factory("uni_v1")
+   processor.run_patch_feature_extraction_job(coords_dir="20x_256px_0px_overlap", patch_encoder=enc, device="cuda:0", batch_limit=64)
+
+Outputs and run tracking
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+In ``job_dir`` (same as the CLI):
+
+- ``summary.md``: appended once per run; compact counts + per-model breakdown + errors
+- ``runs/<run_id>.json``: per-run manifest (args, timestamps, status)
+- ``wsi_states/<slide>__<hash>.json``: per-slide state (attempts, outputs, resume info)
+
+Notes for power users
+^^^^^^^^^^^^^^^^^^^^^
+
+- **Nested datasets**: ``search_nested=True`` uses relative paths under ``wsi_source`` (mirrors CLI ``--search_nested``).
+- **Subset runs**: pass ``custom_list_of_wsis="subset.csv"``; the CSV must have a ``wsi`` column.
+- **Reader selection**: you can force a backend with ``reader_type="openslide"`` / ``"cucim"`` / ``"image"`` / ``"sdpc"`` / ``"omezarr"`` / ``"czi"``.
+- **Slide encoders**: slide embeddings require a specific patch encoder (mapping is in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``).
+
 .. contents::
    :local:
    :depth: 2
@@ -93,10 +147,10 @@ Factory for loading patch-level encoder models.
      - 1536
      - ``--patch_encoder hoptimus1 --patch_size 224 --mag 20``
      - `bioptimus/H-optimus-1 <https://huggingface.co/bioptimus/H-optimus-1>`__
-  * - **H0-mini**
-    - 768/1536
-    - ``--patch_encoder h0-mini --patch_size 224 --mag 20``
-    - `bioptimus/H0-mini <https://huggingface.co/bioptimus/H0-mini>`__
+   * - **H0-mini**
+     - 768/1536
+     - ``--patch_encoder h0-mini --patch_size 224 --mag 20``
+     - `bioptimus/H0-mini <https://huggingface.co/bioptimus/H0-mini>`__
    * - **MUSK**
      - 1024
      - ``--patch_encoder musk --patch_size 384 --mag 20``
@@ -105,14 +159,14 @@ Factory for loading patch-level encoder models.
      - 3072
      - ``--patch_encoder midnight12k --patch_size 224 --mag 20``
      - `kaiko-ai/midnight <https://huggingface.co/kaiko-ai/midnight>`__
-  * - **OpenMidnight**
-    - 1536
-    - ``--patch_encoder openmidnight --patch_size 224 --mag 20``
-    - `SophontAI/OpenMidnight <https://huggingface.co/SophontAI/OpenMidnight>`__
-  * - **GPFM**
-    - 1024
-    - ``--patch_encoder gpfm --patch_size 224 --mag 20``
-    - `majiabo/GPFM <https://huggingface.co/majiabo/GPFM>`__
+   * - **OpenMidnight**
+     - 1536
+     - ``--patch_encoder openmidnight --patch_size 224 --mag 20``
+     - `SophontAI/OpenMidnight <https://huggingface.co/SophontAI/OpenMidnight>`__
+   * - **GPFM**
+     - 1024
+     - ``--patch_encoder gpfm --patch_size 224 --mag 20``
+     - `majiabo/GPFM <https://huggingface.co/majiabo/GPFM>`__
    * - **Kaiko**
      - 384/768/1024
      - ``--patch_encoder kaiko-vit* --patch_size 256 --mag 20``

@@ -19,6 +19,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **Patch feature extraction**: Patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), and more.
 - **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w) (and more via the model zoo).
 - **Scalable batch processing**: Batch-wise WSI caching to local SSD and nested WSI search (`--search_nested`) for large datasets.
+- **Run tracking (human + machine readable)**: Per-slide state JSONs in `wsi_states/` plus a per-run `summary.md` that explains what happened.
 
 <!-- ### Updates:
 - 07.25: Support for [Feather](https://github.com/mahmoodlab/MIL-Lab) model.
@@ -74,6 +75,11 @@ Equivalent wrapper CLI:
 ```
 trident batch -- --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
+
+**Run outputs (recommended starting point for debugging/resume):**
+- **`summary.md`**: appended once per run; high-level counts (completed/skipped/error), per-model breakdown, and a short error list.
+- **`runs/<run_id>.json`**: one JSON manifest per run (args, timestamps, status).
+- **`wsi_states/<slide>__<hash>.json`**: per-slide state (tasks, attempts, outputs, resume info).
 
 **Feeling cautious?**
 
