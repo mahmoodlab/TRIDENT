@@ -13,7 +13,7 @@ Use this rule of thumb:
 ---
 
 Processing a batch of slides
-----------
+--------------------------------
 
 To process a batch of WSIs through segmentation, patch extraction, and feature extraction in one go,  
 run the following command:
@@ -40,6 +40,35 @@ This command runs the full pipeline:
 1. Segment tissue areas in the slides.
 2. Extract patch coordinates over tissue.
 3. Extract patch-level features using the selected encoder.
+
+Outputs and run tracking
+------------------------
+
+In your ``--job_dir``, TRIDENT writes:
+
+- ``summary.md``: appended once per run; a compact “what happened” report (counts + per-model breakdown + errors).
+- ``runs/<run_id>.json``: one JSON manifest per run (args, timestamps, status).
+- ``wsi_states/<slide>__<hash>.json``: per-slide machine-readable state (tasks, attempts, outputs, resume info).
+
+How TRIDENT decides to skip work
+--------------------------------
+
+- If an expected output already exists (and is not locked), TRIDENT marks the task as **skipped**.
+- Locks are ``<output>.lock`` files created to prevent collisions in parallel runs.
+
+If something looks “stuck”, check for stale ``.lock`` files and whether outputs were actually written.
+
+High-signal knobs (what users usually change)
+---------------------------------------------
+
+- ``--segmenter``:
+  - ``grandqc``: fast on clean H&E
+  - ``hest``: often better on IHC / dirtier slides
+  - ``otsu``: CPU fallback (no weights)
+- ``--mag`` / ``--patch_size`` / ``--overlap``: define the patch grid; must match between coords and features.
+- ``--min_tissue_proportion``: raise this (e.g., 0.3–0.7) to reduce weak edge patches and patch count.
+- ``--search_nested`` / ``--custom_list_of_wsis``: scale runs safely on large datasets.
+- ``--wsi_cache``: use when WSIs are on slow network storage.
 
 Typical Examples
 -----------------
@@ -137,6 +166,7 @@ WSI discovery and reading
 - ``--custom_list_of_wsis``: CSV subset list to process selected slides only.
 - ``--custom_mpp_keys``: metadata keys to read MPP from non-standard slide headers.
 - ``--reader_type``: force backend reader (``openslide``, ``cucim``, ``image``, ``sdpc``, ``omezarr``).
+  - Also supports ``czi`` for Zeiss CZI files.
 
 When to change:
 
@@ -191,6 +221,20 @@ How this works:
 - If ``--slide_encoder`` is not provided, TRIDENT extracts patch features only.
 - If ``--slide_encoder`` is provided, TRIDENT computes patch features as needed, then slide embeddings.
 - Patch and slide feature extraction are GPU workflows.
+
+Common failure modes (and what to do)
+-------------------------------------
+
+- **“Patch features not found” during slide embeddings**:
+  - Slide encoders require a specific patch encoder (see ``slide_to_patch_encoder_name`` mapping in code).
+  - Fix: ensure patch features exist under ``<coords_dir>/features_<required_patch_encoder>/``.
+- **OOM on feature extraction**:
+  - Reduce ``--feat_batch_size`` (or ``--batch_size``), or run a smaller patch encoder / smaller patch size.
+- **No slides discovered**:
+  - For nested datasets, add ``--search_nested``.
+  - For CSV subsets, ensure the CSV has a ``wsi`` column of relative paths (from ``--wsi_dir``).
+- **Offline environment**:
+  - Provide weights via ``trident/*/local_ckpts.json`` or pass ``--patch_encoder_ckpt_path`` for patch encoders.
 
 Caching arguments
 ^^^^^^^^^^^^^^^^^

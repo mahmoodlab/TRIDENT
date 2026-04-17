@@ -1,7 +1,24 @@
 Frequently Asked Questions
 ==========================
 
-This page explains common calls in plain language and when to use them.
+This page groups common questions by theme.
+
+Troubleshooting by symptom
+--------------------------
+
+- **Found 0 slides / missing files** → :ref:`why no slides <faq-found-0-slides>`
+- **Pipeline looks stuck** (locks) → :ref:`locks <faq-locks>`
+- **Re-run / resume on same job_dir** → :ref:`resume <faq-resume-job-dir>`
+- **Job is slow** → :ref:`performance <faq-slow>`
+- **Slide embeddings complain about missing patch features** → :ref:`missing patch features <faq-patch-features-not-found>`
+- **Offline cluster / no internet** → :ref:`offline <faq-offline>`
+- **One slide keeps failing** → :ref:`debug one slide <faq-one-slide-failing>`
+- **Where are outputs / what happened** → :ref:`where results are <faq-where-results>`
+
+Getting started and discovery
+-----------------------------
+
+.. _faq-legacy-clam:
 
 .. dropdown:: **How do I extract embeddings from legacy CLAM coordinates?**
 
@@ -11,6 +28,35 @@ This page explains common calls in plain language and when to use them.
 
       python run_batch_of_slides.py --task feat --wsi_dir wsis --job_dir legacy_dir --coords_dir extracted_coords --patch_encoder uni_v1
 
+.. _faq-found-0-slides:
+
+.. dropdown:: **TRIDENT says “Found 0 valid slides”. Why?**
+
+   Common causes:
+
+   - Your folder is nested: add ``--search_nested``.
+   - Your extension filter is too strict: remove ``--wsi_ext`` or include the right extensions.
+   - You used ``--custom_list_of_wsis`` but the CSV is wrong:
+     - CSV must contain a ``wsi`` column
+     - values must be **relative paths under** ``--wsi_dir`` (e.g., ``patientA/slide.svs``)
+
+.. dropdown:: **My WSIs are in multiple subfolders. How can I process them all?**
+
+   By default, only the top-level directory is scanned. Use `--search_nested` to recursively search for WSIs in all nested folders and include them in processing.
+
+.. dropdown:: **What does `--reader_type` do? Which one should I use?**
+
+   TRIDENT can force a reader backend. Use this mostly for debugging:
+
+   - ``openslide``: default for many WSI formats (``.svs``, ``.tif/.tiff``, ``.ndpi``, ``.mrxs``, …; also ``.dcm`` if your OpenSlide build supports it)
+   - ``cucim``: GPU-friendly WSI reading (when available)
+   - ``image``: standard images via PIL (``.png``, ``.jpg/.jpeg``)
+   - ``sdpc``: SDPC files
+   - ``omezarr``: OME-Zarr / NGFF Zarr
+   - ``czi``: Zeiss CZI (requires the optional CZI dependency)
+
+Metadata and patching semantics
+-------------------------------
 
 .. dropdown:: **My WSIs have no micron-per-pixel (MPP) or magnification metadata. What should I do?**
 
@@ -18,7 +64,7 @@ This page explains common calls in plain language and when to use them.
 
    Example:
 
-   .. code-block:: csv
+   .. code-block:: text
 
       wsi,mpp
       TCGA-AJ-A8CV-01Z-00-DX1_1.png,0.25
@@ -28,14 +74,16 @@ This page explains common calls in plain language and when to use them.
    If you're using OpenSlide-readable formats (e.g., `.svs`, `.tiff`), this CSV is optional—but you can still use it to:
 
    - Restrict processing to a specific subset of slides
-   - Override incorrect or missing MPP metadata
-
+   - Override incorrect MPP metadata
 
 .. dropdown:: **I want to skip patches on holes.**
 
    By default, TRIDENT includes all tissue patches (including holes). Use `--remove_holes` to exclude them. Not recommended, as "holes" often help define the tissue microenvironment.
 
-.. dropdown:: **Which segmenter should I use?**
+Models and compute (GPU/CPU)
+----------------------------
+
+.. dropdown:: **Which tissue vs. background segmenter should I use?**
 
    TRIDENT supports three segmenters:
 
@@ -52,22 +100,128 @@ This page explains common calls in plain language and when to use them.
    - Patching:
      - CPU-only; usually fast, but can be CPU-intensive on very large slides or heavy overlap settings.
      - Use ``--min_tissue_proportion`` to require more tissue overlap and reduce weak/edge patches.
-     - For debugging, you can also dump patch images during the coords task using:
-       ``--dump_patches --dump_patches_format {png,jpg} --dump_patches_jpeg_quality 90 --dump_patches_max 100``.
+     - For debugging, you can also dump patch images during the coords task using: ``--dump_patches --dump_patches_format {png,jpg} --dump_patches_jpeg_quality 90 --dump_patches_max 100``.
    - Feature extraction:
      - Patch-level and slide-level feature extraction require GPU in practice.
 
-.. dropdown:: **Why does `trident convert` exist if OpenSlide already reads many formats?**
+Performance
+-----------
 
-   The converter is mainly for formats OpenSlide does not handle well. It uses BioFormats-backed readers when possible, then writes pyramidal TIFF outputs for downstream workflows.
+.. _faq-slow:
+
+.. dropdown:: **My job is slow. What are the usual bottlenecks?**
+
+   - **I/O bound** (common on network drives): enable ``--wsi_cache`` on a local SSD.
+   - **GPU bound** (feature extraction): reduce ``--feat_batch_size`` / ``--batch_size`` if you see OOM.
+   - **Too many patches**: increase ``--min_tissue_proportion`` or decrease overlap.
 
 .. dropdown:: **I don’t have enough local SSD storage and my WSIs are on a slow remote disk. How can I accelerate processing?**
 
    When WSIs are stored on slow network or external drives, processing can be very slow. Use `--wsi_cache ./cache --cache_batch_size 32` to enable local caching. WSIs will be copied in batches to a local SSD, processed in parallel, and automatically cleaned up after use. This significantly reduces I/O bottlenecks.
 
-.. dropdown:: **My WSIs are in multiple subfolders. How can I process them all?**
+.. dropdown:: **Why does `trident convert` exist if TRIDENT already reads many formats?**
 
-   By default, only the top-level directory is scanned. Use `--search_nested` to recursively search for WSIs in all nested folders and include them in processing.
+   The converter is mainly for uncommon formats that OpenSlide does not handle well. It uses BioFormats-backed readers when possible, then writes pyramidal TIFF outputs for downstream workflows.
+
+Reliability, resume, and debugging
+----------------------------------
+
+.. _faq-where-results:
+
+.. dropdown:: **Where can I see what TRIDENT has done (and what failed)?**
+
+   In your ``--job_dir``:
+
+   - ``summary.md``: appended once per run; compact counts and per-model breakdown, plus a short error list.
+   - ``runs/<run_id>.json``: per-run JSON manifest (args, timestamps, status).
+   - ``wsi_states/<slide>__<hash>.json``: per-slide state (task attempts, outputs, and resume info).
+
+.. _faq-resume-job-dir:
+
+.. dropdown:: **How do I safely re-run or resume a job on an existing `--job_dir`?**
+
+   TRIDENT is designed so that **re-running on the same ``--job_dir`` is usually safe**:
+
+   - If an output already exists and is not locked, the corresponding task is marked **skipped**.
+   - State is persisted under ``wsi_states/``; you can inspect it to see what has already run.
+   - When in doubt, start by re-running **only one stage** (e.g., ``--task feat``) instead of ``--task all``.
+
+.. dropdown:: **How should I read the `wsi_states/*.json` files? What do the fields mean?**
+
+   At a high level:
+
+   - ``slide``: identity (name, extension, absolute path, reader type).
+   - ``meta``: one-shot WSI metadata snapshot (e.g., dimensions, mpp, level_count) when available.
+   - ``tasks``: one entry per logical task (``segmentation``, ``coords``, ``patch_features:<encoder>``, ``slide_features:<encoder>``) with:
+     - ``status`` (``not_started``, ``running``, ``completed``, ``skipped``, ``error``),
+     - ``reason`` (why it was skipped/errored, if known),
+     - ``attempts`` (merged start/finish records with timestamps and durations),
+     - ``outputs`` (paths + existence/bytes).
+   - ``summary``: a compact view of task statuses, grouped by patch/slide encoder.
+   - ``resume``: last task + status + last error, useful when debugging failed runs.
+
+.. _faq-locks:
+
+.. dropdown:: **How do locks (`.lock` files) work and when is it safe to remove them?**
+
+   TRIDENT uses simple filesystem locks (``<output>.lock``) to avoid two workers writing the same file:
+
+   - A task creates a ``.lock`` file when it starts, and removes it on success or handled error.
+   - If you see a stale ``.lock`` file but no corresponding running process, it usually means a crash or interruption.
+   - It is generally safe to **delete stale locks** once you've ensured no TRIDENT process is still running for that job, then re-run the affected task.
+
+.. _faq-patch-features-not-found:
+
+.. dropdown:: **I’m running slide embeddings and it says “Patch features not found”.**
+
+   Slide encoders require a specific patch encoder (internal mapping).
+
+   Fix:
+
+   - run patch features for the required encoder under the same ``coords_dir``, or
+   - run slide features and let TRIDENT auto-extract missing patch features.
+
+.. _faq-one-slide-failing:
+
+.. dropdown:: **One slide keeps failing while `--skip_errors` is on. How do I debug it?**
+
+   - Check ``summary.md`` and the slide’s entry in ``wsi_states/`` to see which task and error are reported.
+   - Re-run a **small test** focusing only on that slide:
+
+     - via API: use ``load_wsi`` + a minimal pipeline around the failing step, or
+     - via CLI: create a CSV for that slide only (``--custom_list_of_wsis``) and re-run the relevant task.
+
+   - Once you understand/fix the cause, you can safely re-run the full batch with ``--skip_errors`` again.
+
+Environment and advanced usage
+------------------------------
+
+.. dropdown:: **Which Python versions are supported? What about 3.12+?**
+
+   TRIDENT is tested and packaged for **Python 3.10 and 3.11** (see ``pyproject.toml``).
+   Python 3.12+ may work at the pure-Python level, but binary dependencies (PyTorch, OpenSlide, etc.) and some pinned versions are **not guaranteed** to be compatible.
+   For production use, stick to 3.10/3.11 until explicit 3.12+ support is advertised.
+
+.. dropdown:: **How can I control where TRIDENT stores downloaded weights and caches?**
+
+   TRIDENT follows a simple hierarchy:
+
+   - If ``TRIDENT_HOME`` is set, weights and related files go under that directory.
+   - Else, it falls back to ``$XDG_CACHE_HOME/trident`` (defaulting to ``~/.cache/trident`` if unset).
+
+   On clusters with small home directories, point ``TRIDENT_HOME`` or ``XDG_CACHE_HOME`` to a larger scratch or project disk.
+
+.. dropdown:: **Can I plug in my own custom patch or slide encoder?**
+
+   Yes. The recommended approach is:
+
+   - Wrap your patch encoder in ``CustomInferenceEncoder`` (see ``trident/patch_encoder_models/load.py``).
+   - Wrap your slide encoder in ``CustomSlideEncoder`` (see ``trident/slide_encoder_models/load.py``).
+   - Use the API (``Processor`` + your custom encoder) rather than the CLI for these advanced cases.
+
+   This way, you still benefit from TRIDENT’s I/O and patching pipeline while controlling the model.
+
+.. _faq-offline:
 
 .. dropdown:: **I work on a cluster without Internet access. How can I use models offline?**
 

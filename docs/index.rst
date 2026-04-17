@@ -13,6 +13,7 @@ Welcome to **TRIDENT**!
 - **Patch-level feature extraction** using 20+ foundation models
 - **Slide-level feature extraction** via 5+ pretrained model backbones
 - Native support for **OpenSlide**, **CuCIM**, and **PIL-compatible** formats
+- **Run tracking**: per-slide JSON state (`wsi_states/`) plus a per-run `summary.md`
 
 Explore the **end-to-end pipeline**, from segmentation to slide-level representation — all powered by the latest **foundation models** for computational pathology.
 

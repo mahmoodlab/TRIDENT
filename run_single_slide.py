@@ -13,6 +13,7 @@ from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.Summary import start_run, finalize_run
 
 
 def parse_arguments():
@@ -32,6 +33,8 @@ def parse_arguments():
     parser.add_argument('--segmenter', type=str, default='hest', 
                         choices=['hest', 'grandqc', 'otsu'],
                         help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
+    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi'], default=None,
+                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi"]. Defaults to None (auto-determine which reader to use).')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
                     help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
@@ -72,7 +75,7 @@ def process_slide(args):
 
     # Initialize the WSI
     print(f"Processing slide: {args.slide_path}")
-    with load_wsi(slide_path=args.slide_path, lazy_init=False, custom_mpp_keys=args.custom_mpp_keys) as slide:
+    with load_wsi(slide_path=args.slide_path, reader_type=getattr(args, "reader_type", None), lazy_init=False, custom_mpp_keys=args.custom_mpp_keys) as slide:
         seg_device = "cpu" if args.segmenter == "otsu" else f"cuda:{args.gpu}"
         # Step 1: Tissue Segmentation
         print("Running tissue segmentation...")
@@ -151,7 +154,20 @@ def process_slide(args):
 
 def main():
     args = parse_arguments()
-    process_slide(args)
+    run_id = start_run(args.job_dir, tool="run_single_slide", args=vars(args))
+    run_status = "completed"
+    run_error = None
+    try:
+        process_slide(args)
+    except Exception as e:
+        run_status = "error"
+        run_error = str(e)
+        raise
+    finally:
+        try:
+            finalize_run(args.job_dir, run_id, status=run_status, error=run_error)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

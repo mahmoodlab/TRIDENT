@@ -1,7 +1,8 @@
 Installation
 ============
 
-Create a fresh environment (Python 3.10 or 3.11):
+Create a fresh environment (Python 3.10 or 3.11)
+-------------------------------------------------
 
 .. code-block:: bash
 
@@ -20,7 +21,8 @@ Install the package locally:
 
    pip install -e .
 
-When to use this command:
+When to use ``pip install -e .``
+--------------------------------
 
 - Use ``pip install -e .`` for the default pipeline (segmentation, patching, feature extraction).
 - Use extras only when you need optional model families or converter-specific dependencies.
@@ -40,6 +42,40 @@ When to use each profile:
 - ``.[slide-encoders]``: only if you need extra slide encoder dependencies (e.g., PRISM/GigaPath/Madeleine).
 - ``.[convert]``: only if you run ``trident convert`` workflows.
 - ``.[full]``: install everything optional in one environment.
+
+Platform notes (common install issues)
+--------------------------------------
+
+- **Linux**: TRIDENT relies on OpenSlide. If you see import errors for ``openslide``, install system packages first (e.g., ``libopenslide0`` / ``openslide-tools`` depending on your distro).
+- **macOS**: OpenSlide is usually easiest via Homebrew (``brew install openslide``).
+- **Windows**: OpenSlide support is more fragile; consider WSL2 or use formats supported by non-OpenSlide readers where possible.
+
+GPU vs CPU
+----------
+
+- **Segmentation**:
+  - ``hest`` / ``grandqc`` are GPU workflows in practice.
+  - ``otsu`` is CPU-only and requires **no model weights**.
+- **Feature extraction** (patch or slide): GPU strongly recommended.
+
+Hugging Face (gated models + offline clusters)
+----------------------------------------------
+
+- If a model is **gated** on Hugging Face, make sure you have access and you are logged in (or set ``HF_TOKEN``).
+- If you are **offline**, TRIDENT will raise a clear error telling you what to download.
+  Put local checkpoints in:
+
+  - ``trident/segmentation_models/local_ckpts.json``
+  - ``trident/patch_encoder_models/local_ckpts.json``
+  - ``trident/slide_encoder_models/local_ckpts.json``
+
+Model/cache directory
+---------------------
+
+Downloaded weights are cached under:
+
+- ``$TRIDENT_HOME`` if set, otherwise
+- ``$XDG_CACHE_HOME/trident`` (defaults to ``~/.cache/trident``)
 
 Preflight checks:
 
