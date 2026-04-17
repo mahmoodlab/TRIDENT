@@ -229,8 +229,9 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
         if args.slide_encoder is None: 
             from trident.patch_encoder_models.load import encoder_factory
             encoder = encoder_factory(args.patch_encoder, weights_path=args.patch_encoder_ckpt_path)
+            mag_str = f"{float(args.mag):g}"
             processor.run_patch_feature_extraction_job(
-                coords_dir=args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap',
+                coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',
                 patch_encoder=encoder,
                 device=f'cuda:{args.gpu}',
                 saveas='h5',
@@ -239,9 +240,10 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
         else:
             from trident.slide_encoder_models.load import encoder_factory
             encoder = encoder_factory(args.slide_encoder)
+            mag_str = f"{float(args.mag):g}"
             processor.run_slide_feature_extraction_job(
                 slide_encoder=encoder,
-                coords_dir=args.coords_dir or f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap',
+                coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',
                 device=f'cuda:{args.gpu}',
                 saveas='h5',
                 batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,

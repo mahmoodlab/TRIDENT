@@ -167,7 +167,8 @@ def has_internet_connection(timeout: float = 3.0) -> bool:
     
     try:
         # Fast socket-level check
-        socket.create_connection((endpoint, 443), timeout=timeout)
+        sock = socket.create_connection((endpoint, 443), timeout=timeout)
+        sock.close()
         return True
     except OSError:
         pass
@@ -182,7 +183,7 @@ def has_internet_connection(timeout: float = 3.0) -> bool:
         return False
 
 
-def get_weights_path(model_type: str, encoder_name: str) -> str:
+def  get_weights_path(model_type: str, encoder_name: str) -> str:
     """
     Retrieve the path to the weights file for a given model name.
     This function looks up the path to the weights file in a local checkpoint

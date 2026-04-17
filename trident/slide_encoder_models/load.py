@@ -6,7 +6,7 @@ from abc import abstractmethod
 from einops import rearrange
 from typing import Optional, Tuple, Dict, Any
 
-from trident.IO import get_weights_path
+from trident.IO import get_weights_path, get_dir
 
 """
 This file contains 10+ pretrained slide encoders, all loadable via the encoder_factory() function.
@@ -361,6 +361,8 @@ class MadeleineSlideEncoder(BaseSlideEncoder):
 
         self.enc_name = 'madeleine'
         weights_path = get_weights_path('slide', self.enc_name)
+        if not weights_path:
+            weights_path = os.path.join(get_dir(), "models", "madeleine")
         embedding_dim = 512
 
         try:
