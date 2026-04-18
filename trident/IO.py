@@ -970,6 +970,7 @@ def get_num_workers(
         The default number of workers to use if the system's CPU core count cannot be determined. Defaults to 16.
     max_workers : int or None, optional
         The maximum number of workers allowed. Defaults to `2 * batch_size` if not provided.
+        If ``0``, returns ``0`` so the DataLoader runs in the main process (matches ``--max_workers=0``).
 
     Returns:
     --------
@@ -984,7 +985,8 @@ def get_num_workers(
 
     Notes:
     ------
-    - The number of workers is clipped to a minimum of 1 to ensure multiprocessing is not disabled.
+    - The number of workers is clipped to a minimum of 1 (when ``max_workers`` is not ``0``).
+    - If ``max_workers`` is ``0``, this function returns ``0`` (no DataLoader worker processes).
     - The maximum number of workers defaults to `2 * batch_size` unless explicitly specified.
     - The function ensures compatibility with systems where `os.cpu_count()` may return `None`.
     - On Windows systems, the number of workers is always set to 0 to ensure compatibility with PyTorch datasets whose attributes may not be serializable.
@@ -994,8 +996,12 @@ def get_num_workers(
     if os.name == "nt":
         return 0
 
+    if max_workers == 0:
+        return 0
+
     num_cores = os.cpu_count() or fallback
     num_workers = int(factor * num_cores)  # Use a fraction of available cores
-    max_workers = max_workers or (2 * batch_size)  # Optional cap
+    if max_workers is None:
+        max_workers = 2 * batch_size
     num_workers = np.clip(num_workers, 1, max_workers)
     return int(num_workers)
