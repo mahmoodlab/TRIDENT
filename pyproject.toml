@@ -40,6 +40,7 @@ einops_exts = "*"
 scipy = "*"
 segmentation-models-pytorch = "*"
 safetensors = "*"
+flask = "*"
 
 # Optional dependencies
 environs = { version = "11.0.0", optional = true }

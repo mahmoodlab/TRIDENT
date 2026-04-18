@@ -1,9 +1,9 @@
 from __future__ import annotations
 import sys
 import numpy as np
-import os 
+import os
 import warnings
-import torch 
+import torch
 from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -12,12 +12,16 @@ from trident.segmentation_models.load import SegmentationModel
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
-    save_h5, read_coords,
-    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
-    splitext
+    save_h5,
+    read_coords,
+    mask_to_gdf,
+    overlay_gdf_on_thumbnail,
+    get_num_workers,
+    coords_to_h5,
+    splitext,
 )
 
-ReadMode = Literal['pil', 'numpy']
+ReadMode = Literal["pil", "numpy"]
 
 # Sentinel: tissue contours not yet resolved (disk or explicit None).
 _GDF_UNRESOLVED = object()
@@ -25,9 +29,9 @@ _GDF_UNRESOLVED = object()
 
 class WSI:
     """
-    The `WSI` class provides an interface to work with Whole Slide Images (WSIs). 
+    The `WSI` class provides an interface to work with Whole Slide Images (WSIs).
     It supports lazy initialization, metadata extraction, tissue segmentation,
-    patching, and feature extraction. The class handles various WSI file formats and 
+    patching, and feature extraction. The class handles various WSI file formats and
     offers utilities for integration with AI models.
 
     Attributes:
@@ -100,14 +104,14 @@ class WSI:
         """
         self.slide_path = slide_path
         if name is None:
-            self.name, self.ext = splitext(os.path.basename(slide_path)) 
+            self.name, self.ext = splitext(os.path.basename(slide_path))
         else:
             self.name, self.ext = splitext(name)
         self.tissue_seg_path = tissue_seg_path
         self.custom_mpp_keys = custom_mpp_keys
 
         self.width, self.height = None, None  # Placeholder dimensions
-        self.mpp = mpp  # Placeholder microns per pixel. Defaults will be None unless specified in constructor. 
+        self.mpp = mpp  # Placeholder microns per pixel. Defaults will be None unless specified in constructor.
         self.mag = None  # Placeholder magnification
         # Public configuration flag (do not mutate at runtime).
         self.lazy_init = lazy_init
@@ -143,10 +147,13 @@ class WSI:
             object.__setattr__(self, "_gdf_contours_cache", None)
             return None
         import geopandas as gpd
+
         try:
             gdf = gpd.read_file(self.tissue_seg_path, engine="pyogrio", use_arrow=True)
         except FileNotFoundError:
-            raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}") from None
+            raise FileNotFoundError(
+                f"Tissue segmentation file not found: {self.tissue_seg_path}"
+            ) from None
         object.__setattr__(self, "_gdf_contours_cache", gdf)
         return gdf
 
@@ -186,16 +193,16 @@ class WSI:
             object.__setattr__(self, "_gdf_contours_cache", _GDF_UNRESOLVED)
 
     def create_patcher(
-        self, 
-        patch_size: int, 
-        src_pixel_size: Optional[float] = None, 
-        dst_pixel_size: Optional[float] = None, 
-        src_mag: Optional[int] = None, 
-        dst_mag: Optional[int] = None, 
-        overlap: int = 0, 
+        self,
+        patch_size: int,
+        src_pixel_size: Optional[float] = None,
+        dst_pixel_size: Optional[float] = None,
+        src_mag: Optional[int] = None,
+        dst_mag: Optional[int] = None,
+        overlap: int = 0,
         mask: Optional[gpd.GeoDataFrame] = None,
-        coords_only: bool = False, 
-        custom_coords:  Optional[np.ndarray] = None,
+        coords_only: bool = False,
+        custom_coords: Optional[np.ndarray] = None,
         threshold: float = 0.15,
         pil: bool = False,
     ) -> WSIPatcher:
@@ -236,15 +243,25 @@ class WSI:
         ...     process(patch)
         """
         return WSIPatcher(
-            self, patch_size, src_pixel_size, dst_pixel_size, src_mag, dst_mag,
-            overlap, mask, coords_only, custom_coords, threshold, pil
+            self,
+            patch_size,
+            src_pixel_size,
+            dst_pixel_size,
+            src_mag,
+            dst_mag,
+            overlap,
+            mask,
+            coords_only,
+            custom_coords,
+            threshold,
+            pil,
         )
-    
+
     def _fetch_magnification(self, custom_mpp_keys: Optional[List[str]] = None) -> int:
         """
         Calculate the magnification level of the WSI based on the microns per pixel (MPP) value or other metadata.
-        The magnification levels are 
-        approximated to commonly used values such as 80x, 40x, 20x, etc. If the MPP is unavailable or insufficient 
+        The magnification levels are
+        approximated to commonly used values such as 80x, 40x, 20x, etc. If the MPP is unavailable or insufficient
         for calculation, it attempts to fallback to metadata-based values.
 
         Parameters:
@@ -283,18 +300,20 @@ class WSI:
             elif mpp_x < 2.4:
                 return 5
             else:
-                raise ValueError(f"Identified mpp is very low: mpp={mpp_x}. Most WSIs are at 20x, 40x magnification.")
+                raise ValueError(
+                    f"Identified mpp is very low: mpp={mpp_x}. Most WSIs are at 20x, 40x magnification."
+                )
 
     def _segment_semantic(
-        self, 
+        self,
         segmentation_model: SegmentationModel,
-        target_mag: int, 
+        target_mag: int,
         verbose: bool,
         device: str,
         batch_size: int,
         collate_fn,
         num_workers: Optional[int],
-        inference_fn
+        inference_fn,
     ):
         """
         Segment semantic regions in the WSI using a specified segmentation model.
@@ -327,70 +346,97 @@ class WSI:
         # Get patch iterator
         destination_mpp = 10 / target_mag
         patcher = self.create_patcher(
-            patch_size = segmentation_model.input_size,
-            src_pixel_size = self.mpp,
-            dst_pixel_size = destination_mpp,
-            mask=self.gdf_contours if self.tissue_seg_path is not None else None
+            patch_size=segmentation_model.input_size,
+            src_pixel_size=self.mpp,
+            dst_pixel_size=destination_mpp,
+            mask=self.gdf_contours if self.tissue_seg_path is not None else None,
         )
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
         dataloader = DataLoader(
-            dataset, 
-            batch_size=batch_size, 
+            dataset,
+            batch_size=batch_size,
             collate_fn=collate_fn,
-            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
-            pin_memory=False
+            num_workers=get_num_workers(batch_size, max_workers=self.max_workers)
+            if num_workers is None
+            else num_workers,
+            pin_memory=False,
         )
 
         mpp_reduction_factor = self.mpp / destination_mpp
         width, height = self.get_dimensions()
-        width, height = int(round(width * mpp_reduction_factor)), int(round(height * mpp_reduction_factor))
+        width, height = (
+            int(round(width * mpp_reduction_factor)),
+            int(round(height * mpp_reduction_factor)),
+        )
         predicted_mask = np.zeros((height, width), dtype=np.uint8)
 
         dataloader = tqdm(dataloader) if verbose else dataloader
 
         for batch in dataloader:
-
-            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+            with torch.autocast(
+                device_type=device.split(":")[0],
+                dtype=precision,
+                enabled=(precision != torch.float32),
+            ):
                 if collate_fn is not None:
-                    if 'xcoords' not in batch or 'ycoords' not in batch:
-                        raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
-                    xcoords, ycoords = torch.tensor(batch['xcoords']), torch.tensor(batch['ycoords'])
+                    if "xcoords" not in batch or "ycoords" not in batch:
+                        raise ValueError(
+                            f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'"
+                        )
+                    xcoords, ycoords = (
+                        torch.tensor(batch["xcoords"]),
+                        torch.tensor(batch["ycoords"]),
+                    )
                     if inference_fn is None:
-                        if 'img' not in batch:
-                            raise ValueError(f"collate_fn must return the raw tile in 'img' if inference_fn is not provided.")
-                        imgs = batch['img']
+                        if "img" not in batch:
+                            raise ValueError(
+                                f"collate_fn must return the raw tile in 'img' if inference_fn is not provided."
+                            )
+                        imgs = batch["img"]
                 else:
                     imgs, (xcoords, ycoords) = batch
 
                 if inference_fn is not None:
-                    preds = inference_fn(segmentation_model, batch, device).cpu().numpy()
+                    preds = (
+                        inference_fn(segmentation_model, batch, device).cpu().numpy()
+                    )
                 else:
-                    imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
+                    imgs = imgs.to(
+                        device, dtype=precision
+                    )  # Move to device and match dtype
                     preds = segmentation_model(imgs).cpu().numpy()
 
-            x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
-            y_starts = np.clip(np.round(ycoords.numpy() * mpp_reduction_factor).astype(int), 0, height - 1)
+            x_starts = np.clip(
+                np.round(xcoords.numpy() * mpp_reduction_factor).astype(int),
+                0,
+                width - 1,
+            )  # clip for starts
+            y_starts = np.clip(
+                np.round(ycoords.numpy() * mpp_reduction_factor).astype(int),
+                0,
+                height - 1,
+            )
             x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
             y_ends = np.clip(y_starts + segmentation_model.input_size, 0, height)
-            
+
             for i in range(len(preds)):
                 x_start, x_end = x_starts[i], x_ends[i]
                 y_start, y_end = y_starts[i], y_ends[i]
-                if x_start >= x_end or y_start >= y_end: # invalid patch
+                if x_start >= x_end or y_start >= y_end:  # invalid patch
                     continue
-                patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
+                patch_pred = preds[i][: y_end - y_start, : x_end - x_start]
                 predicted_mask[y_start:y_end, x_start:x_end] += patch_pred
         return predicted_mask, mpp_reduction_factor
-    
+
     from contextlib import contextmanager
     import os
     import sys
 
     @contextmanager
     def suppress_stderr(self):
-        with open(os.devnull, 'w') as devnull:
+        with open(os.devnull, "w") as devnull:
             old_stderr = sys.stderr
             sys.stderr = devnull
             try:
@@ -406,13 +452,13 @@ class WSI:
         holes_are_tissue: bool = True,
         job_dir: Optional[str] = None,
         batch_size: int = 16,
-        device: str = 'cuda:0',
+        device: str = "cuda:0",
         verbose=False,
-        num_workers=None
+        num_workers=None,
     ) -> Union[str, gpd.GeoDataFrame]:
         """
         Segment tissue regions in the WSI using a specified segmentation model.
-        It processes the WSI at a target magnification level, optionally 
+        It processes the WSI at a target magnification level, optionally
         treating holes in the mask as tissue. The segmented regions are saved as thumbnails and GeoJSON contours.
 
         Parameters:
@@ -465,9 +511,9 @@ class WSI:
                 batch_size,
                 None,
                 num_workers,
-                None
+                None,
             )
-        
+
         # Post-process the mask
         predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
@@ -482,27 +528,32 @@ class WSI:
             max_nb_holes=0 if holes_are_tissue else 20,
             min_contour_area=1000,
             pixel_size=self.mpp,
-            contour_scale=1/mpp_reduction_factor
+            contour_scale=1 / mpp_reduction_factor,
         )
         if job_dir is not None:
-
             # Save thumbnail image
-            thumbnail_saveto = os.path.join(job_dir, 'thumbnails', f'{self.name}.jpg')
+            thumbnail_saveto = os.path.join(job_dir, "thumbnails", f"{self.name}.jpg")
             os.makedirs(os.path.dirname(thumbnail_saveto), exist_ok=True)
             thumbnail.save(thumbnail_saveto)
 
             # Save geopandas contours
-            gdf_saveto = os.path.join(job_dir, 'contours_geojson', f'{self.name}.geojson')
+            gdf_saveto = os.path.join(
+                job_dir, "contours_geojson", f"{self.name}.geojson"
+            )
             os.makedirs(os.path.dirname(gdf_saveto), exist_ok=True)
-            gdf_contours.set_crs("EPSG:3857", inplace=True)  # used to silent warning // Web Mercator
+            gdf_contours.set_crs(
+                "EPSG:3857", inplace=True
+            )  # used to silent warning // Web Mercator
             gdf_contours.to_file(gdf_saveto, driver="GeoJSON")
             self.gdf_contours = gdf_contours
             self.tissue_seg_path = gdf_saveto
 
             # Draw the contours on the thumbnail image
-            contours_saveto = os.path.join(job_dir, 'contours', f'{self.name}.jpg')
+            contours_saveto = os.path.join(job_dir, "contours", f"{self.name}.jpg")
             annotated = np.array(thumbnail)
-            overlay_gdf_on_thumbnail(gdf_contours, annotated, contours_saveto, thumbnail_width / self.width)
+            overlay_gdf_on_thumbnail(
+                gdf_contours, annotated, contours_saveto, thumbnail_width / self.width
+            )
 
             return gdf_saveto
         else:
@@ -514,12 +565,12 @@ class WSI:
         segmentation_model: SegmentationModel,
         target_mag: int = 10,
         batch_size: int = 16,
-        device: str = 'cuda:0',
+        device: str = "cuda:0",
         verbose=False,
         num_workers=None,
         collate_fn=None,
         inference_fn=None,
-        return_contours=False
+        return_contours=False,
     ) -> Union[Tuple[np.ndarray, float], Tuple[np.ndarray, float, gpd.GeoDataFrame]]:
         """
         Segment semantic regions in the WSI using a specified segmentation model.
@@ -572,7 +623,7 @@ class WSI:
             batch_size,
             collate_fn,
             num_workers,
-            inference_fn
+            inference_fn,
         )
 
         if not return_contours:
@@ -589,22 +640,19 @@ class WSI:
                 max_nb_holes=20,
                 min_contour_area=1000,
                 pixel_size=self.mpp,
-                contour_scale=1/mpp_reduction_factor
+                contour_scale=1 / mpp_reduction_factor,
             )
             gdfs.append(gdf_contours)
-        
+
         if len(gdfs) > 0:
             gdf = pd.concat(gdfs)
         else:
             gdf = gpd.GeoDataFrame()
 
         return predicted_mask, mpp_reduction_factor, gdf
-        
 
     def get_best_level_and_custom_downsample(
-        self,
-        downsample: float,
-        tolerance: float = 0.01
+        self, downsample: float, tolerance: float = 0.01
     ) -> Tuple[int, float]:
         """
         Determine the best level and custom downsample factor to approximate a desired downsample value.
@@ -664,11 +712,11 @@ class WSI:
         patch_size: int,
         save_coords: str,
         overlap: int = 0,
-        min_tissue_proportion: float  = 0.,
+        min_tissue_proportion: float = 0.0,
     ) -> str:
         """
         Extract patch coordinates from tissue regions in the WSI.
-        It generates coordinates of patches at the specified 
+        It generates coordinates of patches at the specified
         magnification and saves the results in an HDF5 file.
 
         Parameters:
@@ -707,16 +755,26 @@ class WSI:
 
         coords_to_keep = [(x, y) for x, y in patcher]
 
-        os.makedirs(os.path.join(save_coords, 'patches'), exist_ok=True)
-        out_fname = os.path.join(save_coords, 'patches', str(self.name) + '_patches.h5')
-        coords_to_h5(coords_to_keep, out_fname, patch_size, self.mag, target_mag,
-                     save_coords, self.width, self.height, self.name, overlap)
+        os.makedirs(os.path.join(save_coords, "patches"), exist_ok=True)
+        out_fname = os.path.join(save_coords, "patches", str(self.name) + "_patches.h5")
+        coords_to_h5(
+            coords_to_keep,
+            out_fname,
+            patch_size,
+            self.mag,
+            target_mag,
+            save_coords,
+            self.width,
+            self.height,
+            self.name,
+            overlap,
+        )
         return out_fname
 
     def visualize_coords(self, coords_path: str, save_patch_viz: str) -> str:
         """
         Overlay patch coordinates onto a scaled thumbnail of the WSI.
-        
+
         Parameters:
             coords_path (str):
                 Path to the file containing the patch coordinates.
@@ -736,33 +794,39 @@ class WSI:
         self._lazy_initialize()
 
         try:
-            coords_attrs, coords = read_coords(coords_path)  # Coords are ALWAYS wrt. level 0 of the slide.
-            patch_size = coords_attrs.get('patch_size', None)
-            level0_magnification = coords_attrs.get('level0_magnification', None)
-            target_magnification = coords_attrs.get('target_magnification', None)
-            overlap = coords_attrs.get('overlap', 'NA')
-            
+            coords_attrs, coords = read_coords(
+                coords_path
+            )  # Coords are ALWAYS wrt. level 0 of the slide.
+            patch_size = coords_attrs.get("patch_size", None)
+            level0_magnification = coords_attrs.get("level0_magnification", None)
+            target_magnification = coords_attrs.get("target_magnification", None)
+            overlap = coords_attrs.get("overlap", "NA")
+
             if None in (patch_size, level0_magnification, target_magnification):
-                raise KeyError('Missing essential attributes in coords_attrs.')
+                raise KeyError("Missing essential attributes in coords_attrs.")
 
         except (KeyError, FileNotFoundError, ValueError) as e:
-            warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True)
-        
+            warnings.warn(
+                f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod."
+            )
+            patcher = WSIPatcher.from_legacy_coords_file(
+                self, coords_path, coords_only=True
+            )
+
         else:
             patcher = self.create_patcher(
                 patch_size=patch_size,
                 src_mag=level0_magnification,
                 dst_mag=target_magnification,
                 custom_coords=coords,
-                coords_only=True
+                coords_only=True,
             )
 
-        img =  patcher.visualize()
+        img = patcher.visualize()
 
         # Save visualization
         os.makedirs(save_patch_viz, exist_ok=True)
-        viz_coords_path = os.path.join(save_patch_viz, f'{self.name}.jpg')
+        viz_coords_path = os.path.join(save_patch_viz, f"{self.name}.jpg")
         img.save(viz_coords_path)
         return viz_coords_path
 
@@ -799,9 +863,13 @@ class WSI:
 
         image_format = image_format.lower().strip()
         if image_format not in {"png", "jpg"}:
-            raise ValueError(f"Unsupported image_format='{image_format}'. Expected 'png' or 'jpg'.")
+            raise ValueError(
+                f"Unsupported image_format='{image_format}'. Expected 'png' or 'jpg'."
+            )
         if not (1 <= int(jpeg_quality) <= 100):
-            raise ValueError(f"jpeg_quality must be between 1 and 100, got {jpeg_quality}.")
+            raise ValueError(
+                f"jpeg_quality must be between 1 and 100, got {jpeg_quality}."
+            )
 
         try:
             coords_attrs, coords = read_coords(coords_path)  # coords are level-0
@@ -815,7 +883,9 @@ class WSI:
             warnings.warn(
                 f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod."
             )
-            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=False, pil=True)
+            patcher = WSIPatcher.from_legacy_coords_file(
+                self, coords_path, coords_only=False, pil=True
+            )
         else:
             patcher = self.create_patcher(
                 patch_size=patch_size,
@@ -835,7 +905,9 @@ class WSI:
             # tile is a PIL Image when pil=True
             out_fp = os.path.join(out_dir, f"{written:06d}_x{x}_y{y}.{image_format}")
             if image_format == "jpg":
-                tile.save(out_fp, format="JPEG", quality=int(jpeg_quality), optimize=True)
+                tile.save(
+                    out_fp, format="JPEG", quality=int(jpeg_quality), optimize=True
+                )
             else:
                 tile.save(out_fp)
             written += 1
@@ -850,11 +922,11 @@ class WSI:
         patch_encoder: torch.nn.Module,
         coords_path: str,
         save_features: str,
-        device: str = 'cuda:0',
-        saveas: str = 'h5',
+        device: str = "cuda:0",
+        saveas: str = "h5",
         batch_limit: int = 512,
         verbose: bool = False,
-        chunk_size: int = 2048
+        chunk_size: int = 2048,
     ) -> str:
         """
         Extract feature embeddings from the WSI using a specified patch encoder.
@@ -891,27 +963,46 @@ class WSI:
         self._lazy_initialize()
         patch_encoder.to(device)
         patch_encoder.eval()
-        precision = getattr(patch_encoder, 'precision', torch.float32)
-        patch_transforms = patch_encoder.eval_transforms
+
+        from trident.patch_encoder_models.load import is_remote_encoder
+
+        _remote = is_remote_encoder(patch_encoder)
+
+        precision = getattr(patch_encoder, "precision", torch.float32)
+        if not _remote:
+            patch_transforms = patch_encoder.eval_transforms
+        else:
+            from torchvision.transforms import ToTensor
+
+            patch_transforms = ToTensor()
 
         try:
             coords_attrs, coords = read_coords(coords_path)
-            patch_size = coords_attrs.get('patch_size', None)
-            level0_magnification = coords_attrs.get('level0_magnification', None)
-            target_magnification = coords_attrs.get('target_magnification', None)            
+            patch_size = coords_attrs.get("patch_size", None)
+            level0_magnification = coords_attrs.get("level0_magnification", None)
+            target_magnification = coords_attrs.get("target_magnification", None)
             if None in (patch_size, level0_magnification, target_magnification):
-                raise KeyError('Missing attributes in coords_attrs.')         
+                raise KeyError("Missing attributes in coords_attrs.")
 
         except (KeyError, FileNotFoundError, ValueError) as e:
-            warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
+            warnings.warn(
+                f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod."
+            )
             # For legacy format, read all coords first
             from trident.IO import read_coords_legacy
-            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
+
+            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(
+                coords_path
+            )
             coords = np.array(coords)
             # Create patcher to get magnification info
-            patcher_legacy = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
+            patcher_legacy = WSIPatcher.from_legacy_coords_file(
+                self, coords_path, coords_only=True, pil=True
+            )
             # Extract magnification info from patcher
-            level0_magnification = patcher_legacy.wsi.mag if hasattr(patcher_legacy.wsi, 'mag') else None
+            level0_magnification = (
+                patcher_legacy.wsi.mag if hasattr(patcher_legacy.wsi, "mag") else None
+            )
             target_magnification = patcher_legacy.dst_mag
             patch_size = patcher_legacy.patch_size_target
             # Create dummy attrs for legacy format
@@ -920,24 +1011,26 @@ class WSI:
         # Split coordinates into chunks of chunk_size
         total_patches = len(coords)
         num_chunks = (total_patches + chunk_size - 1) // chunk_size  # Ceiling division
-        
+
         # Prepare output file path
         os.makedirs(save_features, exist_ok=True)
-        output_path = os.path.join(save_features, f'{self.name}.{saveas}')
-        
+        output_path = os.path.join(save_features, f"{self.name}.{saveas}")
+
         # Initialize file for first chunk (will be overwritten if exists)
         first_chunk = True
         all_features = None  # For .pt format accumulation
-        
+
         # Process each chunk
         for chunk_idx in range(num_chunks):
             start_idx = chunk_idx * chunk_size
             end_idx = min(start_idx + chunk_size, total_patches)
             chunk_coords = coords[start_idx:end_idx]
-            
+
             if verbose:
-                print(f"Processing chunk {chunk_idx + 1}/{num_chunks} ({len(chunk_coords)} patches)")
-            
+                print(
+                    f"Processing chunk {chunk_idx + 1}/{num_chunks} ({len(chunk_coords)} patches)"
+                )
+
             # Create patcher for this chunk
             patcher = self.create_patcher(
                 patch_size=patch_size,
@@ -951,65 +1044,93 @@ class WSI:
             # Process this chunk
             dataset = WSIPatcherDataset(patcher, patch_transforms)
             dataloader = DataLoader(
-                dataset, 
-                batch_size=batch_limit, 
-                num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), 
-                pin_memory=False
+                dataset,
+                batch_size=batch_limit,
+                num_workers=get_num_workers(batch_limit, max_workers=self.max_workers),
+                pin_memory=False,
             )
 
             if verbose and chunk_idx == 0:
-                dataloader = tqdm(dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}")
+                dataloader = tqdm(
+                    dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}"
+                )
             elif verbose:
-                dataloader = tqdm(dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}", leave=False)
+                dataloader = tqdm(
+                    dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}", leave=False
+                )
 
             chunk_features = []
             for imgs, _ in dataloader:
-                imgs = imgs.to(device)
-                with torch.autocast(device_type='cuda', dtype=precision, enabled=(precision != torch.float32)):
-                    batch_features = patch_encoder(imgs)  
-                chunk_features.append(batch_features.cpu().numpy())
+                if _remote:
+                    batch_features = patch_encoder(imgs.cpu().numpy())
+                else:
+                    imgs = imgs.to(device)
+                    with torch.autocast(
+                        device_type="cuda",
+                        dtype=precision,
+                        enabled=(precision != torch.float32),
+                    ):
+                        batch_features = patch_encoder(imgs)
+                    batch_features = batch_features.cpu().numpy()
+                chunk_features.append(batch_features)
 
             # Concatenate features for this chunk
             chunk_features = np.concatenate(chunk_features, axis=0)
-            
+
             # Save chunk features
-            if saveas == 'h5':
-                model_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else None
-                save_mode = 'w' if first_chunk else 'a'
-                
+            if saveas == "h5":
+                model_name = (
+                    patch_encoder.enc_name
+                    if hasattr(patch_encoder, "enc_name")
+                    else None
+                )
+                save_mode = "w" if first_chunk else "a"
+
                 # For first chunk, save both features and coords with attributes
                 if first_chunk:
-                    save_h5(output_path,
-                            assets={
-                                'features': chunk_features,
-                                'coords': chunk_coords,
+                    save_h5(
+                        output_path,
+                        assets={
+                            "features": chunk_features,
+                            "coords": chunk_coords,
+                        },
+                        attributes={
+                            "features": {
+                                "name": self.name,
+                                "savetodir": save_features,
+                                "encoder": model_name,
                             },
-                            attributes={
-                                'features': {'name': self.name, 'savetodir': save_features, 'encoder': model_name},
-                                'coords': coords_attrs
-                            },
-                            mode=save_mode)
+                            "coords": coords_attrs,
+                        },
+                        mode=save_mode,
+                    )
                     first_chunk = False
                 else:
                     # For subsequent chunks, append features and coords
-                    save_h5(output_path,
-                            assets={
-                                'features': chunk_features,
-                                'coords': chunk_coords,
-                            },
-                            attributes=None,
-                            mode=save_mode)
-            elif saveas == 'pt':
+                    save_h5(
+                        output_path,
+                        assets={
+                            "features": chunk_features,
+                            "coords": chunk_coords,
+                        },
+                        attributes=None,
+                        mode=save_mode,
+                    )
+            elif saveas == "pt":
                 # For .pt format, we need to accumulate all features
                 if all_features is None:
                     all_features = chunk_features
                 else:
-                    all_features = np.concatenate([all_features, chunk_features], axis=0)
+                    all_features = np.concatenate(
+                        [all_features, chunk_features], axis=0
+                    )
             else:
-                raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
+                raise ValueError(
+                    f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.'
+                )
 
         # Save .pt file if needed (after all chunks processed)
-        if saveas == 'pt' and all_features is not None:
+        if saveas == "pt" and all_features is not None:
             torch.save(all_features, output_path)
 
         return output_path
@@ -1020,7 +1141,7 @@ class WSI:
         patch_features_path: str,
         slide_encoder: torch.nn.Module,
         save_features: str,
-        device: str = 'cuda',
+        device: str = "cuda",
     ) -> str:
         """
         Extract slide-level features by encoding patch-level features using a pretrained slide encoder.
@@ -1071,30 +1192,32 @@ class WSI:
         # Set the slide encoder model to device and eval
         slide_encoder.to(device)
         slide_encoder.eval()
-        
-        # Load patch-level features from h5 file
-        with h5py.File(patch_features_path, 'r') as f:
-            coords = f['coords'][:]
-            patch_features = f['features'][:]
-            coords_attrs = dict(f['coords'].attrs)
 
-        if patch_features.size == 0 or (patch_features.ndim > 0 and patch_features.shape[0] == 0):
+        # Load patch-level features from h5 file
+        with h5py.File(patch_features_path, "r") as f:
+            coords = f["coords"][:]
+            patch_features = f["features"][:]
+            coords_attrs = dict(f["coords"].attrs)
+
+        if patch_features.size == 0 or (
+            patch_features.ndim > 0 and patch_features.shape[0] == 0
+        ):
             warnings.warn(
                 f"No patch features available for slide '{self.name}'. Saving empty slide features."
             )
             os.makedirs(save_features, exist_ok=True)
-            save_path = os.path.join(save_features, f'{self.name}.h5')
+            save_path = os.path.join(save_features, f"{self.name}.h5")
             save_h5(
                 save_path,
                 assets={
-                    'features': np.empty((0,), dtype=np.float32),
-                    'coords': np.asarray(coords),
+                    "features": np.empty((0,), dtype=np.float32),
+                    "coords": np.asarray(coords),
                 },
                 attributes={
-                    'features': {'name': self.name, 'savetodir': save_features},
-                    'coords': coords_attrs,
+                    "features": {"name": self.name, "savetodir": save_features},
+                    "coords": coords_attrs,
                 },
-                mode='w'
+                mode="w",
             )
             return save_path
 
@@ -1107,30 +1230,34 @@ class WSI:
 
         # Prepare input batch dictionary
         batch = {
-            'features': patch_features,
-            'coords': coords,
-            'attributes': coords_attrs
+            "features": patch_features,
+            "coords": coords,
+            "attributes": coords_attrs,
         }
 
         # Generate slide-level features
-        with torch.autocast(device_type='cuda', enabled=(slide_encoder.precision != torch.float32)):
+        with torch.autocast(
+            device_type="cuda", enabled=(slide_encoder.precision != torch.float32)
+        ):
             features = slide_encoder(batch, device)
         features = features.float().cpu().numpy().squeeze()
 
         # Save slide-level features if save path is provided
         os.makedirs(save_features, exist_ok=True)
-        save_path = os.path.join(save_features, f'{self.name}.h5')
+        save_path = os.path.join(save_features, f"{self.name}.h5")
 
-        save_h5(os.path.join(save_features, f'{self.name}.h5'),
-                    assets = {
-                        'features' : features,
-                        'coords': coords.cpu().numpy().squeeze(),
-                    },
-                    attributes = {
-                        'features': {'name': self.name, 'savetodir': save_features},
-                        'coords': coords_attrs
-                    },
-                    mode='w')
+        save_h5(
+            os.path.join(save_features, f"{self.name}.h5"),
+            assets={
+                "features": features,
+                "coords": coords.cpu().numpy().squeeze(),
+            },
+            attributes={
+                "features": {"name": self.name, "savetodir": save_features},
+                "coords": coords_attrs,
+            },
+            mode="w",
+        )
 
         return save_path
 

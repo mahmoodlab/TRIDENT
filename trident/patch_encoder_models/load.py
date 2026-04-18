@@ -1,6 +1,9 @@
+import base64
+import io
 import traceback
 from abc import abstractmethod
 from typing import Literal, Optional, Any, Dict, Tuple, Callable
+import numpy as np
 import torch
 import os
 
@@ -1676,6 +1679,67 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class PLIPInferenceEncoder(BasePatchEncoder):
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self, with_proj=False, normalize=False):
+        from transformers import CLIPModel
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = "plip"
+        self.with_proj = with_proj
+        self.normalize = normalize
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = os.path.dirname(weights_path)
+                model = CLIPModel.from_pretrained(model_dir, local_files_only=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create PLIP model from local checkpoint at '{weights_path}'. "
+                    "You can download the required model files from: https://huggingface.co/vinid/plip."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = CLIPModel.from_pretrained("vinid/plip")
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download PLIP model, make sure that you were granted access "
+                    "and that you correctly registered your token"
+                )
+
+        mean, std = get_constants("openai_clip")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BICUBIC,
+            center_crop=True,
+            max_size=None,
+            antialias=True,
+        )
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        outputs = self.model.vision_model(pixel_values=x)
+        pooler_output = outputs.pooler_output
+        if self.with_proj:
+            embeddings = self.model.visual_projection(pooler_output)
+        else:
+            embeddings = pooler_output
+        if self.normalize:
+            embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
+        return embeddings
+
+
 class QuiltNetInferenceEncoder(BasePatchEncoder):
     def __init__(self, **build_kwargs):
         super().__init__(**build_kwargs)
@@ -1734,6 +1798,58 @@ class QuiltNetInferenceEncoder(BasePatchEncoder):
         return embeddings
 
 
+class RemotePatchEncoder:
+    """Client wrapper that sends images to a remote model server for encoding."""
+
+    def __init__(self, host: str, port: int, timeout: int = 30):
+        import requests
+
+        self.host = host
+        self.port = port
+        self.base_url = f"http://{host}:{port}"
+        self.timeout = timeout
+        self._session = requests.Session()
+        self._fetch_model_info()
+
+    def _fetch_model_info(self):
+        resp = self._session.get(f"{self.base_url}/model_info", timeout=self.timeout)
+        resp.raise_for_status()
+        info = resp.json()
+        self.enc_name = info["model_name"]
+        self.precision = torch.float32
+
+    @property
+    def eval_transforms(self):
+        return None
+
+    def to(self, device):
+        return self
+
+    def eval(self):
+        return self
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        out_buf = io.BytesIO()
+        np.save(out_buf, x)
+        raw = out_buf.getvalue()
+
+        resp = self._session.post(
+            f"{self.base_url}/encode_raw",
+            data=raw,
+            headers={"Content-Type": "application/octet-stream"},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+
+        feat_buf = io.BytesIO(resp.content)
+        features = np.load(feat_buf, allow_pickle=False)
+        return features
+
+
+def is_remote_encoder(obj) -> bool:
+    return isinstance(obj, RemotePatchEncoder)
+
+
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
     "conch_v15": Conchv15InferenceEncoder,
@@ -1762,4 +1878,5 @@ encoder_registry = {
     "midnight12k": Midnight12kInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "quilt_b16": QuiltNetInferenceEncoder,
+    "plip": PLIPInferenceEncoder,
 }
