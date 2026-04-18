@@ -13,17 +13,18 @@ class OpenSlideWSI(WSI):
         """
         Initialize an OpenSlideWSI instance.
 
-        Parameters:
-            slide_path (str):
-                Path to the WSI file.
-            **kwargs (dict):
-                Keyword arguments forwarded to the base `WSI` class. Most important key is:
-                - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
+        Parameters
+        ----------
+        slide_path : str
+            Path to the WSI file.
+        **kwargs : dict
+            Keyword arguments forwarded to the base `WSI` class. Most important key is:
+            - lazy_init (bool, default=True): Whether to defer loading WSI and metadata.
 
         Please refer to WSI constructor for all parameters. 
 
-        Example
-        -------
+        Examples
+        --------
         >>> wsi = OpenSlideWSI(slide_path="path/to/wsi.svs", lazy_init=False)
         >>> print(wsi)
         <width=100000, height=80000, backend=OpenSlideWSI, mpp=0.25, mag=40>
@@ -38,13 +39,15 @@ class OpenSlideWSI(WSI):
         key metadata including dimensions, magnification, and multiresolution pyramid
         information. If a tissue segmentation mask is provided, it is also loaded.
 
-        Raises:
-            FileNotFoundError:
-                If the WSI file or the tissue segmentation mask cannot be found.
-            Exception:
-                If an unexpected error occurs during WSI initialization.
+        Raises
+        ------
+        FileNotFoundError
+            If the WSI file or the tissue segmentation mask cannot be found.
+        Exception
+            If an unexpected error occurs during WSI initialization.
 
-        Notes:
+        Notes
+        -----
         After initialization, the following attributes are set:
         - `width` and `height`: spatial dimensions of the base level.
         - `dimensions`: (width, height) tuple from the highest resolution.
@@ -59,7 +62,7 @@ class OpenSlideWSI(WSI):
 
         super()._lazy_initialize()
 
-        if not self._initialized:
+        if not self.lazy_init:
             try:
                 self.img = openslide.OpenSlide(self.slide_path)
                 # set openslide attrs as self
@@ -72,7 +75,7 @@ class OpenSlideWSI(WSI):
                 if self.mpp is None:
                     self.mpp = self._fetch_mpp(self.custom_mpp_keys)
                 self.mag = self._fetch_magnification(self.custom_mpp_keys)
-                self._initialized = True
+                self.lazy_init = True
 
             except Exception as e:
                 raise RuntimeError(f"Failed to initialize WSI with OpenSlide: {e}") from e
@@ -81,16 +84,20 @@ class OpenSlideWSI(WSI):
         """
         Retrieve microns per pixel (MPP) from OpenSlide metadata.
 
-        Parameters:
-            custom_mpp_keys (list[str], optional):
-                Additional metadata keys to check for MPP.
+        Parameters
+        ----------
+        custom_mpp_keys : list of str, optional
+            Additional metadata keys to check for MPP.
 
-        Returns:
-            float: MPP value in microns per pixel.
+        Returns
+        -------
+        float
+            MPP value in microns per pixel.
 
-        Raises:
-            ValueError:
-                If MPP cannot be determined from metadata.
+        Raises
+        ------
+        ValueError
+            If MPP cannot be determined from metadata.
         """
         mpp_keys = [
             openslide.PROPERTY_NAME_MPP_X,
@@ -137,16 +144,20 @@ class OpenSlideWSI(WSI):
         """
         Retrieve estimated magnification from metadata.
 
-        Parameters:
-            custom_mpp_keys (list[str], optional):
-                Keys to aid in computing magnification from MPP.
+        Parameters
+        ----------
+        custom_mpp_keys : list of str, optional
+            Keys to aid in computing magnification from MPP.
 
-        Returns:
-            int: Estimated magnification.
+        Returns
+        -------
+        int
+            Estimated magnification.
 
-        Raises:
-            ValueError:
-                If magnification cannot be determined.
+        Raises
+        ------
+        ValueError
+            If magnification cannot be determined.
         """
         mag = super()._fetch_magnification(custom_mpp_keys)
         if mag is not None:
@@ -171,32 +182,53 @@ class OpenSlideWSI(WSI):
         """
         Extract a specific region from the whole-slide image (WSI).
 
-        Parameters:
-            location (Tuple[int, int]):
-                (x, y) coordinates of the top-left corner of the region to extract.
-            level (int):
-                Pyramid level to read from.
-            size (Tuple[int, int]):
-                (width, height) of the region to extract.
-            read_as ({'pil', 'numpy'}, optional):
-                Output format for the region:
-                - 'pil': returns a PIL Image (default)
-                - 'numpy': returns a NumPy array (H, W, 3)
+        Parameters
+        ----------
+        location : Tuple[int, int]
+            (x, y) coordinates of the top-left corner of the region to extract.
+        level : int
+            Pyramid level to read from.
+        size : Tuple[int, int]
+            (width, height) of the region to extract.
+        read_as : {'pil', 'numpy'}, optional
+            Output format for the region:
+            - 'pil': returns a PIL Image (default)
+            - 'numpy': returns a NumPy array (H, W, 3)
 
-        Returns:
-            Union[PIL.Image.Image, np.ndarray]: Extracted image region in the specified format.
-
-        Raises:
-            ValueError:
-                If `read_as` is not one of 'pil' or 'numpy'.
-
-        Example
+        Returns
         -------
+        Union[PIL.Image.Image, np.ndarray]
+            Extracted image region in the specified format.
+
+        Raises
+        ------
+        ValueError
+            If `read_as` is not one of 'pil' or 'numpy'.
+
+        Examples
+        --------
         >>> region = wsi.read_region((0, 0), level=0, size=(512, 512), read_as='numpy')
         >>> print(region.shape)
         (512, 512, 3)
         """
-        region = self.img.read_region(location, level, size).convert('RGB')
+        try:
+            region = self.img.read_region(location, level, size).convert('RGB')
+        except openslide.lowlevel.OpenSlideError as e:
+            import warnings
+            warnings.warn(f"Corrupt region at {location}, level {level}. Re-initializing OpenSlide instance to clear fatal state and attempting fallback.")
+            self.img = openslide.OpenSlide(self.slide_path)
+            try:
+                if level > 0:
+                    downsample = self.level_downsamples[level]
+                    fallback_size = (int(size[0] * downsample), int(size[1] * downsample))
+                    region_l0 = self.img.read_region(location, 0, fallback_size).convert('RGB')
+                    resample_mode = Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
+                    region = region_l0.resize(size, resample=resample_mode)
+                else:
+                    region = Image.new('RGB', size, (255, 255, 255))
+            except Exception as fallback_e:
+                warnings.warn(f"Fallback read also failed for {location}: {fallback_e}. Returning blank white image.")
+                region = Image.new('RGB', size, (255, 255, 255))
 
         if read_as == 'pil':
             return region
@@ -209,8 +241,10 @@ class OpenSlideWSI(WSI):
         """
         Return the dimensions (width, height) of the WSI.
 
-        Returns:
-            tuple[int, int]: (width, height) in pixels.
+        Returns
+        -------
+        tuple of int
+            (width, height) in pixels.
         """
         return self.img.dimensions
 
@@ -218,11 +252,14 @@ class OpenSlideWSI(WSI):
         """
         Generate a thumbnail of the WSI.
 
-        Parameters:
-            size (tuple[int, int]):
-                Desired (width, height) of the thumbnail.
+        Parameters
+        ----------
+        size : tuple of int
+            Desired (width, height) of the thumbnail.
 
-        Returns:
-            PIL.Image.Image: RGB thumbnail as a PIL Image.
+        Returns
+        -------
+        PIL.Image.Image
+            RGB thumbnail as a PIL Image.
         """
         return self.img.get_thumbnail(size).convert('RGB')
