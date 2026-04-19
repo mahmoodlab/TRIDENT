@@ -81,6 +81,8 @@ class WSI:
         lazy_init: bool = False,
         mpp: Optional[float] = None,
         max_workers: Optional[int] = None,
+        pin_memory: bool = False,
+        persistent_workers: bool = False,
     ):
         """
         Initialize the `WSI` object for working with a Whole Slide Image (WSI).
@@ -100,6 +102,12 @@ class WSI:
                 If not None, will be the reference micron per pixel (mpp). Handy when mpp is not provided in the WSI.
             max_workers (Optional[int]):
                 Maximum number of workers for data loading.
+            pin_memory (bool):
+                If True, ``DataLoader`` in ``extract_patch_features`` uses pinned host memory
+                (typically used with CUDA for faster host-to-device copies). Defaults to False.
+            persistent_workers (bool):
+                If True and ``num_workers`` > 0, ``DataLoader`` workers are not shut down after
+                each iterator (PyTorch ``persistent_workers``). Defaults to False.
 
         """
         self.slide_path = slide_path
@@ -118,6 +126,8 @@ class WSI:
         # Internal runtime state flag.
         self._initialized = False
         self.max_workers = max_workers
+        self.pin_memory = pin_memory
+        self.persistent_workers = persistent_workers
 
         if not self.lazy_init:
             self._lazy_initialize()
@@ -1043,11 +1053,17 @@ class WSI:
 
             # Process this chunk
             dataset = WSIPatcherDataset(patcher, patch_transforms)
+            _num_workers = get_num_workers(
+                batch_limit, max_workers=self.max_workers
+            )
             dataloader = DataLoader(
                 dataset,
                 batch_size=batch_limit,
-                num_workers=get_num_workers(batch_limit, max_workers=self.max_workers),
-                pin_memory=False,
+                num_workers=_num_workers,
+                pin_memory=self.pin_memory,
+                persistent_workers=(
+                    self.persistent_workers and _num_workers > 0
+                ),
             )
 
             if verbose and chunk_idx == 0:

@@ -253,8 +253,8 @@ class MuskInferenceEncoder(BasePatchEncoder):
             IMAGENET_INCEPTION_STD,
             target_img_size=384,
             center_crop=True,
-            interpolation=InterpolationMode.BICUBIC,
-            antialias=True,
+            interpolation=InterpolationMode.BILINEAR,
+            antialias=False,
         )
         precision = torch.float16
 
@@ -1724,7 +1724,7 @@ class PLIPInferenceEncoder(BasePatchEncoder):
             max_size=None,
             antialias=True,
         )
-        precision = torch.float32
+        precision = torch.float16
 
         return model, eval_transform, precision
 

@@ -62,6 +62,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of workers. Set to 0 to use main process.",
     )
     parser.add_argument(
+        "--pin_memory",
+        action="store_true",
+        default=False,
+        help="Pin host memory in the patch-feature DataLoader (typically speeds H2D copy to CUDA).",
+    )
+    parser.add_argument(
+        "--persistent_workers",
+        action="store_true",
+        default=False,
+        help="Use persistent DataLoader workers when num_workers > 0 (patch feature extraction).",
+    )
+    parser.add_argument(
         "--batch_size",
         type=int,
         default=64,
@@ -357,6 +369,8 @@ def initialize_processor(args: argparse.Namespace) -> Processor:
         default_mpp=default_mpp,
         custom_list_of_wsis=args.custom_list_of_wsis,
         max_workers=args.max_workers,
+        pin_memory=args.pin_memory,
+        persistent_workers=args.persistent_workers,
         reader_type=args.reader_type,
         search_nested=args.search_nested,
         use_previous_mpp=args.use_previous_mpp,

@@ -45,6 +45,8 @@ class Processor:
         default_mpp: Optional[float] = None,
         custom_list_of_wsis: Optional[str] = None,
         max_workers: Optional[int] = None,
+        pin_memory: bool = False,
+        persistent_workers: bool = False,
         reader_type: Optional[WSIReaderType] = None,
         search_nested: bool = False,
         use_previous_mpp: bool = False,
@@ -96,6 +98,10 @@ class Processor:
             max_workers (int, optional):
                 Maximum number of workers for data loading. If None, the default behavior will be used.
                 Defaults to None.
+            pin_memory (bool, optional):
+                If True, patch feature ``DataLoader`` uses pinned memory (see ``WSI.pin_memory``). Defaults to False.
+            persistent_workers (bool, optional):
+                If True, patch feature ``DataLoader`` uses persistent workers when ``num_workers`` > 0. Defaults to False.
             reader_type (WSIReaderType, optional):
                 Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr"]. Defaults to None
                 (auto-determine the right engine based on image extension).
@@ -145,6 +151,8 @@ class Processor:
         self.custom_mpp_keys = custom_mpp_keys
         self.default_mpp = default_mpp
         self.max_workers = max_workers
+        self.pin_memory = pin_memory
+        self.persistent_workers = persistent_workers
         self.use_previous_mpp = use_previous_mpp
         self.previous_mpp = None  # Track MPP from previously processed slide
 
@@ -235,6 +243,8 @@ class Processor:
                     custom_mpp_keys=self.custom_mpp_keys,
                     mpp=mpp_to_use,
                     max_workers=self.max_workers,
+                    pin_memory=self.pin_memory,
+                    persistent_workers=self.persistent_workers,
                     reader_type=self.reader_type,
                     lazy_init=False,
                 )
@@ -262,6 +272,8 @@ class Processor:
                             custom_mpp_keys=self.custom_mpp_keys,
                             mpp=self.previous_mpp,
                             max_workers=self.max_workers,
+                            pin_memory=self.pin_memory,
+                            persistent_workers=self.persistent_workers,
                             reader_type=self.reader_type,
                             lazy_init=False,
                         )
