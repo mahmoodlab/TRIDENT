@@ -252,7 +252,7 @@ class MuskInferenceEncoder(BasePatchEncoder):
             IMAGENET_INCEPTION_MEAN,
             IMAGENET_INCEPTION_STD,
             target_img_size=384,
-            center_crop=True,
+            center_crop=False,
             interpolation=InterpolationMode.BILINEAR,
         )
         precision = torch.float16
