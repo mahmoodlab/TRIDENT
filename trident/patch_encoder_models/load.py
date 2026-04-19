@@ -254,7 +254,6 @@ class MuskInferenceEncoder(BasePatchEncoder):
             target_img_size=384,
             center_crop=True,
             interpolation=InterpolationMode.BILINEAR,
-            antialias=False,
         )
         precision = torch.float16
 
