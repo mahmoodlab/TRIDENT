@@ -19,6 +19,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **Patch feature extraction**: Patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), and more.
 - **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), and more.
 - **Scalable batch processing and logging**: Batch-wise WSI processing, per-slide states, and summaries that explain what happened.
+- **Multi-GPU scheduling for batch runs**: Use `--gpus` to distribute pending slides evenly across GPUs in both cache and non-cache modes.
 
 
 <!-- ### Updates:
@@ -65,6 +66,21 @@ Run checks before launching jobs:
 ```
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
+
+**Multi-GPU batch mode (cache and non-cache):**
+
+```bash
+# Non-cache mode
+python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 256 --gpus 0 1
+
+# Cache mode (recommended for slow/network storage)
+python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 256 --gpus 0 1 --wsi_cache /mnt/nvme/cache --cache_batch_size 32
+```
+
+- Pending slides are sharded evenly across all GPUs listed in `--gpus`.
+- Completed slides are automatically skipped before task assignment.
+- Stale `.lock` files and stale cache directory contents are cleaned before each run.
+- If your environment has DataLoader multiprocessing compatibility issues, set `--max_workers 0` to force main-process data loading.
 
 **Run outputs (recommended starting point for debugging/resume):**
 - **`summary.md`**: appended once per run; high-level counts (completed/skipped/error), per-model breakdown, and a short error list.
@@ -143,6 +159,7 @@ Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Virchow2**          | 2560           | `--patch_encoder virchow2 --patch_size 224 --mag 20`             | [paige-ai/Virchow2](https://huggingface.co/paige-ai/Virchow2) |
 | **Phikon**            | 768            | `--patch_encoder phikon --patch_size 224 --mag 20`               | [owkin/phikon](https://huggingface.co/owkin/phikon) |
 | **Phikon-v2**         | 1024           | `--patch_encoder phikon_v2 --patch_size 224 --mag 20`            | [owkin/phikon-v2](https://huggingface.co/owkin/phikon-v2/) |
+| **KEEP**              | 768            | `--patch_encoder keep --patch_size 256 --mag 20`                 | [Astaxanthin/KEEP](https://huggingface.co/Astaxanthin/KEEP) |
 | **Prov-Gigapath**     | 1536           | `--patch_encoder gigapath --patch_size 256 --mag 20`             | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) |
 | **H-Optimus-0**       | 1536           | `--patch_encoder hoptimus0 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0) |
 | **H-Optimus-1**       | 1536           | `--patch_encoder hoptimus1 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1) |

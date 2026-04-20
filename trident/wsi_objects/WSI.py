@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 import os 
 import warnings
+import multiprocessing as mp
 import torch 
 from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
@@ -17,6 +18,48 @@ from trident.IO import (
 )
 
 ReadMode = Literal['pil', 'numpy']
+
+
+_WARNED_CTX_FALLBACKS: set[str] = set()
+_SPAWN_PICKLING_MSG = 'ctypes objects containing pointers cannot be pickled'
+
+
+def _warn_ctx_fallback_once(key: str, message: str) -> None:
+    if key not in _WARNED_CTX_FALLBACKS:
+        warnings.warn(message)
+        _WARNED_CTX_FALLBACKS.add(key)
+
+
+def _dataloader_context_candidates(num_workers: int):
+    if not num_workers or num_workers <= 0:
+        return [None]
+
+    candidates = []
+    for method in ('spawn', 'fork'):
+        try:
+            if method in mp.get_all_start_methods():
+                ctx = mp.get_context(method)
+                if ctx not in candidates:
+                    candidates.append(ctx)
+        except (ValueError, AttributeError):
+            continue
+
+    candidates.append(None)
+    return candidates
+
+
+def _run_with_dataloader_ctx_fallback(run_fn, num_workers: int, warn_key: str, warn_msg: str, fail_label: str):
+    last_err = None
+    for ctx in _dataloader_context_candidates(num_workers):
+        try:
+            return run_fn(ctx)
+        except ValueError as err:
+            if _SPAWN_PICKLING_MSG not in str(err) or ctx is None:
+                raise
+            last_err = err
+            _warn_ctx_fallback_once(warn_key, warn_msg)
+
+    raise last_err if last_err is not None else RuntimeError(f'Failed to build {fail_label}')
 
 
 class WSI:
@@ -314,53 +357,69 @@ class WSI:
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)
-        dataloader = DataLoader(
-            dataset, 
-            batch_size=batch_size, 
+        inferred_workers = get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers
+
+        dataloader_kwargs = dict(
+            dataset=dataset,
+            batch_size=batch_size,
             collate_fn=collate_fn,
-            num_workers=get_num_workers(batch_size, max_workers=self.max_workers) if num_workers is None else num_workers, 
-            pin_memory=False
+            num_workers=inferred_workers,
+            pin_memory=False,
         )
 
         mpp_reduction_factor = self.mpp / destination_mpp
         width, height = self.get_dimensions()
         width, height = int(round(width * mpp_reduction_factor)), int(round(height * mpp_reduction_factor))
-        predicted_mask = np.zeros((height, width), dtype=np.uint8)
 
-        dataloader = tqdm(dataloader) if verbose else dataloader
+        def _process_batches(ctx):
+            dl_kwargs = dict(dataloader_kwargs)
+            if ctx is not None:
+                dl_kwargs['multiprocessing_context'] = ctx
+            dataloader = DataLoader(**dl_kwargs)
+            iterator = tqdm(dataloader) if verbose else dataloader
+            local_mask = np.zeros((height, width), dtype=np.uint8)
 
-        for batch in dataloader:
+            for batch in iterator:
 
-            with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
-                if collate_fn is not None:
-                    if 'xcoords' not in batch or 'ycoords' not in batch:
-                        raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
-                    xcoords, ycoords = torch.tensor(batch['xcoords']), torch.tensor(batch['ycoords'])
-                    if inference_fn is None:
-                        if 'img' not in batch:
-                            raise ValueError(f"collate_fn must return the raw tile in 'img' if inference_fn is not provided.")
-                        imgs = batch['img']
-                else:
-                    imgs, (xcoords, ycoords) = batch
+                with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                    if collate_fn is not None:
+                        if 'xcoords' not in batch or 'ycoords' not in batch:
+                            raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
+                        xcoords, ycoords = torch.tensor(batch['xcoords']), torch.tensor(batch['ycoords'])
+                        if inference_fn is None:
+                            if 'img' not in batch:
+                                raise ValueError(f"collate_fn must return the raw tile in 'img' if inference_fn is not provided.")
+                            imgs = batch['img']
+                    else:
+                        imgs, (xcoords, ycoords) = batch
 
-                if inference_fn is not None:
-                    preds = inference_fn(segmentation_model, batch, device).cpu().numpy()
-                else:
-                    imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
-                    preds = segmentation_model(imgs).cpu().numpy()
+                    if inference_fn is not None:
+                        preds = inference_fn(segmentation_model, batch, device).cpu().numpy()
+                    else:
+                        imgs = imgs.to(device, dtype=precision)  # Move to device and match dtype
+                        preds = segmentation_model(imgs).cpu().numpy()
 
-            x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
-            y_starts = np.clip(np.round(ycoords.numpy() * mpp_reduction_factor).astype(int), 0, height - 1)
-            x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
-            y_ends = np.clip(y_starts + segmentation_model.input_size, 0, height)
-            
-            for i in range(len(preds)):
-                x_start, x_end = x_starts[i], x_ends[i]
-                y_start, y_end = y_starts[i], y_ends[i]
-                if x_start >= x_end or y_start >= y_end: # invalid patch
-                    continue
-                patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
-                predicted_mask[y_start:y_end, x_start:x_end] += patch_pred
+                x_starts = np.clip(np.round(xcoords.numpy() * mpp_reduction_factor).astype(int), 0, width - 1) # clip for starts
+                y_starts = np.clip(np.round(ycoords.numpy() * mpp_reduction_factor).astype(int), 0, height - 1)
+                x_ends = np.clip(x_starts + segmentation_model.input_size, 0, width)
+                y_ends = np.clip(y_starts + segmentation_model.input_size, 0, height)
+                
+                for i in range(len(preds)):
+                    x_start, x_end = x_starts[i], x_ends[i]
+                    y_start, y_end = y_starts[i], y_ends[i]
+                    if x_start >= x_end or y_start >= y_end: # invalid patch
+                        continue
+                    patch_pred = preds[i][:y_end - y_start, :x_end - x_start]
+                    local_mask[y_start:y_end, x_start:x_end] += patch_pred
+            return local_mask
+
+        predicted_mask = _run_with_dataloader_ctx_fallback(
+            _process_batches,
+            inferred_workers,
+            'segmentation_spawn_fallback',
+            "[WSI] Falling back to a fork-based DataLoader context for segmentation due to pickling limits.",
+            'segmentation dataloader',
+        )
         return predicted_mask, mpp_reduction_factor
 
     @torch.inference_mode()
@@ -911,23 +970,42 @@ class WSI:
                 raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
             return os.path.join(save_features, f'{self.name}.{saveas}')
 
-        dataloader = DataLoader(dataset, batch_size=batch_limit, num_workers=get_num_workers(batch_limit, max_workers=self.max_workers), pin_memory=False)
+        inferred_workers = get_num_workers(batch_limit, max_workers=self.max_workers)
+        dataloader_kwargs = dict(
+            dataset=dataset,
+            batch_size=batch_limit,
+            num_workers=inferred_workers,
+            pin_memory=False,
+        )
 
-        dataloader = tqdm(dataloader) if verbose else dataloader
+        def _collect_features(ctx):
+            dl_kwargs = dict(dataloader_kwargs)
+            if ctx is not None:
+                dl_kwargs['multiprocessing_context'] = ctx
+            dataloader = DataLoader(**dl_kwargs)
+            iterator = tqdm(dataloader) if verbose else dataloader
+            collected = []
+            for imgs, _ in iterator:
+                imgs = imgs.to(device)
+                with torch.autocast(
+                    device_type=device.split(":")[0],
+                    dtype=precision,
+                    enabled=(precision != torch.float32),
+                ):
+                    batch_features = patch_encoder(imgs)
+                collected.append(batch_features.cpu().numpy())
+            return collected
 
-        features = []
-        for imgs, _ in dataloader:
-            imgs = imgs.to(device)
-            with torch.autocast(
-                device_type=device.split(":")[0],
-                dtype=precision,
-                enabled=(precision != torch.float32),
-            ):
-                batch_features = patch_encoder(imgs)  
-            features.append(batch_features.cpu().numpy())
+        features_batches = _run_with_dataloader_ctx_fallback(
+            _collect_features,
+            inferred_workers,
+            'feature_spawn_fallback',
+            "[WSI] Falling back to fork-based DataLoader workers for feature extraction due to pickling limits.",
+            'feature extraction dataloader',
+        )
 
         # Concatenate features
-        features = np.concatenate(features, axis=0)
+        features = np.concatenate(features_batches, axis=0)
 
         # Save the features to disk
         os.makedirs(save_features, exist_ok=True)
