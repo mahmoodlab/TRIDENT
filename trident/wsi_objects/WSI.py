@@ -1,4 +1,5 @@
 from __future__ import annotations
+import gc
 import sys
 import numpy as np
 import os
@@ -1018,136 +1019,118 @@ class WSI:
             # Create dummy attrs for legacy format
             coords_attrs = {}
 
-        # Split coordinates into chunks of chunk_size
-        total_patches = len(coords)
-        num_chunks = (total_patches + chunk_size - 1) // chunk_size  # Ceiling division
-
         # Prepare output file path
         os.makedirs(save_features, exist_ok=True)
         output_path = os.path.join(save_features, f"{self.name}.{saveas}")
 
-        # Initialize file for first chunk (will be overwritten if exists)
+        # Create a single patcher for all patches (one DataLoader per slide)
+        patcher = self.create_patcher(
+            patch_size=patch_size,
+            src_mag=level0_magnification,
+            dst_mag=target_magnification,
+            custom_coords=coords,
+            coords_only=False,
+            pil=True,
+        )
+
+        dataset = WSIPatcherDataset(patcher, patch_transforms)
+        _num_workers = get_num_workers(batch_limit, max_workers=self.max_workers)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_limit,
+            num_workers=_num_workers,
+            pin_memory=self.pin_memory,
+            persistent_workers=(self.persistent_workers and _num_workers > 0),
+        )
+
+        if verbose:
+            dataloader = tqdm(
+                dataloader, desc=f"Extracting features ({len(coords)} patches)"
+            )
+
+        model_name = (
+            patch_encoder.enc_name if hasattr(patch_encoder, "enc_name") else None
+        )
+
+        # Iterate the single DataLoader, flushing to disk every chunk_size patches
+        chunk_features = []
+        chunk_start = 0
         first_chunk = True
-        all_features = None  # For .pt format accumulation
+        all_features = None
 
-        # Process each chunk
-        for chunk_idx in range(num_chunks):
-            start_idx = chunk_idx * chunk_size
-            end_idx = min(start_idx + chunk_size, total_patches)
-            chunk_coords = coords[start_idx:end_idx]
-
-            if verbose:
-                print(
-                    f"Processing chunk {chunk_idx + 1}/{num_chunks} ({len(chunk_coords)} patches)"
-                )
-
-            # Create patcher for this chunk
-            patcher = self.create_patcher(
-                patch_size=patch_size,
-                src_mag=level0_magnification,
-                dst_mag=target_magnification,
-                custom_coords=chunk_coords,
-                coords_only=False,
-                pil=True,
-            )
-
-            # Process this chunk
-            dataset = WSIPatcherDataset(patcher, patch_transforms)
-            _num_workers = get_num_workers(
-                batch_limit, max_workers=self.max_workers
-            )
-            dataloader = DataLoader(
-                dataset,
-                batch_size=batch_limit,
-                num_workers=_num_workers,
-                pin_memory=self.pin_memory,
-                persistent_workers=(
-                    self.persistent_workers and _num_workers > 0
-                ),
-            )
-
-            if verbose and chunk_idx == 0:
-                dataloader = tqdm(
-                    dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}"
-                )
-            elif verbose:
-                dataloader = tqdm(
-                    dataloader, desc=f"Chunk {chunk_idx + 1}/{num_chunks}", leave=False
-                )
-
-            chunk_features = []
-            for imgs, _ in dataloader:
-                if _remote:
-                    batch_features = patch_encoder(imgs.cpu().numpy())
-                else:
-                    imgs = imgs.to(device)
-                    with torch.autocast(
-                        device_type="cuda",
-                        dtype=precision,
-                        enabled=(precision != torch.float32),
-                    ):
-                        batch_features = patch_encoder(imgs)
-                    batch_features = batch_features.cpu().numpy()
-                chunk_features.append(batch_features)
-
-            # Concatenate features for this chunk
-            chunk_features = np.concatenate(chunk_features, axis=0)
-
-            # Save chunk features
-            if saveas == "h5":
-                model_name = (
-                    patch_encoder.enc_name
-                    if hasattr(patch_encoder, "enc_name")
-                    else None
-                )
-                save_mode = "w" if first_chunk else "a"
-
-                # For first chunk, save both features and coords with attributes
-                if first_chunk:
-                    save_h5(
-                        output_path,
-                        assets={
-                            "features": chunk_features,
-                            "coords": chunk_coords,
-                        },
-                        attributes={
-                            "features": {
-                                "name": self.name,
-                                "savetodir": save_features,
-                                "encoder": model_name,
-                            },
-                            "coords": coords_attrs,
-                        },
-                        mode=save_mode,
-                    )
-                    first_chunk = False
-                else:
-                    # For subsequent chunks, append features and coords
-                    save_h5(
-                        output_path,
-                        assets={
-                            "features": chunk_features,
-                            "coords": chunk_coords,
-                        },
-                        attributes=None,
-                        mode=save_mode,
-                    )
-            elif saveas == "pt":
-                # For .pt format, we need to accumulate all features
-                if all_features is None:
-                    all_features = chunk_features
-                else:
-                    all_features = np.concatenate(
-                        [all_features, chunk_features], axis=0
-                    )
+        for i, (imgs, _) in enumerate(dataloader):
+            if _remote:
+                batch_features = patch_encoder(imgs.cpu().numpy())
             else:
-                raise ValueError(
-                    f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.'
-                )
+                imgs = imgs.to(device)
+                with torch.autocast(
+                    device_type="cuda",
+                    dtype=precision,
+                    enabled=(precision != torch.float32),
+                ):
+                    batch_features = patch_encoder(imgs)
+                batch_features = batch_features.cpu().numpy()
+            chunk_features.append(batch_features)
 
-        # Save .pt file if needed (after all chunks processed)
+            # Flush accumulated features every chunk_size patches (or on last batch)
+            accumulated = sum(f.shape[0] for f in chunk_features)
+            is_last = (i + 1) * batch_limit >= len(coords)
+            if accumulated >= chunk_size or is_last:
+                chunk_feats = np.concatenate(chunk_features, axis=0)
+                chunk_end = min(chunk_start + accumulated, len(coords))
+                chunk_coords = coords[chunk_start:chunk_end]
+
+                if saveas == "h5":
+                    save_mode = "w" if first_chunk else "a"
+                    if first_chunk:
+                        save_h5(
+                            output_path,
+                            assets={
+                                "features": chunk_feats,
+                                "coords": chunk_coords,
+                            },
+                            attributes={
+                                "features": {
+                                    "name": self.name,
+                                    "savetodir": save_features,
+                                    "encoder": model_name,
+                                },
+                                "coords": coords_attrs,
+                            },
+                            mode=save_mode,
+                        )
+                        first_chunk = False
+                    else:
+                        save_h5(
+                            output_path,
+                            assets={
+                                "features": chunk_feats,
+                                "coords": chunk_coords,
+                            },
+                            attributes=None,
+                            mode=save_mode,
+                        )
+                elif saveas == "pt":
+                    if all_features is None:
+                        all_features = chunk_feats
+                    else:
+                        all_features = np.concatenate(
+                            [all_features, chunk_feats], axis=0
+                        )
+                else:
+                    raise ValueError(
+                        f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.'
+                    )
+
+                chunk_start = chunk_end
+                chunk_features = []
+
+        # Save .pt file if needed
         if saveas == "pt" and all_features is not None:
             torch.save(all_features, output_path)
+
+        del dataloader, dataset, patcher
+        gc.collect()
 
         return output_path
 
