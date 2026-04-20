@@ -1035,7 +1035,17 @@ class WSI:
         patch_features = patch_features.unsqueeze(0)  # Add batch dimension
 
         coords = torch.from_numpy(coords).to(device)
+        if torch.is_floating_point(coords):
+            coords = torch.round(coords).to(torch.int64)
+        else:
+            coords = coords.to(torch.int64)
         coords = coords.unsqueeze(0)  # Add batch dimension
+
+        try:
+            if "patch_size_level0" in coords_attrs:
+                coords_attrs["patch_size_level0"] = int(coords_attrs["patch_size_level0"])
+        except Exception:
+            pass
 
         # Prepare input batch dictionary
         batch = {
@@ -1045,7 +1055,11 @@ class WSI:
         }
 
         # Generate slide-level features
-        with torch.autocast(device_type='cuda', enabled=(slide_encoder.precision != torch.float32)):
+        precision = getattr(slide_encoder, "precision", torch.float32)
+        with torch.autocast(
+            device_type=device.split(":")[0],
+            enabled=(precision != torch.float32),
+        ):
             features = slide_encoder(batch, device)
         features = features.float().cpu().numpy().squeeze()
 
@@ -1056,7 +1070,7 @@ class WSI:
         save_h5(os.path.join(save_features, f'{self.name}.h5'),
                     assets = {
                         'features' : features,
-                        'coords': coords.cpu().numpy().squeeze(),
+                        'coords': coords.cpu().numpy().squeeze().astype(np.int64, copy=False),
                     },
                     attributes = {
                         'features': {'name': self.name, 'savetodir': save_features},

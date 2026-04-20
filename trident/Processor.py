@@ -344,8 +344,18 @@ class Processor:
         ...     saveto="output/patches/"
         ... )
         """
+        def _fmt_mag(mag: float) -> str:
+            try:
+                m = float(mag)
+            except Exception:
+                return str(mag)
+            if abs(m - round(m)) < 1e-9:
+                return str(int(round(m)))
+            # Keep fractional mags compact (e.g., 2.5 not 2.500000)
+            return f"{m:g}"
+
         if saveto is None:
-            saveto = f"{target_magnification}x_{patch_size}px_{overlap}px_overlap"
+            saveto = f"{_fmt_mag(target_magnification)}x_{patch_size}px_{overlap}px_overlap"
 
         self.target_magnification = target_magnification
 

@@ -107,7 +107,8 @@ def process_slide(args):
 
         # Step 2: Tissue Coordinate Extraction (Patching)
         print("Extracting tissue coordinates...")
-        save_coords = os.path.join(args.job_dir, f'{args.mag}x_{args.patch_size}px_{args.overlap}px_overlap')
+        mag_str = f"{float(args.mag):g}"
+        save_coords = os.path.join(args.job_dir, f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap')
 
         coords_path = slide.extract_tissue_coords(
             target_mag=args.mag,
