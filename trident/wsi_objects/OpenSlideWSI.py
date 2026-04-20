@@ -3,7 +3,7 @@ import numpy as np
 import openslide
 from PIL import Image
 from typing import List, Tuple, Union, Optional, Any
-
+import warnings
 from trident.wsi_objects.WSI import WSI, ReadMode
 
 
@@ -196,7 +196,41 @@ class OpenSlideWSI(WSI):
         >>> print(region.shape)
         (512, 512, 3)
         """
-        region = self.img.read_region(location, level, size).convert('RGB')
+        try:
+            region = self.img.read_region(location, level, size).convert('RGB')
+
+        except openslide.lowlevel.OpenSlideError as e:
+            warnings.warn(
+                f"Corrupt region at {location}, level {level}: {e}. "
+                f"Re-initializing OpenSlide and attempting fallback."
+            )
+
+            self.img = openslide.OpenSlide(self.slide_path)
+
+            try:
+                if level > 0:
+                    downsample = self.level_downsamples[level]
+                    fallback_size = (
+                        max(1, round(size[0] * downsample)),
+                        max(1, round(size[1] * downsample))
+                    )
+                    region = self.img.read_region(location, 0, fallback_size).convert('RGB')
+
+                    resample_mode = (
+                        Image.Resampling.LANCZOS
+                        if hasattr(Image, 'Resampling')
+                        else Image.LANCZOS
+                    )
+                    region = region.resize(size, resample=resample_mode)
+                else:
+                    region = Image.new('RGB', size, (255, 255, 255))
+
+            except Exception as fallback_e:
+                warnings.warn(
+                    f"Fallback read failed at {location}, level {level}: {fallback_e}. "
+                    f"Returning blank white image."
+                )
+                region = Image.new('RGB', size, (255, 255, 255))
 
         if read_as == 'pil':
             return region
@@ -226,3 +260,4 @@ class OpenSlideWSI(WSI):
             PIL.Image.Image: RGB thumbnail as a PIL Image.
         """
         return self.img.get_thumbnail(size).convert('RGB')
+        
