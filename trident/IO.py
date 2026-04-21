@@ -919,6 +919,9 @@ def get_num_workers(batch_size: int,
     # Disable pytorch multiprocessing on Windows
     if os.name == 'nt':
         return 0
+
+    if max_workers is not None and max_workers <= 0:
+        return 0
     
     num_cores = os.cpu_count() or fallback
     num_workers = int(factor * num_cores)  # Use a fraction of available cores

@@ -31,6 +31,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "phikon"
         - "phikon_v2"
         - "resnet50"
+        - "keep"
         - "gigapath"
         - "virchow"
         - "virchow2"
@@ -179,6 +180,62 @@ class CustomInferenceEncoder(BasePatchEncoder):
         
     def _build(self) -> Tuple[None, None, None]:
         return None, None, None
+
+
+class KeepInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        KEEP initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from transformers import AutoModel, AutoTokenizer
+        from torchvision import transforms
+
+        self.enc_name = 'keep'
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            model_source = weights_path
+            if os.path.isfile(model_source):
+                model_source = os.path.dirname(model_source)
+            try:
+                model = AutoModel.from_pretrained(model_source, trust_remote_code=True)
+                _ = AutoTokenizer.from_pretrained(model_source, trust_remote_code=True)
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to load KEEP from local checkpoint path. "
+                    "Set `keep` in `trident/patch_encoder_models/local_ckpts.json` to a local Hugging Face model directory."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = AutoModel.from_pretrained("Astaxanthin/KEEP", trust_remote_code=True)
+                _ = AutoTokenizer.from_pretrained("Astaxanthin/KEEP", trust_remote_code=True)
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download KEEP model from Hugging Face. "
+                    "Set `keep` in `trident/patch_encoder_models/local_ckpts.json` for offline use."
+                )
+
+        eval_transform = transforms.Compose([
+            transforms.Resize(size=224, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(size=(224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ])
+
+        precision = torch.float16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        if hasattr(self.model, 'encode_image'):
+            return self.model.encode_image(x)
+        return self.model(x)
 
 
 class MuskInferenceEncoder(BasePatchEncoder):
@@ -1490,6 +1547,7 @@ encoder_registry = {
     "phikon": PhikonInferenceEncoder,
     "phikon_v2": Phikonv2InferenceEncoder,
     "resnet50": ResNet50InferenceEncoder,
+    "keep": KeepInferenceEncoder,
     "gigapath": GigaPathInferenceEncoder,
     "virchow": VirchowInferenceEncoder,
     "virchow2": Virchow2InferenceEncoder,
