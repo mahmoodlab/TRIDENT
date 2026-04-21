@@ -12,6 +12,7 @@ import torch
 import multiprocessing as mp
 import shutil
 import sys
+import time
 from queue import Queue
 from threading import Thread
 from typing import Any, List
@@ -24,6 +25,28 @@ from trident.slide_encoder_models import encoder_registry as slide_encoder_regis
 from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
 from trident.Summary import start_run, finalize_run
+
+
+def _pick_mp_context() -> mp.context.BaseContext:
+    """
+    Pick a multiprocessing context that is portable across OSes.
+
+    - Windows: only spawn is supported reliably.
+    - CUDA: prefer spawn (recommended by PyTorch).
+    - POSIX CPU-only: prefer forkserver when available to avoid fork() hazards
+      with multi-threaded / native-library-heavy parents; fall back to spawn.
+    """
+    available = set(mp.get_all_start_methods())
+
+    if sys.platform.startswith("win"):
+        return mp.get_context("spawn")
+
+    if torch.cuda.is_available():
+        return mp.get_context("spawn")
+
+    if "forkserver" in available:
+        return mp.get_context("forkserver")
+    return mp.get_context("spawn")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,6 +73,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--job_dir', type=str, required=True, help='Directory to store outputs.')
     parser.add_argument('--skip_errors', action='store_true', default=False, 
                         help='Skip errored slides and continue processing.')
+    parser.add_argument(
+        '--clear_dead_locks',
+        action='store_true',
+        default=False,
+        help='If set, remove stale `.lock` files under `--job_dir` (safe heuristics) before running.',
+    )
+    parser.add_argument(
+        '--dead_lock_max_age_hours',
+        type=float,
+        default=24.0,
+        help='Max age (hours) before a `.lock` file is considered stale (when its target output is missing). Defaults to 24.',
+    )
     parser.add_argument('--max_workers', type=int, default=None, help='Maximum number of workers. Set to 0 to use main process.')
     parser.add_argument('--batch_size', type=int, default=64, 
                         help="Batch size used for segmentation and feature extraction. Will be override by"
@@ -161,6 +196,11 @@ def parse_arguments() -> argparse.Namespace:
     elif "--gpu" in sys.argv:
         print("[MAIN] Warning: `--gpu` is deprecated and ignored when `--gpus` is provided.")
 
+    # Normalize a default device for single-process paths.
+    # Multi-process workers override this per worker via `worker_args.device`.
+    primary_gpu = (args.gpus or [-1])[0]
+    args.device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
+
     return args
 
 
@@ -212,7 +252,16 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             Parsed command-line arguments containing task configuration.
     """
 
-    device = getattr(args, 'device', f'cuda:{args.gpu}')
+    # Prefer normalized `args.device` (set by `parse_arguments()` and overridden per worker),
+    # but keep backward compatibility for callers constructing `args` manually.
+    device = getattr(args, "device", None)
+    if device is None:
+        if getattr(args, "gpus", None):
+            primary_gpu = args.gpus[0]
+            device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
+        else:
+            primary_gpu = getattr(args, "gpu", -1)
+            device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
 
     if args.task == 'seg':
         from trident.segmentation_models.load import segmentation_model_factory
@@ -280,25 +329,60 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
         raise ValueError(f'Invalid task: {args.task}')
 
 
-def cleanup_files(job_dir: str, cache_dir: str = None) -> None:
-    if os.path.isdir(job_dir):
-        for root, _, files in os.walk(job_dir):
-            for filename in files:
-                if filename.endswith('.lock'):
-                    try:
-                        os.remove(os.path.join(root, filename))
-                    except OSError:
-                        pass
+def remove_dead_locks(job_dir: str, *, max_age_hours: float = 24.0) -> dict[str, int]:
+    """
+    Remove stale `.lock` files under `job_dir` (best-effort).
 
-    if cache_dir:
-        if os.path.isdir(cache_dir):
-            shutil.rmtree(cache_dir, ignore_errors=True)
-        elif os.path.exists(cache_dir):
+    Since TRIDENT's lock files are simple markers, we use conservative heuristics:
+    - If the *target output* exists (e.g. `<output>` next to `<output>.lock`), the lock is stale → remove it.
+    - Otherwise, only remove the lock if it is older than `max_age_hours`.
+
+    Returns stats: {"scanned": int, "removed": int, "kept": int}.
+    """
+    scanned = removed = kept = 0
+    now = time.time()
+    max_age_seconds = float(max_age_hours) * 3600.0
+
+    if not os.path.isdir(job_dir):
+        return {"scanned": 0, "removed": 0, "kept": 0}
+
+    for root, _dirs, files in os.walk(job_dir):
+        for filename in files:
+            if not filename.endswith(".lock"):
+                continue
+            scanned += 1
+            lock_fp = os.path.join(root, filename)
+            target_fp = lock_fp[:-5]  # strip ".lock"
+
             try:
-                os.remove(cache_dir)
-            except OSError:
-                pass
-        os.makedirs(cache_dir, exist_ok=True)
+                if os.path.exists(target_fp):
+                    os.remove(lock_fp)
+                    removed += 1
+                    continue
+
+                mtime = os.path.getmtime(lock_fp)
+                if (now - mtime) >= max_age_seconds:
+                    os.remove(lock_fp)
+                    removed += 1
+                else:
+                    kept += 1
+            except Exception:
+                kept += 1
+
+    return {"scanned": scanned, "removed": removed, "kept": kept}
+
+
+def cleanup_cache(cache_dir: str | None) -> None:
+    if not cache_dir:
+        return
+    if os.path.isdir(cache_dir):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+    elif os.path.exists(cache_dir):
+        try:
+            os.remove(cache_dir)
+        except OSError:
+            pass
+    os.makedirs(cache_dir, exist_ok=True)
 
 
 def get_pending_slides(args: argparse.Namespace) -> List[str]:
@@ -458,9 +542,15 @@ def main() -> None:
     """
 
     args = parse_arguments()
-    cleanup_files(args.job_dir, args.wsi_cache)
+    cleanup_cache(args.wsi_cache)
+    if getattr(args, "clear_dead_locks", False):
+        stats = remove_dead_locks(args.job_dir, max_age_hours=float(args.dead_lock_max_age_hours))
+        print(
+            f"[MAIN] Dead lock cleanup under {args.job_dir}: "
+            f"removed={stats['removed']} scanned={stats['scanned']} kept={stats['kept']}"
+        )
 
-    gpu_ids = list(dict.fromkeys(args.gpus or [args.gpu]))
+    gpu_ids = list(dict.fromkeys(args.gpus or []))
 
     if not torch.cuda.is_available() and any(gpu_id >= 0 for gpu_id in gpu_ids):
         print('[MAIN] Warning: CUDA not available, using CPU.')
@@ -488,7 +578,7 @@ def main() -> None:
             worker_entrypoint(worker_args)
             return
 
-        ctx = mp.get_context('spawn') if torch.cuda.is_available() else mp.get_context('fork')
+        ctx = _pick_mp_context()
         processes: List[tuple[int, mp.Process]] = []
 
         for shard_idx, gpu_id in enumerate(gpu_ids):

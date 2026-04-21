@@ -35,7 +35,7 @@ def _run_batch(
     monkeypatch.setattr(rbs, "finalize_run", lambda *_args, **_kwargs: None)
 
     # Avoid removing `.lock` files or wiping caches in our tmp tree.
-    monkeypatch.setattr(rbs, "cleanup_files", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(rbs, "cleanup_cache", lambda *_args, **_kwargs: None)
 
     # Mock worker to write deterministic outputs independent of GPU.
     def fake_worker_entrypoint(args):

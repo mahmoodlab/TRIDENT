@@ -58,7 +58,7 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cuda:0")
 
-    def test_cleanup_files_removes_lock_and_resets_cache(self):
+    def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_dir = os.path.join(tmpdir, "job")
             cache_dir = os.path.join(tmpdir, "cache")
@@ -76,12 +76,35 @@ class TestRunBatchOfSlides(unittest.TestCase):
             with open(cache_fp, "w", encoding="utf-8") as f:
                 f.write("cache")
 
-            batch_mod.cleanup_files(job_dir, cache_dir)
+            batch_mod.cleanup_cache(cache_dir)
 
-            self.assertFalse(os.path.exists(lock_fp))
+            self.assertTrue(os.path.exists(lock_fp))
             self.assertTrue(os.path.exists(keep_fp))
             self.assertTrue(os.path.isdir(cache_dir))
             self.assertEqual(os.listdir(cache_dir), [])
+
+    def test_remove_dead_locks_only_removes_stale(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_dir = os.path.join(tmpdir, "job")
+            os.makedirs(job_dir, exist_ok=True)
+
+            # Fresh lock without target should be kept.
+            fresh_lock = os.path.join(job_dir, "fresh_output.h5.lock")
+            with open(fresh_lock, "w", encoding="utf-8"):
+                pass
+
+            # Lock whose target exists should be removed.
+            target = os.path.join(job_dir, "done_output.h5")
+            stale_lock = target + ".lock"
+            with open(target, "w", encoding="utf-8") as f:
+                f.write("done")
+            with open(stale_lock, "w", encoding="utf-8"):
+                pass
+
+            stats = batch_mod.remove_dead_locks(job_dir, max_age_hours=999.0)
+            self.assertTrue(os.path.exists(fresh_lock))
+            self.assertFalse(os.path.exists(stale_lock))
+            self.assertEqual(stats["scanned"], 2)
 
     def test_get_pending_slides_skips_completed_feature_outputs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
