@@ -115,8 +115,13 @@ class BasePatchEncoder(torch.nn.Module):
         self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
 
     def ensure_valid_weights_path(self, weights_path: str) -> None:
-        if weights_path and not os.path.isfile(weights_path):
-            raise FileNotFoundError(f"Expected checkpoint at '{weights_path}', but the file was not found.")
+        if not weights_path:
+            return
+        if os.path.isfile(weights_path) or os.path.isdir(weights_path):
+            return
+        raise FileNotFoundError(
+            f"Expected checkpoint file or model directory at '{weights_path}', but it was not found."
+        )
     
     def ensure_has_internet(self, enc_name: str) -> None:
         if not BasePatchEncoder._has_internet:

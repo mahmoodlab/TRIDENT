@@ -11,6 +11,7 @@ import argparse
 import torch
 import multiprocessing as mp
 import shutil
+import sys
 from queue import Queue
 from threading import Thread
 from typing import Any, List
@@ -35,7 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Run Trident')
 
     # Generic arguments 
-    parser.add_argument('--gpu', type=int, default=0, help='GPU index to use for processing tasks.')
+    parser.add_argument(
+        '--gpu',
+        type=int,
+        default=0,
+        help='[DEPRECATED] Single GPU index. Use `--gpus <id>` instead.',
+    )
     parser.add_argument('--gpus', type=int, nargs='+', default=None,
                         help='Optional space-separated list of GPU indices to enable multi-GPU execution.')
     parser.add_argument('--task', type=str, default='seg', 
@@ -147,7 +153,15 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    return build_parser().parse_args()
+    args = build_parser().parse_args()
+
+    # Normalize to always have `args.gpus` so downstream code only needs one path.
+    if args.gpus is None:
+        args.gpus = [args.gpu]
+    elif "--gpu" in sys.argv:
+        print("[MAIN] Warning: `--gpu` is deprecated and ignored when `--gpus` is provided.")
+
+    return args
 
 
 def generate_help_text() -> str:
@@ -446,10 +460,7 @@ def main() -> None:
     args = parse_arguments()
     cleanup_files(args.job_dir, args.wsi_cache)
 
-    if args.gpus:
-        gpu_ids = list(dict.fromkeys(args.gpus))
-    else:
-        gpu_ids = [args.gpu]
+    gpu_ids = list(dict.fromkeys(args.gpus or [args.gpu]))
 
     if not torch.cuda.is_available() and any(gpu_id >= 0 for gpu_id in gpu_ids):
         print('[MAIN] Warning: CUDA not available, using CPU.')

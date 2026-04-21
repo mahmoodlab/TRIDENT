@@ -5,17 +5,17 @@ import ctypes.util
 import importlib.util
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
 
-@dataclass
 class CheckResult:
-    status: str  # PASS, WARN, FAIL
-    name: str
-    message: str
-    fix: str = ""
+    def __init__(self, status: str, name: str, message: str, fix: str = "") -> None:
+        # PASS, WARN, FAIL
+        self.status = status
+        self.name = name
+        self.message = message
+        self.fix = fix
 
 
 def _has_module(module_name: str) -> bool:
@@ -258,10 +258,10 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
                     "CTransPath dependency",
                     "Install with: pip install timm_ctp",
                 ),
-                _check_hf_token(),
             ]
         )
         if check_gated:
+            results.append(_check_hf_token())
             results.extend(_check_hf_repo_access(name, repo, repo_type=repo_type) for name, repo, repo_type in patch_gated_repos)
 
     if profile in {"slide-encoders", "full"}:

@@ -21,7 +21,11 @@ ReadMode = Literal['pil', 'numpy']
 
 
 _WARNED_CTX_FALLBACKS: set[str] = set()
-_SPAWN_PICKLING_MSG = 'ctypes objects containing pointers cannot be pickled'
+_SPAWN_PICKLING_MSGS = (
+    'ctypes objects containing pointers cannot be pickled',
+    "Can't pickle",
+    "PicklingError",
+)
 
 
 def _warn_ctx_fallback_once(key: str, message: str) -> None:
@@ -35,7 +39,8 @@ def _dataloader_context_candidates(num_workers: int):
         return [None]
 
     candidates = []
-    for method in ('spawn', 'fork'):
+    # Prefer fork on POSIX to avoid spawn pickling issues with complex objects.
+    for method in ('fork', 'spawn'):
         try:
             if method in mp.get_all_start_methods():
                 ctx = mp.get_context(method)
@@ -53,8 +58,21 @@ def _run_with_dataloader_ctx_fallback(run_fn, num_workers: int, warn_key: str, w
     for ctx in _dataloader_context_candidates(num_workers):
         try:
             return run_fn(ctx)
-        except ValueError as err:
-            if _SPAWN_PICKLING_MSG not in str(err) or ctx is None:
+        except Exception as err:
+            # If we're using a multiprocessing context (typically 'spawn') and
+            # hit a pickling limitation, try the next candidate (usually 'fork'
+            # or None) instead of erroring out.
+            ctx_method = None
+            try:
+                ctx_method = ctx.get_start_method() if ctx is not None else None
+            except Exception:
+                ctx_method = None
+
+            err_str = str(err)
+            is_pickling_issue = any(msg in err_str for msg in _SPAWN_PICKLING_MSGS)
+            if ctx is None or (ctx_method not in {"spawn", None} and not is_pickling_issue):
+                raise
+            if not is_pickling_issue:
                 raise
             last_err = err
             _warn_ctx_fallback_once(warn_key, warn_msg)
