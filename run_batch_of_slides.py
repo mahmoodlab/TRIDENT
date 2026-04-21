@@ -331,45 +331,12 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
 
 def remove_dead_locks(job_dir: str, *, max_age_hours: float = 24.0) -> dict[str, int]:
     """
-    Remove stale `.lock` files under `job_dir` (best-effort).
-
-    Since TRIDENT's lock files are simple markers, we use conservative heuristics:
-    - If the *target output* exists (e.g. `<output>` next to `<output>.lock`), the lock is stale → remove it.
-    - Otherwise, only remove the lock if it is older than `max_age_hours`.
-
-    Returns stats: {"scanned": int, "removed": int, "kept": int}.
+    Backward-compatible wrapper. Prefer `trident.IO.clear_dead_locks`.
     """
-    scanned = removed = kept = 0
-    now = time.time()
-    max_age_seconds = float(max_age_hours) * 3600.0
+    from trident.IO import clear_dead_locks
 
-    if not os.path.isdir(job_dir):
-        return {"scanned": 0, "removed": 0, "kept": 0}
-
-    for root, _dirs, files in os.walk(job_dir):
-        for filename in files:
-            if not filename.endswith(".lock"):
-                continue
-            scanned += 1
-            lock_fp = os.path.join(root, filename)
-            target_fp = lock_fp[:-5]  # strip ".lock"
-
-            try:
-                if os.path.exists(target_fp):
-                    os.remove(lock_fp)
-                    removed += 1
-                    continue
-
-                mtime = os.path.getmtime(lock_fp)
-                if (now - mtime) >= max_age_seconds:
-                    os.remove(lock_fp)
-                    removed += 1
-                else:
-                    kept += 1
-            except Exception:
-                kept += 1
-
-    return {"scanned": scanned, "removed": removed, "kept": kept}
+    stats = clear_dead_locks(job_dir, legacy_max_age_seconds=float(max_age_hours) * 3600.0)
+    return {"scanned": int(stats["scanned"]), "removed": int(stats["removed"]), "kept": int(stats["kept"])}
 
 
 def cleanup_cache(cache_dir: str | None) -> None:
