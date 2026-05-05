@@ -60,8 +60,10 @@ Notes for power users
 
 - **Nested datasets**: ``search_nested=True`` uses relative paths under ``wsi_source`` (mirrors CLI ``--search_nested``).
 - **Subset runs**: pass ``custom_list_of_wsis="subset.csv"``; the CSV must have a ``wsi`` column.
-- **Reader selection**: you can force a backend with ``reader_type="openslide"`` / ``"cucim"`` / ``"image"`` / ``"sdpc"`` / ``"omezarr"`` / ``"czi"``.
-- **Slide encoders**: slide embeddings require a specific patch encoder (mapping is in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``).
+- **Reader selection**: force a backend with ``reader_type="openslide" | "cucim" | "image" | "sdpc" | "omezarr" | "czi"``.
+- **Slide encoders**: slide embeddings require a specific underlying patch encoder. The mapping lives in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``. If patch features are missing for that encoder, ``run_slide_feature_extraction_job`` extracts them on the fly.
+- **Resume / idempotency**: every job uses self-describing ``.lock`` files (PID, host, timestamp). If an output exists and is not actively locked, the job is skipped on re-run. Use ``trident.IO.clear_dead_locks(job_dir)`` (or pass ``--clear_dead_locks`` to the CLI) to remove orphaned locks safely.
+- **Multi-GPU**: the CLI handles GPU sharding via ``--gpus``. From Python, run separate ``Processor`` instances per shard with disjoint ``selected_wsi_paths`` and distinct ``device="cuda:N"`` arguments to the run-* methods.
 
 .. contents::
    :local:
@@ -135,6 +137,10 @@ Factory for loading patch-level encoder models.
      - 1024
      - ``--patch_encoder phikon_v2 --patch_size 224 --mag 20``
      - `owkin/phikon-v2 <https://huggingface.co/owkin/phikon-v2/>`__
+   * - **KEEP**
+     - 768
+     - ``--patch_encoder keep --patch_size 256 --mag 20``
+     - `Astaxanthin/KEEP <https://huggingface.co/Astaxanthin/KEEP>`__
    * - **Prov-Gigapath**
      - 1536
      - ``--patch_encoder gigapath --patch_size 256 --mag 20``
@@ -167,6 +173,10 @@ Factory for loading patch-level encoder models.
      - 1024
      - ``--patch_encoder gpfm --patch_size 224 --mag 20``
      - `majiabo/GPFM <https://huggingface.co/majiabo/GPFM>`__
+   * - **GenBio-PathFM**
+     - 4608
+     - ``--patch_encoder genbio-pathfm --patch_size 224 --mag 20``
+     - `genbio-ai/genbio-pathfm <https://huggingface.co/genbio-ai/genbio-pathfm>`__
    * - **Kaiko**
      - 384/768/1024
      - ``--patch_encoder kaiko-vit* --patch_size 256 --mag 20``

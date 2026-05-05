@@ -13,13 +13,17 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
-- **Support multiple whole-slide readers**: OpenSlide (e.g., `.svs`, `.tiff`, `.ndpi`, `.mrxs`), standard images (`.png`, `.jpeg`), SDPC (`.sdpc`), OME-Zarr (`.zarr`), and Zeiss CZI (`.czi`).
-- **Tissue segmentation**: Tissue vs. background segmentation: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc) or **Otsu** for lightweight CPU runs.
-- **Patch extraction**: Patch coordinates at any patch size / magnification.
-- **Patch feature extraction**: Patch embeddings from 20+ foundation models, including [UNI](https://www.nature.com/articles/s41591-024-02857-3), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), and more.
-- **Slide feature extraction**: Slide embeddings from 5+ slide foundation models, including [Titan](https://arxiv.org/abs/2411.19666) and [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), and more.
-- **Scalable batch processing and logging**: Batch-wise WSI processing, per-slide states, and summaries that explain what happened.
-- **Multi-GPU scheduling for batch runs**: Use `--gpus` to distribute pending slides evenly across GPUs in both cache and non-cache modes.
+- **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
+- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3) / UNI2-h, CONCH / [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0) / Virchow2, Phikon / Phikon-v2, [KEEP](https://huggingface.co/Astaxanthin/KEEP), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) / H-Optimus-1, H0-mini, MUSK, Midnight-12k, OpenMidnight, GPFM, GenBio-PathFM, Kaiko (5 variants), Lunit, Hibou-L, CTransPath-CHIEF, ResNet50.
+- **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather (auto-runs the right underlying patch encoder).
+- **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
+- **Multiple WSI readers**: OpenSlide (`.svs`, `.tiff`, `.ndpi`, `.mrxs`, `.dcm`), CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
+- **Multi-GPU + multi-CPU sharding**: `--gpus 0 1 2 3` distributes pending slides across GPUs; `--gpus -1 -1` runs N CPU workers in parallel.
+- **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
+- **WSI cache pipeline** for slow / network storage: `--wsi_cache /local/ssd --cache_batch_size 32` stages slides locally via a producer/consumer pipeline.
+- **Run reports**: every run writes `summary.md` (human-readable), `runs/<id>.json` (manifest), and `wsi_states/<slide>.json` (per-slide tasks, attempts, errors, resume info).
+- **Bring your own encoder**: `CustomInferenceEncoder` / `CustomSlideEncoder` plug into the same pipeline.
+- **Preflight checks**: `trident-doctor --profile {base,patch-encoders,slide-encoders,convert,full} [--check-gated]` catches missing deps, weights, or HF gating before long jobs.
 
 
 <!-- ### Updates:
@@ -77,9 +81,9 @@ python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_p
 python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 256 --gpus 0 1 --wsi_cache /mnt/nvme/cache --cache_batch_size 32
 ```
 
-- Pending slides are sharded evenly across all GPUs listed in `--gpus`.
-- Completed slides are automatically skipped before task assignment.
-- Stale `.lock` files and stale cache directory contents are cleaned before each run.
+- Pending slides are sharded evenly across all GPUs listed in `--gpus`. Duplicate positive GPU IDs are deduplicated; duplicate `-1` entries are kept (each runs an independent CPU worker).
+- Completed slides are automatically skipped before task assignment — re-running on the same `--job_dir` is safe and idempotent.
+- The `--wsi_cache` directory is wiped at the start of each run. **`.lock` files are never wiped automatically**; pass `--clear_dead_locks` to safely remove only stale locks (active locks are protected).
 - If your environment has DataLoader multiprocessing compatibility issues, set `--max_workers 0` to force main-process data loading.
 
 **Run outputs (recommended starting point for debugging/resume):**
@@ -106,12 +110,12 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
 **Step 1: Tissue Segmentation:** Segments tissue vs. background from a dir of WSIs
  - **Command**:
    ```bash
-   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpu 0 --segmenter hest
+   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./trident_processed --gpus 0 --segmenter hest
    ```
    - `--task seg`: Specifies that you want to do tissue segmentation.
    - `--wsi_dir ./wsis`: Path to dir with your WSIs.
    - `--job_dir ./trident_processed`: Output dir for processed results.
-   - `--gpu 0`: Uses GPU with index 0.
+   - `--gpus 0`: Use GPU index 0. Pass multiple IDs (e.g. `--gpus 0 1`) to shard across GPUs, or `-1` to force CPU.
   - `--segmenter`: Segmentation model. Defaults to `hest`. Use `grandqc` ([Citation necessary](https://www.nature.com/articles/s41467-024-54769-y), [Non-commercial use](https://creativecommons.org/licenses/by-nc-sa/4.0/), [Original repository](https://github.com/cpath-ukk/grandqc)) for fast H&E segmentation or `otsu` for a classical image-processing-only fallback. Add the option `--remove_artifacts` for additional artifact clean up.
  - **Outputs**:
    - WSI thumbnails in `./trident_processed/thumbnails`.
@@ -130,8 +134,8 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - `--patch_size 256`: Each patch is 256x256 pixels.
    - `--overlap 0`: Patches overlap by 0 pixels, **always** an absolute number in pixels, e.g., `--overlap 128` for 50% overlap for 256x256 patches.
  - **Outputs**:
-   - Patch coordinates as h5 files in `./trident_processed/20x_256px/patches`.
-   - WSI thumbnails annotated with patch borders in `./trident_processed/20x_256px/visualization`.
+   - Patch coordinates as h5 files in `./trident_processed/20x_256px_0px_overlap/patches`.
+   - WSI thumbnails annotated with patch borders in `./trident_processed/20x_256px_0px_overlap/visualization`.
 
  **Step 3a: Patch Feature Extraction:** Extracts features from tissue patches using a specified encoder
  - **Command**:
@@ -145,7 +149,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 256`: Patches are 256x256 pixels in size.
  - **Outputs**: 
-   - Features are saved as h5 files in `./trident_processed/20x_256px/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
+   - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
 Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
@@ -187,7 +191,7 @@ Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https
    - `--mag 20`: Features are extracted from patches at 20x magnification.
    - `--patch_size 512`: Patches are 512x512 pixels in size.
  - **Outputs**: 
-   - Features are saved as h5 files in `./trident_processed/20x_256px/slide_features_titan`. (Shape: `(feature_dim)`)
+   - Features are saved as h5 files in `./trident_processed/20x_512px_0px_overlap/slide_features_titan`. (Shape: `(feature_dim)`)
 
 Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 

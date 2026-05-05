@@ -12,10 +12,9 @@ import torch
 import multiprocessing as mp
 import shutil
 import sys
-import time
 from queue import Queue
 from threading import Thread
-from typing import Any, List
+from typing import List
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -517,7 +516,16 @@ def main() -> None:
             f"removed={stats['removed']} scanned={stats['scanned']} kept={stats['kept']}"
         )
 
-    gpu_ids = list(dict.fromkeys(args.gpus or []))
+    # Deduplicate positive GPU IDs (running two workers on the same CUDA device
+    # is wasteful), but keep duplicate `-1` entries so users can request multiple
+    # parallel CPU workers via e.g. `--gpus -1 -1`.
+    seen_gpus: set[int] = set()
+    gpu_ids: List[int] = []
+    for gid in args.gpus or []:
+        if gid >= 0 and gid in seen_gpus:
+            continue
+        seen_gpus.add(gid)
+        gpu_ids.append(gid)
 
     if not torch.cuda.is_available() and any(gpu_id >= 0 for gpu_id in gpu_ids):
         print('[MAIN] Warning: CUDA not available, using CPU.')

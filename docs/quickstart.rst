@@ -1,257 +1,236 @@
 Quickstart
-==================
+==========
 
-Trident provides user-facing command-line scripts for processing large batches of whole-slide images (WSIs).
+This page is a working reference for the CLI: what to run, what knobs matter, and
+where outputs land.
 
-This page explains how to quickly get started, and provides detailed help for available options.
-
-Use this rule of thumb:
-
-- Use ``run_single_slide.py`` (or ``trident single``) to test settings on one slide.
-- Use ``run_batch_of_slides.py`` (or ``trident batch``) once settings are validated.
-
----
-
-Processing a batch of slides
---------------------------------
-
-To process a batch of WSIs through segmentation, patch extraction, and feature extraction in one go,  
-run the following command:
+If you are new: start with one slide, then scale up.
 
 .. code-block:: bash
 
-    python run_batch_of_slides.py --task all --wsi_dir output/wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
+   # 1. validate settings on one slide
+   python run_single_slide.py --slide_path ./wsis/example.svs --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256
 
-Equivalent wrapper CLI:
+   # 2. run the full batch when happy
+   python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 --skip_errors
+
+End-to-end pipeline
+-------------------
+
+``--task all`` runs the three stages in order. You can also run them individually
+on the same ``--job_dir`` — TRIDENT will pick up where it left off.
 
 .. code-block:: bash
 
-    trident batch -- --task all --wsi_dir output/wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
+   python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256
 
-Other wrapper entrypoints:
+This produces:
+
+1. **Tissue segmentation** (``contours/``, ``contours_geojson/``, ``thumbnails/``).
+2. **Patch coordinates** (``<mag>x_<patch>px_<overlap>px_overlap/patches/<slide>_patches.h5``).
+3. **Patch features** (``<mag>x_<patch>px_<overlap>px_overlap/features_<encoder>/<slide>.h5``).
+
+Equivalent unified CLI:
 
 .. code-block:: bash
 
-    trident single -- --slide_path ./wsis/example.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
-    trident doctor -- --profile base
-
-This command runs the full pipeline:
-
-1. Segment tissue areas in the slides.
-2. Extract patch coordinates over tissue.
-3. Extract patch-level features using the selected encoder.
+   trident batch  -- --task all --wsi_dir ./wsis --job_dir ./out --patch_encoder uni_v1 --mag 20 --patch_size 256
+   trident single -- --slide_path ./wsis/example.svs --job_dir ./out --patch_encoder uni_v1 --mag 20 --patch_size 256
+   trident doctor -- --profile base
 
 Outputs and run tracking
 ------------------------
 
 In your ``--job_dir``, TRIDENT writes:
 
-- ``summary.md``: appended once per run; a compact “what happened” report (counts + per-model breakdown + errors).
-- ``runs/<run_id>.json``: one JSON manifest per run (args, timestamps, status).
-- ``wsi_states/<slide>__<hash>.json``: per-slide machine-readable state (tasks, attempts, outputs, resume info).
+- ``summary.md``: appended once per run; counts (completed / skipped / errored), per-encoder breakdown, and a short error list.
+- ``runs/<run_id>.json``: one manifest per CLI invocation (args, timestamps, status).
+- ``wsi_states/<slide>__<hash>.json``: per-slide machine-readable state (tasks, attempts, outputs, last error, resume info).
+- ``contours/`` + ``contours_geojson/``: tissue masks (open ``.geojson`` in `QuPath <https://qupath.github.io/>`_ to QC/edit).
+- ``<mag>x_<patch>px_<overlap>px_overlap/``: per-config coords and feature dirs.
 
-How TRIDENT decides to skip work
---------------------------------
+Resume and skip behavior
+------------------------
 
-- If an expected output already exists (and is not locked), TRIDENT marks the task as **skipped**.
-- Locks are ``<output>.lock`` files created to prevent collisions in parallel runs.
+Re-running on the same ``--job_dir`` is the recommended way to retry / extend a job:
 
-If something looks “stuck”, check for stale ``.lock`` files and whether outputs were actually written.
+- If the expected output for a (slide, task) already exists and is **not locked**, TRIDENT
+  marks the task **skipped**. No recomputation.
+- ``.lock`` files mark tasks that are currently being written. If a worker crashes mid-task,
+  the lock can become stale (an "orphan"). Clean those safely with:
 
-High-signal knobs (what users usually change)
----------------------------------------------
+  .. code-block:: bash
 
-- ``--segmenter``:
-  - ``grandqc``: fast on clean H&E
-  - ``hest``: often better on IHC / dirtier slides
-  - ``otsu``: CPU fallback (no weights)
-- ``--mag`` / ``--patch_size`` / ``--overlap``: define the patch grid; must match between coords and features.
-- ``--min_tissue_proportion``: raise this (e.g., 0.3–0.7) to reduce weak edge patches and patch count.
-- ``--search_nested`` / ``--custom_list_of_wsis``: scale runs safely on large datasets.
-- ``--wsi_cache``: use when WSIs are on slow network storage.
+     python run_batch_of_slides.py --clear_dead_locks --dead_lock_max_age_hours 24 \
+         --task all --wsi_dir ./wsis --job_dir ./out ...
 
-Typical Examples
+  This removes only locks where (a) the target output already exists, or (b) the writer
+  PID is dead on this host, or (c) the lock is unreadable / legacy and older than
+  ``--dead_lock_max_age_hours`` (default 24). **Active locks from running jobs are never removed.**
+
+Multi-GPU and multi-worker
+--------------------------
+
+Use ``--gpus`` to shard pending slides across devices:
+
+.. code-block:: bash
+
+   # Two GPUs (production)
+   python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 --gpus 0 1
+
+   # Two CPU workers (no GPU)
+   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./out \
+       --segmenter otsu --gpus -1 -1
+
+Notes:
+
+- Pending slides are sharded round-robin across the listed GPU IDs.
+- Duplicate **positive** GPU IDs are deduplicated (running two workers on the same CUDA
+  device wastes memory). Duplicate ``-1`` entries are kept (each is an independent CPU worker).
+- ``--gpu`` (singular) is the legacy form and still works, but prefer ``--gpus``.
+
+Caching for slow / network storage
+----------------------------------
+
+If WSIs sit on a slow network drive, copy them in batches to a local SSD via the
+producer/consumer cache pipeline:
+
+.. code-block:: bash
+
+   python run_batch_of_slides.py --task all --wsi_dir /mnt/nfs/wsis --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 \
+       --gpus 0 1 \
+       --wsi_cache /local/ssd/cache --cache_batch_size 32
+
+The cache directory is wiped and recreated at the start of each run (this is **separate**
+from lock cleanup, which is opt-in via ``--clear_dead_locks``).
+
+High-signal knobs
 -----------------
 
-**Segmentation Only**  
-(Segment tissue regions and save binary masks.)
+- ``--segmenter``:
+
+  - ``grandqc`` — fast, accurate on clean H&E.
+  - ``hest`` — better on IHC / dirtier slides.
+  - ``otsu`` — CPU-only fallback, no model weights needed.
+
+- ``--mag`` / ``--patch_size`` / ``--overlap`` define the patch grid; the same values must be
+  used across ``coords`` and ``feat`` runs.
+- ``--min_tissue_proportion`` (0.0 to 1.0) raises the bar for keeping a patch; 0.3–0.7
+  removes many weak edge patches.
+- ``--remove_artifacts`` / ``--remove_penmarks``: extra artifact-cleaning segmentation pass.
+- ``--search_nested``: discover slides in nested subfolders.
+- ``--custom_list_of_wsis my.csv``: process a CSV subset (column ``wsi`` with paths
+  relative to ``--wsi_dir``; optional ``mpp`` column).
+- ``--reader_type {openslide,cucim,image,sdpc,omezarr,czi}``: force a backend, mostly
+  for debugging.
+- ``--max_workers 0``: force single-process data loading (use this if your environment has
+  DataLoader multiprocessing issues).
+
+Stage-only examples
+-------------------
+
+**Segmentation only**
 
 .. code-block:: bash
 
-    python run_batch_of_slides.py --task seg --wsi_dir input_wsis --job_dir output
+   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./out --segmenter grandqc
 
-Available segmenters:
-
-- ``hest`` (default, learned model)
-- ``grandqc`` (learned model, fast for H&E)
-- ``otsu`` (image-processing-only fallback, runs at 1.25x on CPU)
-
-Recommended choices:
-
-- Clean H&E: prefer ``grandqc`` (fast and reliable).
-- IHC or dirtier slides: prefer ``hest``.
-- Limited resources or fallback mode: use ``otsu``.
-
-**Patch Extraction Only**  
-(Extract patch coordinates from tissue regions.)
+**Patching only** (with patch images for QC)
 
 .. code-block:: bash
 
-    python run_batch_of_slides.py --task coords --wsi_dir input_wsis --job_dir output --mag 20 --patch_size 256
+   python run_batch_of_slides.py --task coords --wsi_dir ./wsis --job_dir ./out \
+       --mag 20 --patch_size 256 \
+       --dump_patches --dump_patches_max 100 --dump_patches_format jpg --dump_patches_jpeg_quality 90
 
-To additionally dump the patch *images* (useful for debugging), enable:
-
-- ``--dump_patches``: write patch images under ``<job_dir>/<coords_dir>/patch_images/<slide_name>/``
-- ``--dump_patches_max``: cap number of patches written per slide (0 = no limit)
-- ``--dump_patches_format``: ``png`` (default) or ``jpg``
-- ``--dump_patches_jpeg_quality``: JPEG quality (1-100) when using ``jpg``
-
-Example (dump first 100 patches as JPEGs):
+**Feature extraction only** (reusing existing coords)
 
 .. code-block:: bash
 
-    python run_batch_of_slides.py --task coords --wsi_dir input_wsis --job_dir output --mag 20 --patch_size 256 --dump_patches --dump_patches_max 100 --dump_patches_format jpg --dump_patches_jpeg_quality 90
+   python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./out \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256
 
-To control how strict tissue overlap should be during patch selection, use:
-
-- ``--min_tissue_proportion`` (0.0 to 1.0)
-- Default is permissive (keeps patches if they overlap tissue even minimally).
-
-**Feature Extraction Only**  
-(Extract features from patches using a patch encoder.)
+**Slide-level embeddings**
 
 .. code-block:: bash
 
-    python run_batch_of_slides.py --task feat --wsi_dir input_wsis --job_dir output --patch_encoder uni_v1 --mag 20 --patch_size 256
+   python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./out \
+       --slide_encoder titan --mag 20 --patch_size 512
 
-**Converter (pyramidal TIFF)**  
-(Convert listed files from CSV to pyramidal TIFF.)
+If patch features for the required underlying encoder don't exist, TRIDENT extracts them automatically.
+
+**Convert awkward formats to pyramidal TIFF**
 
 .. code-block:: bash
 
-    trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
+   trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
 
-Argument guide (run_batch_of_slides.py)
----------------------------------------
+Common failure modes
+--------------------
 
-This section explains every parser argument in plain language.
+- **"Patch features not found" during slide embeddings**: each slide encoder requires a specific
+  patch encoder (mapping in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``).
+  Run patch features with the right encoder, or let TRIDENT auto-extract them by passing
+  ``--slide_encoder``.
+- **OOM during feature extraction**: lower ``--feat_batch_size`` (or ``--batch_size``), or pick a smaller patch encoder / patch size.
+- **No slides discovered**: add ``--search_nested`` for nested layouts; or check that your
+  CSV uses the column name ``wsi`` and **relative** paths under ``--wsi_dir``.
+- **Pipeline looks stuck**: check for stale ``.lock`` files. After confirming no TRIDENT
+  process is running, re-run with ``--clear_dead_locks``.
+- **Offline / no internet**: set ``HF_TOKEN`` only when needed; otherwise put weights into
+  ``trident/*/local_ckpts.json`` or pass ``--patch_encoder_ckpt_path``.
 
-Generic arguments
-^^^^^^^^^^^^^^^^^
+Argument cheat sheet
+--------------------
 
-- ``--task``: chooses pipeline stage.
-  - ``seg`` = segmentation only
-  - ``coords`` = patch coordinate extraction only
-  - ``feat`` = feature extraction only
-  - ``all`` = run ``seg -> coords -> feat`` in order
-- ``--job_dir``: output root directory for all generated files.
-- ``--gpu``: GPU index used by learned segmentation and feature extraction.
-- ``--skip_errors``: continue processing other slides if one slide fails.
-- ``--max_workers``: worker count for slide collection/processing internals.
-- ``--batch_size``: shared batch size baseline for segmentation and feature extraction.
-- ``--seg_batch_size``: segmentation-specific override for ``--batch_size``.
-- ``--feat_batch_size``: feature-specific override for ``--batch_size``.
+The list below is not exhaustive — for full defaults and choices, scroll to "Raw parser help".
 
-When to change:
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-- Use ``--skip_errors`` for long production runs.
-- Start with default ``--batch_size`` and increase only if memory allows.
-
-WSI discovery and reading
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- ``--wsi_dir``: directory containing input slides.
-- ``--wsi_ext``: optional allowed extension filter (for mixed folders).
-- ``--search_nested``: recursively discover slides in nested subfolders.
-- ``--custom_list_of_wsis``: CSV subset list to process selected slides only.
-- ``--custom_mpp_keys``: metadata keys to read MPP from non-standard slide headers.
-- ``--reader_type``: force backend reader (``openslide``, ``cucim``, ``image``, ``sdpc``, ``omezarr``).
-  - Also supports ``czi`` for Zeiss CZI files.
-
-When to change:
-
-- Use ``--search_nested`` when slides are organized by subfolders.
-- Use ``--custom_list_of_wsis`` to run curated/retry batches.
-- Set ``--reader_type`` only for debugging backend-specific read issues.
-
-Segmentation arguments
-^^^^^^^^^^^^^^^^^^^^^^
-
-- ``--segmenter``: segmentation model choice (``hest``, ``grandqc``, ``otsu``).
-- ``--seg_conf_thresh``: tissue confidence threshold for learned segmenters.
-- ``--remove_holes``: exclude hole regions from final tissue mask.
-- ``--remove_artifacts``: run extra artifact-cleaning segmentation pass.
-- ``--remove_penmarks``: lighter artifact mode focused on penmark removal.
-
-Operational behavior:
-
-- ``hest`` and ``grandqc`` run on GPU.
-- ``grandqc`` is typically fast on clean H&E.
-- ``hest`` is often preferred for IHC/dirtier slides.
-- ``otsu`` is model-free fallback and runs on CPU at 1.25x.
-- ``--remove_artifacts`` / ``--remove_penmarks`` add extra segmentation time.
-
-Patching arguments
-^^^^^^^^^^^^^^^^^^
-
-- ``--mag``: target magnification for patch coordinates/features.
-- ``--patch_size``: patch size in pixels at target magnification.
-- ``--overlap``: absolute patch overlap in pixels.
-- ``--min_tissue_proportion``: minimum tissue overlap ratio (0.0 to 1.0) to keep a patch.
-- ``--coords_dir``: custom coordinates directory to read/write.
-- ``--dump_patches``: dump patch images to disk during the coords task.
-- ``--dump_patches_max``: max patch images to dump per slide (0 = unlimited).
-- ``--dump_patches_format``: patch image format (``png`` or ``jpg``).
-- ``--dump_patches_jpeg_quality``: JPEG quality (1-100) when dumping ``jpg``.
-
-When to change:
-
-- Increase ``--min_tissue_proportion`` to remove weak edge patches.
-- Use ``--coords_dir`` to reuse precomputed coordinates.
-
-Feature extraction arguments
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- ``--patch_encoder``: patch encoder name for patch-level features.
-- ``--patch_encoder_ckpt_path``: local patch-encoder checkpoint path (offline/custom).
-- ``--slide_encoder``: optional slide encoder name for slide-level embeddings.
-
-How this works:
-
-- If ``--slide_encoder`` is not provided, TRIDENT extracts patch features only.
-- If ``--slide_encoder`` is provided, TRIDENT computes patch features as needed, then slide embeddings.
-- Patch and slide feature extraction are GPU workflows.
-
-Common failure modes (and what to do)
--------------------------------------
-
-- **“Patch features not found” during slide embeddings**:
-  - Slide encoders require a specific patch encoder (see ``slide_to_patch_encoder_name`` mapping in code).
-  - Fix: ensure patch features exist under ``<coords_dir>/features_<required_patch_encoder>/``.
-- **OOM on feature extraction**:
-  - Reduce ``--feat_batch_size`` (or ``--batch_size``), or run a smaller patch encoder / smaller patch size.
-- **No slides discovered**:
-  - For nested datasets, add ``--search_nested``.
-  - For CSV subsets, ensure the CSV has a ``wsi`` column of relative paths (from ``--wsi_dir``).
-- **Offline environment**:
-  - Provide weights via ``trident/*/local_ckpts.json`` or pass ``--patch_encoder_ckpt_path`` for patch encoders.
-
-Caching arguments
-^^^^^^^^^^^^^^^^^
-
-- ``--wsi_cache``: local cache directory used when source storage is slow.
-- ``--cache_batch_size``: max slides staged in cache per batch.
-
-When to use:
-
-- Use caching when source slides are on slow network disks and you run large jobs.
-- Keep cache on fast local SSD storage for best effect.
+   * - Flag
+     - Use
+   * - ``--task {seg,coords,feat,all}``
+     - Pipeline stage. ``all`` runs ``seg → coords → feat``.
+   * - ``--gpus 0 1`` / ``--gpus -1 -1``
+     - Multi-GPU sharding (positive IDs) or multi-CPU workers (``-1`` entries).
+   * - ``--max_workers``
+     - DataLoader workers. ``0`` forces single-process loading.
+   * - ``--clear_dead_locks``, ``--dead_lock_max_age_hours``
+     - Safe cleanup of stale ``.lock`` files; active locks are never touched.
+   * - ``--skip_errors``
+     - Continue when a slide fails. Errors are recorded in ``summary.md`` and ``wsi_states/``.
+   * - ``--segmenter`` / ``--seg_conf_thresh``
+     - Tissue segmenter and its threshold.
+   * - ``--remove_holes`` / ``--remove_artifacts`` / ``--remove_penmarks``
+     - Mask post-processing.
+   * - ``--mag`` / ``--patch_size`` / ``--overlap``
+     - Patch grid definition (must match between ``coords`` and ``feat``).
+   * - ``--min_tissue_proportion``
+     - 0..1 floor on tissue overlap to keep a patch.
+   * - ``--coords_dir``
+     - Custom coords directory (e.g. to feed legacy CLAM coordinates into ``--task feat``).
+   * - ``--dump_patches`` / ``--dump_patches_max`` / ``--dump_patches_format`` / ``--dump_patches_jpeg_quality``
+     - Save patch images to disk during ``coords`` (debug / QC).
+   * - ``--patch_encoder`` / ``--patch_encoder_ckpt_path`` / ``--slide_encoder``
+     - Encoders. See API page for full list.
+   * - ``--batch_size`` / ``--seg_batch_size`` / ``--feat_batch_size``
+     - Stage-specific batch overrides.
+   * - ``--wsi_dir`` / ``--wsi_ext`` / ``--search_nested`` / ``--custom_list_of_wsis`` / ``--custom_mpp_keys`` / ``--reader_type``
+     - Slide discovery and reader controls.
+   * - ``--wsi_cache`` / ``--cache_batch_size``
+     - Local cache pipeline for slow source storage.
 
 Raw parser help
 ---------------
 
-For exact defaults and full flag list, see:
+For exact defaults, choices, and the complete flag list:
 
 .. literalinclude:: generated/run_batch_of_slides_help.txt
    :language: text
-

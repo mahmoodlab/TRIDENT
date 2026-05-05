@@ -104,6 +104,30 @@ Models and compute (GPU/CPU)
    - Feature extraction:
      - Patch-level and slide-level feature extraction require GPU in practice.
 
+.. dropdown:: **How do I scale across multiple GPUs (or multiple CPU workers)?**
+
+   Pass the list of GPU IDs to ``--gpus``. Pending slides are sharded round-robin across
+   the listed devices and one worker process is spawned per shard.
+
+   .. code-block:: bash
+
+      # 4 GPUs
+      python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./out \
+          --patch_encoder uni_v1 --mag 20 --patch_size 256 --gpus 0 1 2 3
+
+      # No GPU: two CPU workers
+      python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./out \
+          --segmenter otsu --gpus -1 -1
+
+   Notes:
+
+   - Duplicate **positive** GPU IDs are deduplicated (running two workers on the same CUDA
+     device wastes memory). Duplicate ``-1`` entries are kept — each is an independent CPU worker.
+   - The legacy ``--gpu N`` (singular) flag still works but ``--gpus`` is preferred. If both
+     are passed, ``--gpus`` wins and a warning is printed.
+   - If you hit DataLoader multiprocessing pickling issues, set ``--max_workers 0`` to force
+     main-process data loading.
+
 Performance
 -----------
 
@@ -167,8 +191,19 @@ Reliability, resume, and debugging
    TRIDENT uses simple filesystem locks (``<output>.lock``) to avoid two workers writing the same file:
 
    - A task creates a ``.lock`` file when it starts, and removes it on success or handled error.
+     The lock file contains JSON metadata (PID, hostname, timestamp) so stale locks can be detected safely.
    - If you see a stale ``.lock`` file but no corresponding running process, it usually means a crash or interruption.
-   - It is generally safe to **delete stale locks** once you've ensured no TRIDENT process is still running for that job, then re-run the affected task.
+   - The safest way to clean up stale locks is to pass ``--clear_dead_locks`` on the next run:
+
+     .. code-block:: bash
+
+        python run_batch_of_slides.py --clear_dead_locks --dead_lock_max_age_hours 24 ...
+
+     This removes only locks where (a) the target output already exists, (b) the writer PID
+     is not running on this host, or (c) the lock is a legacy/unreadable lock older than
+     ``--dead_lock_max_age_hours`` (default 24). **Active locks from running jobs are never touched.**
+   - You can also delete ``.lock`` files manually, but only after confirming no TRIDENT
+     process is still running for that job.
 
 .. _faq-patch-features-not-found:
 

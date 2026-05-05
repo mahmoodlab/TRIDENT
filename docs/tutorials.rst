@@ -66,6 +66,52 @@ Then run:
 
    python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./job --custom_list_of_wsis retry.csv --patch_encoder uni_v1 --mag 20 --patch_size 256
 
+Multi-GPU (production)
+^^^^^^^^^^^^^^^^^^^^^^
+
+Distribute pending slides across GPUs. Sharding is round-robin over the listed device IDs;
+duplicate positive IDs are dedup'd, but ``-1`` (CPU) entries are kept (each is an
+independent CPU worker).
+
+.. code-block:: bash
+
+   # 4 GPUs
+   python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./job \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 --skip_errors \
+       --gpus 0 1 2 3
+
+   # 2 GPUs + WSI cache (slow source storage)
+   python run_batch_of_slides.py --task all --wsi_dir /mnt/nfs/wsis --job_dir ./job \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 --skip_errors \
+       --gpus 0 1 \
+       --wsi_cache /local/ssd/cache --cache_batch_size 32
+
+   # No GPU: run two CPU workers in parallel for segmentation
+   python run_batch_of_slides.py --task seg --wsi_dir ./wsis --job_dir ./job \
+       --segmenter otsu --gpus -1 -1
+
+Resume safely after a crash
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Any ``run_batch_of_slides.py`` invocation on the same ``--job_dir`` resumes work:
+already-completed (and unlocked) outputs are skipped, only pending slides are processed.
+This makes long jobs tolerant to wall-time cutoffs and node failures.
+
+If a worker died mid-task (e.g. SIGKILL by the scheduler), some ``.lock`` files may have
+been left behind. Clean them safely on the next launch:
+
+.. code-block:: bash
+
+   python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./job \
+       --patch_encoder uni_v1 --mag 20 --patch_size 256 --skip_errors \
+       --clear_dead_locks --dead_lock_max_age_hours 24
+
+This removes only locks where (a) the target output already exists, (b) the writer PID is
+no longer running on this host, or (c) the lock is older than the cutoff. **Active locks
+from running jobs are never removed.**
+
+For diagnostics, inspect ``job/summary.md`` (per-run report) and ``job/wsi_states/`` (per-slide JSON).
+
 Offline clusters (no internet)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

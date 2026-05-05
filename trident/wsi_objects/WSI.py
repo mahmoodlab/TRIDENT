@@ -54,25 +54,19 @@ def _dataloader_context_candidates(num_workers: int):
 
 
 def _run_with_dataloader_ctx_fallback(run_fn, num_workers: int, warn_key: str, warn_msg: str, fail_label: str):
+    """
+    Try `run_fn(ctx)` for each candidate multiprocessing context. Only
+    pickling-related errors are swallowed (so we can fall back to the next
+    candidate, e.g. 'fork' or single-process). Any other error propagates.
+    """
     last_err = None
     for ctx in _dataloader_context_candidates(num_workers):
         try:
             return run_fn(ctx)
         except Exception as err:
-            # If we're using a multiprocessing context (typically 'spawn') and
-            # hit a pickling limitation, try the next candidate (usually 'fork'
-            # or None) instead of erroring out.
-            ctx_method = None
-            try:
-                ctx_method = ctx.get_start_method() if ctx is not None else None
-            except Exception:
-                ctx_method = None
-
-            err_str = str(err)
-            is_pickling_issue = any(msg in err_str for msg in _SPAWN_PICKLING_MSGS)
-            if ctx is None or (ctx_method not in {"spawn", None} and not is_pickling_issue):
-                raise
-            if not is_pickling_issue:
+            is_pickling_issue = any(msg in str(err) for msg in _SPAWN_PICKLING_MSGS)
+            # `ctx is None` is the single-process fallback: nothing left to try.
+            if ctx is None or not is_pickling_issue:
                 raise
             last_err = err
             _warn_ctx_fallback_once(warn_key, warn_msg)
