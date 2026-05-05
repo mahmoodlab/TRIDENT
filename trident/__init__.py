@@ -10,6 +10,7 @@ from trident.wsi_objects.CuCIMWSI import CuCIMWSI
 from trident.wsi_objects.ImageWSI import ImageWSI
 from trident.wsi_objects.SDPCWSI import SDPCWSI
 from trident.wsi_objects.OMEZarrWSI import OMEZarrWSI
+from trident.wsi_objects.CZIWSI import CZIWSI
 from trident.wsi_objects.WSIFactory import load_wsi, WSIReaderType
 from trident.wsi_objects.WSIPatcher import OpenSlideWSIPatcher, WSIPatcher
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
@@ -30,6 +31,7 @@ __all__ = [
     "CuCIMWSI",
     "SDPCWSI",
     "OMEZarrWSI",
+    "CZIWSI",
     "WSIPatcher",
     "OpenSlideWSIPatcher",
     "WSIPatcherDataset",

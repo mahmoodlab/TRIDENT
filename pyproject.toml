@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trident"
-version = "0.2.4"
+version = "0.3.0"
 description = "A package for preprocessing whole-slide images."
 authors = [
     "Guillaume Jaume <guillaume.jaume@unil.ch>",
@@ -73,6 +73,9 @@ converter = [
     "pylibCZIrw",
 ]
 convert = [
+    "pylibCZIrw",
+]
+czi = [
     "pylibCZIrw",
 ]
 full = [

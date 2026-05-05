@@ -29,9 +29,7 @@ release = 'v0.1.1'
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 html_logo = '_static/lab_logo.svg'
-html_theme_options = {
-    "sidebar_hide_name": True,
-}
+html_theme_options = {}
 
 # -- General configuration ---------------------------------------------------
 

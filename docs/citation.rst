@@ -23,7 +23,7 @@ If you use TRIDENT in your work, please cite:
 
 License
 -------
-Released under CC-BY-NC-ND 4.0. Academic use only.
+Released under CC-BY-NC-ND 4.0. 
 
 Funding
 -------

@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 import socket
 import os
+import time
 import json
 from typing import List, Optional, Union, Tuple
 import h5py
@@ -167,9 +168,8 @@ def has_internet_connection(timeout: float = 3.0) -> bool:
     
     try:
         # Fast socket-level check
-        sock = socket.create_connection((endpoint, 443), timeout=timeout)
-        sock.close()
-        return True
+        with socket.create_connection((endpoint, 443), timeout=timeout):
+            return True
     except OSError:
         pass
 
@@ -243,7 +243,13 @@ def create_lock(path: str, suffix: Optional[str] = None) -> None:
         path = f"{path}_{suffix}"
     lock_file = f"{path}.lock"
     with open(lock_file, 'w') as f:
-        f.write("")
+        # Write metadata to allow safe dead-lock cleanup.
+        payload = {
+            "pid": os.getpid(),
+            "hostname": socket.gethostname(),
+            "created_at": time.time(),
+        }
+        f.write(json.dumps(payload))
 
 #####################
 
@@ -266,7 +272,12 @@ def remove_lock(path: str, suffix: Optional[str] = None) -> None:
     if suffix is not None:
         path = f"{path}_{suffix}"
     lock_file = f"{path}.lock"
-    os.remove(lock_file)
+    # Locks are best-effort markers; be tolerant if it is already gone.
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+    except Exception:
+        pass
 
 #####################
 
@@ -295,6 +306,111 @@ def is_locked(path: str, suffix: Optional[str] = None) -> bool:
     if suffix is not None:
         path = f"{path}_{suffix}"
     return os.path.exists(f"{path}.lock")
+
+
+def _pid_is_running(pid: int) -> bool:
+    """
+    Check whether a PID is alive on this host.
+    """
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # PID exists but we may not have permission; assume it's running.
+        return True
+    except Exception:
+        return False
+    return True
+
+
+def clear_dead_locks(root_dir: str, *, legacy_max_age_seconds: float = 24 * 3600) -> dict:
+    """
+    Remove stale `.lock` files under `root_dir`.
+
+    Rules (conservative):
+    - If `<output>` exists next to `<output>.lock`, the lock is stale → remove it.
+    - If the lock file contains JSON with a PID and hostname matching this host:
+        - remove only if PID is not running.
+    - Otherwise (legacy empty lock / unreadable / other-host):
+        - remove only if older than `legacy_max_age_seconds`.
+
+    Returns stats: {"scanned": int, "removed": int, "kept": int}.
+    """
+    scanned = removed = kept = 0
+    now = time.time()
+    host = socket.gethostname()
+
+    if not os.path.isdir(root_dir):
+        return {"scanned": 0, "removed": 0, "kept": 0}
+
+    for dirpath, _dirnames, filenames in os.walk(root_dir):
+        for fn in filenames:
+            if not fn.endswith(".lock"):
+                continue
+            lock_fp = os.path.join(dirpath, fn)
+            scanned += 1
+
+            target_fp = lock_fp[:-5]  # strip ".lock"
+            try:
+                if os.path.exists(target_fp):
+                    os.remove(lock_fp)
+                    removed += 1
+                    continue
+
+                # Try to parse metadata.
+                pid = None
+                lock_host = None
+                created_at = None
+                try:
+                    with open(lock_fp, "r") as f:
+                        raw = (f.read() or "").strip()
+                    if raw:
+                        data = json.loads(raw)
+                        pid = data.get("pid")
+                        lock_host = data.get("hostname")
+                        created_at = data.get("created_at")
+                except Exception:
+                    pid = None
+                    lock_host = None
+                    created_at = None
+
+                if pid is not None and lock_host == host:
+                    try:
+                        pid_int = int(pid)
+                    except Exception:
+                        pid_int = None
+                    if pid_int is not None and not _pid_is_running(pid_int):
+                        os.remove(lock_fp)
+                        removed += 1
+                        continue
+                    kept += 1
+                    continue
+
+                # Legacy/unknown-host: age-based cleanup.
+                try:
+                    mtime = os.path.getmtime(lock_fp)
+                except Exception:
+                    mtime = None
+
+                age_ref = None
+                if created_at is not None:
+                    try:
+                        age_ref = float(created_at)
+                    except Exception:
+                        age_ref = None
+                if age_ref is None and mtime is not None:
+                    age_ref = float(mtime)
+
+                if age_ref is not None and (now - age_ref) >= legacy_max_age_seconds:
+                    os.remove(lock_fp)
+                    removed += 1
+                else:
+                    kept += 1
+            except Exception:
+                kept += 1
+
+    return {"scanned": scanned, "removed": removed, "kept": kept}
 
 
 ###########################################################################
@@ -919,6 +1035,9 @@ def get_num_workers(batch_size: int,
 
     # Disable pytorch multiprocessing on Windows
     if os.name == 'nt':
+        return 0
+
+    if max_workers is not None and max_workers <= 0:
         return 0
     
     num_cores = os.cpu_count() or fallback
