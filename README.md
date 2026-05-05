@@ -14,29 +14,14 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
-- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3) / UNI2-h, CONCH / [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0) / Virchow2, Phikon / Phikon-v2, [KEEP](https://huggingface.co/Astaxanthin/KEEP), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0) / H-Optimus-1, H0-mini, MUSK, Midnight-12k, OpenMidnight, GPFM, GenBio-PathFM, Kaiko (5 variants), Lunit, Hibou-L, CTransPath-CHIEF, ResNet50.
-- **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather (auto-runs the right underlying patch encoder).
+- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
+- **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather.
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
-- **Multiple WSI readers**: OpenSlide (`.svs`, `.tiff`, `.ndpi`, `.mrxs`, `.dcm`), CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
-- **Multi-GPU + multi-CPU sharding**: `--gpus 0 1 2 3` distributes pending slides across GPUs; `--gpus -1 -1` runs N CPU workers in parallel.
+- **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
+- **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
 - **WSI cache pipeline** for slow / network storage: `--wsi_cache /local/ssd --cache_batch_size 32` stages slides locally via a producer/consumer pipeline.
 - **Run reports**: every run writes `summary.md` (human-readable), `runs/<id>.json` (manifest), and `wsi_states/<slide>.json` (per-slide tasks, attempts, errors, resume info).
-- **Bring your own encoder**: `CustomInferenceEncoder` / `CustomSlideEncoder` plug into the same pipeline.
-- **Preflight checks**: `trident-doctor --profile {base,patch-encoders,slide-encoders,convert,full} [--check-gated]` catches missing deps, weights, or HF gating before long jobs.
-
-
-<!-- ### Updates:
-- 07.25: Support for [Feather](https://github.com/mahmoodlab/MIL-Lab) model.
-- 05.25: New batch-wise WSI caching for scalable processing on limited SSD space + nested WSI search (`--search_nested`).
-- 04.25: Native support for PIL.Image and CuCIM (use `wsi = load_wsi(xxx.svs)`). Support for seg + patch encoding without Internet.
-- 04.25: Remove artifacts/penmarks from the tissue segmentation with `--remove_artifacts` and `--remove_penmarks`. 
-- 02.25: New image converter from `czi`, `png`, etc to `tiff`.
-- 02.25: Support for GrandQC([Citation necessary](https://www.nature.com/articles/s41467-024-54769-y), [Non-commercial use](https://creativecommons.org/licenses/by-nc-sa/4.0/), [Original repository](https://github.com/cpath-ukk/grandqc)) tissue vs. background segmentation.
-- 02.25: Support for [Madeleine](https://github.com/mahmoodlab/MADELEINE/tree/main), [Hibou](https://github.com/HistAI/hibou), [Lunit](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino), [Kaiko](https://huggingface.co/histai/hibou-L), and [H-Optimus-1](https://huggingface.co/bioptimus/H-optimus-1) models. -->
-
-<!-- > [!NOTE]
-> GrandQC is integrated into Trident under the CC BY-NC-SA 4.0 license. If you use GrandQC, please cite their [original publication](https://www.nature.com/articles/s41467-024-54769-y). -->
 
 
 ### 🔨 1. **Installation**:
@@ -70,26 +55,6 @@ Run checks before launching jobs:
 ```
 python run_batch_of_slides.py --task all --wsi_dir ./wsis --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
-
-**Multi-GPU batch mode (cache and non-cache):**
-
-```bash
-# Non-cache mode
-python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 256 --gpus 0 1
-
-# Cache mode (recommended for slow/network storage)
-python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./trident_processed --slide_encoder titan --mag 20 --patch_size 256 --gpus 0 1 --wsi_cache /mnt/nvme/cache --cache_batch_size 32
-```
-
-- Pending slides are sharded evenly across all GPUs listed in `--gpus`. Duplicate positive GPU IDs are deduplicated; duplicate `-1` entries are kept (each runs an independent CPU worker).
-- Completed slides are automatically skipped before task assignment — re-running on the same `--job_dir` is safe and idempotent.
-- The `--wsi_cache` directory is wiped at the start of each run. **`.lock` files are never wiped automatically**; pass `--clear_dead_locks` to safely remove only stale locks (active locks are protected).
-- If your environment has DataLoader multiprocessing compatibility issues, set `--max_workers 0` to force main-process data loading.
-
-**Run outputs (recommended starting point for debugging/resume):**
-- **`summary.md`**: appended once per run; high-level counts (completed/skipped/error), per-model breakdown, and a short error list.
-- **`runs/<run_id>.json`**: one JSON manifest per run (args, timestamps, status).
-- **`wsi_states/<slide>__<hash>.json`**: per-slide state (tasks, attempts, outputs, resume info).
 
 **Feeling cautious?**
 
