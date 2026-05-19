@@ -48,7 +48,8 @@ slide_to_patch_encoder_name = {
     'chief': 'ctranspath',
     'gigapath': 'gigapath',
     'madeleine': 'conch_v1',
-    'feather': 'conch_v15'
+    'feather': 'conch_v15',
+    'feather_uni_v2': 'uni_v2'
 }
 
 
@@ -459,6 +460,36 @@ class FeatherSlideEncoder(BaseSlideEncoder):
         z, _ = self.model.forward_features(batch['features'].to(device))
         return z
 
+class FeatherUni2SlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        FeatherUni2SlideEncoder initialization.
+        """
+        super().__init__(**build_kwargs)    
+
+    def _build(self, pretrained=True):
+        self.enc_name = 'feather_uni_v2'
+
+        assert pretrained, "FeatherUni2SlideEncoder has no non-pretrained models. Please load with pretrained=True."
+        from transformers import AutoModel 
+        from huggingface_hub import snapshot_download
+
+        model_path = snapshot_download(
+            repo_id="MahmoodLab/abmil.base.uni_v2.pc108-24k",
+            revision="main",
+            allow_patterns=["*.py", "model.safetensors", "config.json"]
+        )
+        model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        precision = torch.float32
+        embedding_dim = 512
+
+        return model, precision, embedding_dim
+    
+    def forward(self, batch, device='cuda'):
+        z, _ = self.model.forward_features(batch['features'].to(device))
+        return z
+
 
 class MeanSlideEncoder(BaseSlideEncoder):
 
@@ -531,6 +562,7 @@ encoder_registry = {
     'gigapath': GigaPathSlideEncoder,
     'madeleine': MadeleineSlideEncoder,
     'feather': FeatherSlideEncoder,
+    'feather_uni_v2': FeatherUni2SlideEncoder,
     'abmil': ABMILSlideEncoder,
 
     # Mean encoders
