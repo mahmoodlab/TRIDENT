@@ -177,6 +177,10 @@ Factory for loading patch-level encoder models.
      - 4608
      - ``--patch_encoder genbio-pathfm --patch_size 224 --mag 20``
      - `genbio-ai/genbio-pathfm <https://huggingface.co/genbio-ai/genbio-pathfm>`__
+   * - **Gemma 4**
+     - 768/1152
+     - ``--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20``
+     - `google/gemma-4-E4B <https://huggingface.co/google/gemma-4-E4B>`__ / `google/gemma-4-26B-A4B <https://huggingface.co/google/gemma-4-26B-A4B>`__
    * - **Kaiko**
      - 384/768/1024
      - ``--patch_encoder kaiko-vit* --patch_size 256 --mag 20``

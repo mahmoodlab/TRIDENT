@@ -121,6 +121,21 @@ class TestPatchEncoders(unittest.TestCase):
 
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
-    
+
+    def test_gemma4_forward(self):
+        self._test_encoder_forward('gemma4-e4b')
+        self._test_encoder_forward('gemma4-26b')
+
+    def test_gemma4_shape_and_batch(self):
+        # Regression guard: pooling must reduce over tokens (not features) and
+        # the encoder must accept batched input (TRIDENT extracts patches in batches).
+        encoder = encoder_factory('gemma4-26b').to(self.device).eval()
+        x = encoder.eval_transforms(self.dummy_image).to(self.device)
+        with torch.inference_mode():
+            out_b1 = encoder(x.unsqueeze(0))
+            out_b2 = encoder(torch.stack([x, x]))
+        self.assertEqual(tuple(out_b1.shape), (1, 1152))
+        self.assertEqual(tuple(out_b2.shape), (2, 1152))
+
 if __name__ == '__main__':
     unittest.main()
