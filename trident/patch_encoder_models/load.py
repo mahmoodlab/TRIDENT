@@ -1580,7 +1580,11 @@ class Gemma4InferenceEncoder(BasePatchEncoder):
                     allow_patterns=[
                         "config.json",
                         "processor_config.json",
-                        "model.safetensors*",
+                        # Gemma checkpoints may be single-file `model.safetensors` or sharded
+                        # `model-00001-of-000XX.safetensors` + `model.safetensors.index.json`.
+                        "model.safetensors",
+                        "model.safetensors.index.json",
+                        "model-*.safetensors*",
                     ],
                 )
             except Exception:
@@ -1718,7 +1722,7 @@ class Gemma4E4BInferenceEncoder(Gemma4InferenceEncoder):
         super().__init__(**build_kwargs)
 
 
-class Gemma4_26BInferenceEncoder(Gemma4InferenceEncoder):
+class Gemma426BInferenceEncoder(Gemma4InferenceEncoder):
     """Gemma 4 26B-A4B vision tower (hidden=1152)."""
     VARIANT = "26b"
     HF_REPO = "google/gemma-4-26B-A4B"
@@ -1756,5 +1760,5 @@ encoder_registry = {
     "midnight12k": Midnight12kInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
-    "gemma4-26b": Gemma4_26BInferenceEncoder,
+    "gemma4-26b": Gemma426BInferenceEncoder,
 }
