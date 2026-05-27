@@ -49,6 +49,8 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "gemma4-e4b"
+        - "gemma4-26b"
 
         **kwargs (dict):
             Optional keyword arguments passed directly to the encoder constructor. These may include parameters such as:
@@ -1543,6 +1545,192 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class Gemma4InferenceEncoder(BasePatchEncoder):
+    """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
+    VARIANT = None    # "e4b" or "26b", set in subclasses
+    HF_REPO = None    # HuggingFace repo id, set in subclasses
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from PIL import Image
+
+        try:
+            from transformers import (
+                Gemma4Config,
+                Gemma4VisionModel,
+                Gemma4ImageProcessor,
+            )
+        except ImportError:
+            raise ImportError(
+                "Gemma 4 requires transformers>=5.0. "
+                "Install with: pip install 'transformers>=5.0'"
+            )
+
+        self.enc_name = f"gemma4-{self.VARIANT}"
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                from huggingface_hub import snapshot_download
+                weights_path = snapshot_download(
+                    repo_id=self.HF_REPO,
+                    allow_patterns=[
+                        "config.json",
+                        "processor_config.json",
+                        # Gemma checkpoints may be single-file `model.safetensors` or sharded
+                        # `model-00001-of-000XX.safetensors` + `model.safetensors.index.json`.
+                        "model.safetensors",
+                        "model.safetensors.index.json",
+                        "model-*.safetensors*",
+                    ],
+                )
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to download Gemma 4 ({self.VARIANT}). Provide a "
+                    "local directory with config.json + safetensors via weights_path, "
+                    "or set the path in local_ckpts.json."
+                )
+
+        cfg = Gemma4Config.from_pretrained(weights_path)
+        vision = Gemma4VisionModel(cfg.vision_config)
+
+        state = self._load_gemma4_vision_state(weights_path)
+        missing, _ = vision.load_state_dict(state, strict=False)
+        if missing:
+            raise RuntimeError(
+                f"Gemma 4 vision tower load: {len(missing)} missing keys "
+                f"(first: {missing[:3]})"
+            )
+
+        processor = Gemma4ImageProcessor.from_pretrained(weights_path)
+        image_position_ids = processor(images=Image.new("RGB", (224, 224)), return_tensors="pt").get("image_position_ids")
+
+        model = self._GemmaWrapper(vision, image_position_ids)
+        eval_transform = self._GemmaTransform(processor)
+        precision = torch.bfloat16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        return self.model(x)
+
+    def _load_gemma4_vision_state(self, model_path: str):
+        """Read tensors with prefix `model.vision_tower.` from a Gemma 4 checkpoint
+        without materializing the LLM weights. The full multimodal checkpoint is large
+        (the 26B's vision tower lives inside a ~50 GB shard), so instead of loading the
+        whole shard we parse the safetensors header and seek+read only the vision tensor
+        byte ranges. Works for single-shard (E4B) and multi-shard (26B) layouts. If a
+        pre-extracted `vision_tower_only.safetensors` exists in the model dir, it is used
+        directly.
+        """
+        import json
+        import struct
+        import numpy as np
+
+        cached = os.path.join(model_path, "vision_tower_only.safetensors")
+        if os.path.exists(cached):
+            from safetensors.torch import load_file
+            return load_file(cached)
+
+        index_path = os.path.join(model_path, "model.safetensors.index.json")
+        if os.path.exists(index_path):
+            with open(index_path) as f:
+                weight_map = json.load(f)["weight_map"]
+            shards = sorted({os.path.join(model_path, v) for v in weight_map.values()})
+        else:
+            single = os.path.join(model_path, "model.safetensors")
+            if not os.path.exists(single):
+                raise FileNotFoundError(f"No safetensors found in {model_path}")
+            shards = [single]
+
+        dtype_map = {
+            "F16": (torch.float16, np.float16),
+            "BF16": (torch.bfloat16, None),
+            "F32": (torch.float32, np.float32),
+            "F64": (torch.float64, np.float64),
+            "I8": (torch.int8, np.int8),
+            "I16": (torch.int16, np.int16),
+            "I32": (torch.int32, np.int32),
+            "I64": (torch.int64, np.int64),
+            "U8": (torch.uint8, np.uint8),
+            "BOOL": (torch.bool, np.bool_),
+        }
+        prefix = "model.vision_tower."
+        state = {}
+        for shard in shards:
+            with open(shard, "rb") as f:
+                header_len = struct.unpack("<Q", f.read(8))[0]
+                header = json.loads(f.read(header_len))
+                data_start = 8 + header_len
+                items = [
+                    (k, m) for k, m in header.items()
+                    if k != "__metadata__" and k.startswith(prefix)
+                ]
+                items.sort(key=lambda kv: kv[1]["data_offsets"][0])
+                for k, meta in items:
+                    torch_dtype, np_dtype = dtype_map[meta["dtype"]]
+                    shape = meta["shape"]
+                    start, end = meta["data_offsets"]
+                    f.seek(data_start + start)
+                    buf = f.read(end - start)
+                    if torch_dtype == torch.bfloat16:
+                        arr = np.frombuffer(buf, dtype=np.uint16).copy()
+                        t = torch.from_numpy(arr).view(torch.bfloat16).reshape(shape)
+                    else:
+                        arr = np.frombuffer(buf, dtype=np_dtype).copy()
+                        t = torch.from_numpy(arr).reshape(shape)
+                    state[k[len(prefix):]] = t
+        return state
+
+    class _GemmaTransform:
+        def __init__(self, processor):
+            self.processor = processor
+        def __call__(self, img):
+            return self.processor(images=img, return_tensors="pt")["pixel_values"].squeeze(0)
+
+    class _GemmaWrapper(torch.nn.Module):
+        def __init__(self, vision_model, image_position_ids):
+            super().__init__()
+            self.vision_model = vision_model
+            self.register_buffer("image_position_ids", image_position_ids, persistent=False)
+        def forward(self, x):
+            x = x.unsqueeze(0) if x.dim() == 2 else x
+            bs = x.shape[0]
+            pid = self.image_position_ids
+            if pid.shape[0] == 1 and bs > 1:
+                pid = pid.expand(bs, -1, -1)
+            out = self.vision_model(pixel_values=x, pixel_position_ids=pid)
+            lhs = out.last_hidden_state            # (bs * tokens_per_image, hidden)
+            # Gemma 4 vision flattens the batch into the token axis and emits a fixed
+            # 256 tokens per 224px image (same for E4B and 26B, the pinned checkpoints).
+            tokens_per_image = 256
+            assert lhs.shape[0] == bs * tokens_per_image, (
+                f"Gemma4 vision: expected {bs * tokens_per_image} tokens, got {lhs.shape[0]}"
+            )
+            return lhs.reshape(bs, tokens_per_image, -1).mean(dim=1)   # (bs, hidden)
+
+
+class Gemma4E4BInferenceEncoder(Gemma4InferenceEncoder):
+    """Gemma 4 E4B vision tower (hidden=768)."""
+    VARIANT = "e4b"
+    HF_REPO = "google/gemma-4-E4B"
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+
+class Gemma426BInferenceEncoder(Gemma4InferenceEncoder):
+    """Gemma 4 26B-A4B vision tower (hidden=1152)."""
+    VARIANT = "26b"
+    HF_REPO = "google/gemma-4-26B-A4B"
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
     "conch_v15": Conchv15InferenceEncoder,
@@ -1571,4 +1759,6 @@ encoder_registry = {
     "lunit-vits8": LunitS8InferenceEncoder,
     "midnight12k": Midnight12kInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "gemma4-e4b": Gemma4E4BInferenceEncoder,
+    "gemma4-26b": Gemma426BInferenceEncoder,
 }
