@@ -221,7 +221,7 @@ def  get_weights_path(model_type: str, encoder_name: str) -> str:
     return path
 
 
-def create_lock(path: str, suffix: Optional[str] = None) -> None:
+def create_lock(path: str, suffix: Optional[str] = None) -> bool:
     """
     Create a lock file to signal that a particular file or process 
     is currently being worked on. This is especially useful in multiprocessing or distributed 
@@ -238,18 +238,38 @@ def create_lock(path: str, suffix: Optional[str] = None) -> None:
     -------
     >>> create_lock("/path/to/resource")
     >>> # Creates a file named "/path/to/resource.lock" to indicate the resource is locked.
+
+    Returns:
+        bool:
+            True if the lock was acquired, False if it already exists.
     """
     if suffix is not None:
         path = f"{path}_{suffix}"
     lock_file = f"{path}.lock"
-    with open(lock_file, 'w') as f:
-        # Write metadata to allow safe dead-lock cleanup.
-        payload = {
-            "pid": os.getpid(),
-            "hostname": socket.gethostname(),
-            "created_at": time.time(),
-        }
-        f.write(json.dumps(payload))
+    payload = {
+        "pid": os.getpid(),
+        "hostname": socket.gethostname(),
+        "created_at": time.time(),
+    }
+    try:
+        fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+
+    try:
+        with os.fdopen(fd, 'w') as f:
+            fd = None
+            # Write metadata to allow safe dead-lock cleanup.
+            f.write(json.dumps(payload))
+    except Exception:
+        if fd is not None:
+            os.close(fd)
+        try:
+            os.remove(lock_file)
+        except FileNotFoundError:
+            pass
+        raise
+    return True
 
 #####################
 
