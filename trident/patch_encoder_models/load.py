@@ -636,7 +636,7 @@ class ResNet50InferenceEncoder(BasePatchEncoder):
         if weights_path:
             try:
                 model = timm.create_model("resnet50", pretrained=False, **timm_kwargs)
-                if weights_path.suffix == ".safetensors":
+                if str(weights_path).endswith(".safetensors"):
                     from safetensors.torch import load_file
                     state_dict = load_file(weights_path)
                 else:

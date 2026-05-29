@@ -391,9 +391,15 @@ class Processor:
                 
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
+            except KeyboardInterrupt:
+                # Remove the lock so the slide can be resumed, then propagate the interrupt.
+                remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                raise
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -663,9 +669,15 @@ class Processor:
                 
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
+            except KeyboardInterrupt:
+                # Remove the lock so the slide can be resumed, then propagate the interrupt.
+                remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                raise
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -883,9 +895,15 @@ class Processor:
                 
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
+            except KeyboardInterrupt:
+                # Remove the lock so the slide can be resumed, then propagate the interrupt.
+                remove_lock(wsi_feats_fp)
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                raise
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(wsi_feats_fp)
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -1118,9 +1136,15 @@ class Processor:
                 
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
+            except KeyboardInterrupt:
+                # Remove the lock so the slide can be resumed, then propagate the interrupt.
+                remove_lock(slide_feature_path)
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                raise
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(slide_feature_path)
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()

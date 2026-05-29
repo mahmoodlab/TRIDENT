@@ -24,9 +24,19 @@ def parse_arguments():
     parser.add_argument("--gpu", type=int, default=0, help="GPU index to use for processing tasks")
     parser.add_argument("--slide_path", type=str, required=True, help="Path to the WSI file to process")
     parser.add_argument("--job_dir", type=str, required=True, help="Directory to store outputs")
-    parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
+    parser.add_argument('--patch_encoder', type=str, default='conch_v15',
                         choices=patch_encoder_registry.keys(),
                         help='Patch encoder to use')
+    parser.add_argument(
+        '--patch_encoder_ckpt_path', type=str, default=None,
+        help=(
+            "Optional local path to a patch encoder checkpoint (.pt, .pth, .bin, or .safetensors). "
+            "This is only needed in offline environments (e.g., compute clusters without internet). "
+            "If not provided, models are downloaded automatically from Hugging Face. "
+            "You can also specify local paths via the model registry at "
+            "`./trident/patch_encoder_models/local_ckpts.json`."
+        )
+    )
     parser.add_argument("--mag", type=int, choices=[5, 10, 20, 40], default=20,
                         help="Magnification at which patches/features are extracted")
     parser.add_argument("--patch_size", type=int, default=256, help="Patch size at which coords/features are extracted")
@@ -139,7 +149,7 @@ def process_slide(args):
 
         # Step 4: Feature Extraction
         print("Extracting features from patches...")
-        encoder = encoder_factory(args.patch_encoder)
+        encoder = encoder_factory(args.patch_encoder, weights_path=getattr(args, "patch_encoder_ckpt_path", None))
         encoder.eval()
         encoder.to(f"cuda:{args.gpu}")
         features_path = features_dir = os.path.join(save_coords, "features_{}".format(args.patch_encoder))
