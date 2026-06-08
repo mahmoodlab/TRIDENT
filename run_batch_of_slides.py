@@ -455,6 +455,17 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
         batch_size = max(1, args.cache_batch_size or len(assigned_slides))
         queue = Queue(maxsize=1)
 
+        # Caching flattens slides to their basename, which drops the original
+        # `--custom_list_of_wsis` CSV (and therefore any per-slide MPP values).
+        # Build a basename -> mpp map so we can re-attach MPPs to cached batches.
+        basename_to_mpp: dict[str, object] = {}
+        if args.custom_list_of_wsis is not None:
+            import pandas as pd
+            wsi_df = pd.read_csv(args.custom_list_of_wsis)
+            if 'wsi' in wsi_df.columns and 'mpp' in wsi_df.columns:
+                for wsi_name, mpp in zip(wsi_df['wsi'].astype(str), wsi_df['mpp']):
+                    basename_to_mpp[os.path.basename(wsi_name)] = mpp
+
         def processor_factory(wsi_dir: str) -> Processor:
             local_args = argparse.Namespace(**vars(args))
             local_args.wsi_dir = wsi_dir
@@ -462,6 +473,25 @@ def worker_entrypoint(args: argparse.Namespace) -> None:
             local_args.custom_list_of_wsis = None
             local_args.search_nested = False
             local_args.selected_wsi_paths = None
+
+            # Re-attach per-slide MPPs (if provided) by writing a per-batch CSV
+            # that maps the cached (basename) slides to their MPP values.
+            if basename_to_mpp:
+                import pandas as pd
+                cached_files = [
+                    f for f in os.listdir(wsi_dir)
+                    if os.path.isfile(os.path.join(wsi_dir, f))
+                ]
+                rows = [
+                    {'wsi': f, 'mpp': basename_to_mpp.get(f)}
+                    for f in cached_files
+                    if f in basename_to_mpp
+                ]
+                if rows:
+                    batch_csv = os.path.join(wsi_dir, '_trident_cached_batch_list.csv')
+                    pd.DataFrame(rows).to_csv(batch_csv, index=False)
+                    local_args.custom_list_of_wsis = batch_csv
+
             return initialize_processor(local_args)
 
         def run_task_fn(processor: Processor, task_name: str) -> None:
