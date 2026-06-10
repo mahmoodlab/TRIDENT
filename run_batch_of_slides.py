@@ -315,13 +315,14 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
         if args.slide_encoder is None: 
             from trident.patch_encoder_models.load import encoder_factory, RESIZE_SUPPORTED_PATCH_ENCODERS
             encoder_kwargs = {}
-            if args.patch_encoder_img_size is not None:
+            patch_encoder_img_size = getattr(args, "patch_encoder_img_size", None)
+            if patch_encoder_img_size is not None:
                 if args.patch_encoder not in RESIZE_SUPPORTED_PATCH_ENCODERS:
                     raise ValueError(
                         f"--patch_encoder_img_size is not supported for '{args.patch_encoder}'. "
                         f"It is only available for ViT-based encoders: {sorted(RESIZE_SUPPORTED_PATCH_ENCODERS)}."
                     )
-                encoder_kwargs['target_img_size'] = args.patch_encoder_img_size
+                encoder_kwargs['target_img_size'] = patch_encoder_img_size
             encoder = encoder_factory(args.patch_encoder, weights_path=args.patch_encoder_ckpt_path, **encoder_kwargs)
             mag_str = f"{float(args.mag):g}"
             processor.run_patch_feature_extraction_job(

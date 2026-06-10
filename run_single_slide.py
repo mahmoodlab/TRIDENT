@@ -149,14 +149,15 @@ def process_slide(args):
         # Step 4: Feature Extraction
         print("Extracting features from patches...")
         encoder_kwargs = {}
-        if args.patch_encoder_img_size is not None:
+        patch_encoder_img_size = getattr(args, "patch_encoder_img_size", None)
+        if patch_encoder_img_size is not None:
             from trident.patch_encoder_models import RESIZE_SUPPORTED_PATCH_ENCODERS
             if args.patch_encoder not in RESIZE_SUPPORTED_PATCH_ENCODERS:
                 raise ValueError(
                     f"--patch_encoder_img_size is not supported for '{args.patch_encoder}'. "
                     f"It is only available for ViT-based encoders: {sorted(RESIZE_SUPPORTED_PATCH_ENCODERS)}."
                 )
-            encoder_kwargs['target_img_size'] = args.patch_encoder_img_size
+            encoder_kwargs['target_img_size'] = patch_encoder_img_size
         encoder = encoder_factory(args.patch_encoder, **encoder_kwargs)
         encoder.eval()
         encoder.to(f"cuda:{args.gpu}")
