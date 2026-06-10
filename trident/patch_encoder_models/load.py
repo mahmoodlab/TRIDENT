@@ -12,6 +12,48 @@ from trident.IO import get_weights_path, has_internet_connection
 This file contains 20+ pretrained patch encoders, all loadable via the encoder_factory() function.
 """
 
+# Patch encoders that support a user-configurable input resolution via positional-embedding
+# interpolation (timm `dynamic_img_size`). For these models, a `target_img_size` keyword can be
+# forwarded through `encoder_factory(...)` into the encoder's `_build(...)`. See
+# `_resolve_target_img_size` for the validation rules.
+RESIZE_SUPPORTED_PATCH_ENCODERS = frozenset({
+    # Category A: dynamic_img_size already enabled on the timm backbone.
+    "uni_v1", "uni_v2", "virchow", "virchow2",
+    "kaiko-vitb8", "kaiko-vitb16", "kaiko-vits8", "kaiko-vits16", "kaiko-vitl14",
+    # Category B: dynamic_img_size enabled as part of this feature.
+    "gigapath", "hoptimus0", "hoptimus1", "gpfm", "lunit-vits8", "h0-mini",
+})
+
+
+def _resolve_target_img_size(enc_name: str, target_img_size: Optional[int], default_img_size: int, patch_size: int) -> int:
+    """
+    Validate and resolve a user-requested patch-encoder input resolution.
+
+    Parameters:
+        enc_name (str): Encoder name, used in error messages.
+        target_img_size (Optional[int]): Requested square input size in pixels. If None, the
+            model's native `default_img_size` is used.
+        default_img_size (int): Native training resolution of the encoder.
+        patch_size (int): ViT patch size. `target_img_size` must be an exact multiple of this so
+            positional embeddings can be interpolated without padding.
+
+    Returns:
+        int: The resolution to build the model and eval transform with.
+    """
+    if target_img_size is None:
+        return default_img_size
+    assert isinstance(target_img_size, int) and target_img_size > 0, (
+        f"{enc_name}: target_img_size must be a positive integer, got {target_img_size!r}."
+    )
+    assert target_img_size % patch_size == 0, (
+        f"{enc_name}: target_img_size={target_img_size} must be a multiple of the model patch size "
+        f"({patch_size}) so positional embeddings can be interpolated cleanly. "
+        f"Nearest valid sizes: {patch_size * (target_img_size // patch_size)} or "
+        f"{patch_size * (target_img_size // patch_size + 1)}."
+    )
+    return target_img_size
+
+
 def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
     """
     Instantiate a patch encoder model by name.
@@ -500,6 +542,7 @@ class KaikoInferenceEncoder(BasePatchEncoder):
     MODEL_NAME = None  # set in subclasses
     HF_HUB_ID = None # set in subclasses
     IMG_SIZE = None
+    PATCH_SIZE = None  # set in subclasses
 
     def __init__(self, **build_kwargs):
         """
@@ -507,11 +550,17 @@ class KaikoInferenceEncoder(BasePatchEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self):
+    def _build(self, target_img_size=None):
         import timm
         from torchvision.transforms import InterpolationMode
         self.enc_name = f"kaiko-{self.MODEL_NAME}"
         weights_path = self._get_weights_path()
+
+        # Default input resolution for Kaiko encoders is 224 (the eval transform size), even
+        # for the L14 variant whose backbone is built at 518. `model_img_size` preserves that
+        # original behavior when no custom size is requested.
+        transform_img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, self.PATCH_SIZE)
+        model_img_size = self.IMG_SIZE if target_img_size is None else transform_img_size
 
         if weights_path:
             try:
@@ -519,7 +568,7 @@ class KaikoInferenceEncoder(BasePatchEncoder):
                     f"{self.HF_HUB_ID}",
                     num_classes=0,
                     checkpoint_path=weights_path,
-                    img_size=self.IMG_SIZE,
+                    img_size=model_img_size,
                     dynamic_img_size=True
                 )
             except:
@@ -536,14 +585,14 @@ class KaikoInferenceEncoder(BasePatchEncoder):
                     dynamic_img_size=True,
                     pretrained=True,
                     num_classes=0,
-                    img_size=self.IMG_SIZE,
+                    img_size=model_img_size,
                 )
             except:
                 traceback.print_exc()
                 raise Exception("Failed to download Kaiko model.")
 
         mean, std = get_constants("kaiko")
-        eval_transform = get_eval_transforms(mean, std, target_img_size=224, center_crop=True, interpolation=InterpolationMode.BILINEAR, max_size=None, antialias=True)
+        eval_transform = get_eval_transforms(mean, std, target_img_size=transform_img_size, center_crop=True, interpolation=InterpolationMode.BILINEAR, max_size=None, antialias=True)
         precision = torch.float32
 
         return model, eval_transform, precision
@@ -556,6 +605,7 @@ class KaikoS16InferenceEncoder(KaikoInferenceEncoder):
     MODEL_NAME = "vits16"
     HF_HUB_ID = "vit_small_patch16_224"
     IMG_SIZE = 224
+    PATCH_SIZE = 16
 
     def __init__(self, **build_kwargs):
         """
@@ -568,6 +618,7 @@ class KaikoS8InferenceEncoder(KaikoInferenceEncoder):
     MODEL_NAME = "vits8"
     HF_HUB_ID = "vit_small_patch8_224"
     IMG_SIZE = 224
+    PATCH_SIZE = 8
 
     def __init__(self, **build_kwargs):
         """
@@ -580,6 +631,7 @@ class KaikoB16InferenceEncoder(KaikoInferenceEncoder):
     MODEL_NAME = "vitb16"
     HF_HUB_ID = "vit_base_patch16_224"
     IMG_SIZE = 224
+    PATCH_SIZE = 16
 
     def __init__(self, **build_kwargs):
         """
@@ -592,6 +644,7 @@ class KaikoB8InferenceEncoder(KaikoInferenceEncoder):
     MODEL_NAME = "vitb8"
     HF_HUB_ID = "vit_base_patch8_224"
     IMG_SIZE = 224
+    PATCH_SIZE = 8
 
     def __init__(self, **build_kwargs):
         """
@@ -604,6 +657,7 @@ class KaikoL14InferenceEncoder(KaikoInferenceEncoder):
     MODEL_NAME = "vitl14"
     HF_HUB_ID = "vit_large_patch14_reg4_dinov2"
     IMG_SIZE = 518
+    PATCH_SIZE = 14
 
     def __init__(self, **build_kwargs):
         """
@@ -690,17 +744,18 @@ class LunitS8InferenceEncoder(BasePatchEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self):
+    def _build(self, target_img_size=None):
         import timm
         from timm.data import resolve_model_data_config
         from timm.data.transforms_factory import create_transform
 
         self.enc_name = 'lunit-vits8'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 8)
 
         if weights_path:
             try:
-                timm_kwargs = {"img_size": 224}
+                timm_kwargs = {"img_size": img_size, "dynamic_img_size": True}
                 model = timm.create_model("vit_small_patch8_224", checkpoint_path=weights_path, **timm_kwargs)
             except:
                 traceback.print_exc()
@@ -711,12 +766,15 @@ class LunitS8InferenceEncoder(BasePatchEncoder):
         else:
             self.ensure_has_internet(self.enc_name)
             try:
-                model = timm.create_model("hf-hub:1aurent/vit_small_patch8_224.lunit_dino", pretrained=True)
+                model = timm.create_model("hf-hub:1aurent/vit_small_patch8_224.lunit_dino", pretrained=True, img_size=img_size, dynamic_img_size=True)
             except:
                 traceback.print_exc()
                 raise Exception("Failed to download Lunit S8 model, make sure that you were granted access and that you correctly registered your token.")
 
         data_config = resolve_model_data_config(model)
+        if target_img_size is not None:
+            data_config["input_size"] = (3, img_size, img_size)
+            data_config["crop_pct"] = 1.0
         eval_transform = create_transform(**data_config, is_training=False)
         precision = torch.float32
 
@@ -733,23 +791,25 @@ class UNIInferenceEncoder(BasePatchEncoder):
 
     def _build(
         self, 
-        timm_kwargs={"dynamic_img_size": True, "num_classes": 0, "init_values": 1e-5}
+        target_img_size=None,
     ):
         import timm
         from torchvision import transforms
 
         self.enc_name = 'uni_v1'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 16)
+
+        timm_kwargs = {
+            'img_size': img_size,
+            'patch_size': 16,
+            'init_values': 1e-5,
+            'num_classes': 0,
+            'dynamic_img_size': True,
+        }
 
         if weights_path:
             try:
-                timm_kwargs = {
-                    'img_size': 224,
-                    'patch_size': 16,
-                    'init_values': 1e-5,
-                    'num_classes': 0,
-                    'dynamic_img_size': True,
-                }
                 model = timm.create_model("vit_large_patch16_224", **timm_kwargs)
                 model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
             except:
@@ -767,8 +827,8 @@ class UNIInferenceEncoder(BasePatchEncoder):
                 raise Exception("Failed to download UNI model, make sure that you were granted access and that you correctly registered your token")
 
         eval_transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
+            transforms.Resize(img_size),
+            transforms.CenterCrop(img_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
@@ -785,15 +845,16 @@ class UNIv2InferenceEncoder(BasePatchEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self):
+    def _build(self, target_img_size=None):
         import timm
         from torchvision import transforms
 
         self.enc_name = 'uni_v2'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
 
         timm_kwargs = {
-            'img_size': 224,
+            'img_size': img_size,
             'patch_size': 14,
             'depth': 24,
             'num_heads': 24,
@@ -827,8 +888,8 @@ class UNIv2InferenceEncoder(BasePatchEncoder):
                 raise Exception("Failed to download UNI v2 model, make sure that you were granted access and that you correctly registered your token")
 
         eval_transform = transforms.Compose([
-            transforms.Resize(224),
-            transforms.CenterCrop(224),
+            transforms.Resize(img_size),
+            transforms.CenterCrop(img_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
@@ -847,6 +908,7 @@ class GigaPathInferenceEncoder(BasePatchEncoder):
 
     def _build(
         self, 
+        target_img_size=None,
     ):
         import timm
         assert timm.__version__ == '0.9.16', f"Gigapath requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
@@ -854,18 +916,21 @@ class GigaPathInferenceEncoder(BasePatchEncoder):
 
         self.enc_name = 'gigapath'
         weights_path = self._get_weights_path()
+        # GigaPath uses a 16px patch size (overriding the patch14 timm backbone name).
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 16)
 
         if weights_path:
             try:
                 timm_kwargs = {
-                    "img_size": 224,
+                    "img_size": img_size,
                     "in_chans": 3,
                     "patch_size": 16,
                     "embed_dim": 1536,
                     "depth": 40,
                     "num_heads": 24,
                     "mlp_ratio": 5.33334,
-                    "num_classes": 0
+                    "num_classes": 0,
+                    "dynamic_img_size": True,
                 }
                 model = timm.create_model("vit_giant_patch14_dinov2", pretrained=False, **timm_kwargs)
                 model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
@@ -878,20 +943,30 @@ class GigaPathInferenceEncoder(BasePatchEncoder):
         else:
             self.ensure_has_internet(self.enc_name)
             try:
-                model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True)
+                model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True, img_size=img_size, dynamic_img_size=True)
             except:
                 traceback.print_exc()
                 raise Exception("Failed to download GigaPath model, make sure that you were granted access and that you correctly registered your token")
 
         mean, std = get_constants('imagenet')
-        eval_transform = transforms.Compose(
-            [
-                transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                transforms.Normalize(mean, std),
-            ]
-        )
+        if target_img_size is None:
+            eval_transform = transforms.Compose(
+                [
+                    transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean, std),
+                ]
+            )
+        else:
+            eval_transform = transforms.Compose(
+                [
+                    transforms.Resize(img_size, interpolation=transforms.InterpolationMode.BICUBIC),
+                    transforms.CenterCrop(img_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean, std),
+                ]
+            )
         precision = torch.float16
         return model, eval_transform, precision
 
@@ -908,7 +983,7 @@ class VirchowInferenceEncoder(BasePatchEncoder):
     def _build(
         self,
         return_cls=False,
-        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU}
+        target_img_size=None,
     ):
         import timm
         import torchvision
@@ -916,19 +991,21 @@ class VirchowInferenceEncoder(BasePatchEncoder):
 
         self.enc_name = 'virchow'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
+
+        timm_kwargs = {
+            "img_size": img_size,
+            "init_values": 1e-5,
+            "num_classes": 0,
+            "mlp_ratio": 5.3375,
+            "global_pool": "",
+            "dynamic_img_size": True,
+            'mlp_layer': timm.layers.SwiGLUPacked,
+            'act_layer': torch.nn.SiLU,
+        }
 
         if weights_path:
             try:
-                timm_kwargs = {
-                    "img_size": 224,
-                    "init_values": 1e-5,
-                    "num_classes": 0,
-                    "mlp_ratio": 5.3375,
-                    "global_pool": "",
-                    "dynamic_img_size": True,
-                    'mlp_layer': timm.layers.SwiGLUPacked,
-                    'act_layer': torch.nn.SiLU,
-                }
                 model = timm.create_model("vit_huge_patch14_224", **timm_kwargs)
                 model.load_state_dict(state_dict=torch.load(weights_path, map_location="cpu"), strict=True)
             except:
@@ -947,7 +1024,7 @@ class VirchowInferenceEncoder(BasePatchEncoder):
 
         eval_transform = transforms.Compose(
             [
-                transforms.Resize(224, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
+                transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
@@ -981,7 +1058,7 @@ class Virchow2InferenceEncoder(BasePatchEncoder):
     def _build(
         self,
         return_cls=False,
-        timm_kwargs={'mlp_layer': timm.layers.SwiGLUPacked, 'act_layer': torch.nn.SiLU}
+        target_img_size=None,
     ):
         import timm
         import torchvision
@@ -989,20 +1066,22 @@ class Virchow2InferenceEncoder(BasePatchEncoder):
 
         self.enc_name = 'virchow2'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
+
+        timm_kwargs = {
+            "img_size": img_size,
+            "init_values": 1e-5,
+            "num_classes": 0,
+            "reg_tokens": 4,
+            "mlp_ratio": 5.3375,
+            "global_pool": "",
+            "dynamic_img_size": True,
+            'mlp_layer': timm.layers.SwiGLUPacked,
+            'act_layer': torch.nn.SiLU,
+        }
 
         if weights_path:
             try:
-                timm_kwargs = {
-                    "img_size": 224,
-                    "init_values": 1e-5,
-                    "num_classes": 0,
-                    "reg_tokens": 4,
-                    "mlp_ratio": 5.3375,
-                    "global_pool": "",
-                    "dynamic_img_size": True,
-                    'mlp_layer': timm.layers.SwiGLUPacked,
-                    'act_layer': torch.nn.SiLU,
-                }
                 model = timm.create_model("vit_huge_patch14_224", **timm_kwargs)
                 model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
             except:
@@ -1021,7 +1100,7 @@ class Virchow2InferenceEncoder(BasePatchEncoder):
         
         eval_transform = transforms.Compose(
             [
-                transforms.Resize(224, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
+                transforms.Resize(img_size, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ]
@@ -1053,7 +1132,7 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
 
     def _build(
         self,
-        timm_kwargs={'init_values': 1e-5, 'dynamic_img_size': False}
+        target_img_size=None,
     ):
         import timm
         assert timm.__version__ == '0.9.16', f"H-Optimus requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
@@ -1061,16 +1140,18 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
 
         self.enc_name = 'hoptimus0'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
+
+        timm_kwargs = {
+            "num_classes": 0,
+            "img_size": img_size,
+            "global_pool": "token",
+            'init_values': 1e-5,
+            'dynamic_img_size': True,
+        }
 
         if weights_path:
             try:
-                timm_kwargs = {
-                    "num_classes": 0,
-                    "img_size": 224,
-                    "global_pool": "token",
-                    'init_values': 1e-5,
-                    'dynamic_img_size': False
-                }
                 model = timm.create_model("vit_giant_patch14_reg4_dinov2", **timm_kwargs)
                 model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
             except:
@@ -1088,7 +1169,7 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
                 raise Exception("Failed to download HOptimus-0 model, make sure that you were granted access and that you correctly registered your token")
 
         eval_transform = transforms.Compose([
-            transforms.Resize(224),  
+            transforms.Resize(img_size),  
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=(0.707223, 0.578729, 0.703617), 
@@ -1110,7 +1191,7 @@ class HOptimus1InferenceEncoder(BasePatchEncoder):
 
     def _build(
         self,
-        timm_kwargs={'init_values': 1e-5, 'dynamic_img_size': False},
+        target_img_size=None,
         **kwargs
     ):
         import timm
@@ -1119,16 +1200,18 @@ class HOptimus1InferenceEncoder(BasePatchEncoder):
 
         self.enc_name = 'hoptimus1'
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
+
+        timm_kwargs = {
+            "num_classes": 0,
+            "img_size": img_size,
+            "global_pool": "token",
+            'init_values': 1e-5,
+            'dynamic_img_size': True,
+        }
 
         if weights_path:
             try:
-                timm_kwargs = {
-                    "num_classes": 0,
-                    "img_size": 224,
-                    "global_pool": "token",
-                    'init_values': 1e-5,
-                    'dynamic_img_size': False
-                }
                 model = timm.create_model("vit_giant_patch14_reg4_dinov2", **timm_kwargs)
                 model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
             except:
@@ -1146,7 +1229,7 @@ class HOptimus1InferenceEncoder(BasePatchEncoder):
                 raise Exception("Failed to download HOptimus-1 model, make sure that you were granted access and that you correctly registered your token")
 
         eval_transform = transforms.Compose([
-            transforms.Resize(224),  
+            transforms.Resize(img_size),  
             transforms.ToTensor(),
             transforms.Normalize(
                 mean=(0.707223, 0.578729, 0.703617), 
@@ -1312,7 +1395,7 @@ class H0MiniInferenceEncoder(BasePatchEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token", target_img_size=None):
         import timm
         from timm.data import resolve_model_data_config
         from timm.data.transforms_factory import create_transform
@@ -1320,6 +1403,7 @@ class H0MiniInferenceEncoder(BasePatchEncoder):
         self.enc_name = "h0-mini"
         weights_path = self._get_weights_path()
         self.return_type = return_type
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
 
         if weights_path:
             raise NotImplementedError(
@@ -1334,6 +1418,8 @@ class H0MiniInferenceEncoder(BasePatchEncoder):
                 pretrained=True,
                 mlp_layer=timm.layers.SwiGLUPacked,
                 act_layer=torch.nn.SiLU,
+                img_size=img_size,
+                dynamic_img_size=True,
             )
         except Exception:
             traceback.print_exc()
@@ -1344,6 +1430,9 @@ class H0MiniInferenceEncoder(BasePatchEncoder):
 
         # timm>=0.9 expects the model instance directly here.
         data_config = resolve_model_data_config(model)
+        if target_img_size is not None:
+            data_config["input_size"] = (3, img_size, img_size)
+            data_config["crop_pct"] = 1.0
         eval_transform = create_transform(**data_config, is_training=False)
         precision = torch.float16
 
@@ -1440,13 +1529,14 @@ class GPFMInferenceEncoder(BasePatchEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self):
+    def _build(self, target_img_size=None):
         import timm
         from huggingface_hub import hf_hub_download
         from torchvision.transforms import InterpolationMode
 
         self.enc_name = "gpfm"
         weights_path = self._get_weights_path()
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 14)
 
         if not weights_path:
             self.ensure_has_internet(self.enc_name)
@@ -1460,8 +1550,9 @@ class GPFMInferenceEncoder(BasePatchEncoder):
             model = timm.create_model(
                 "vit_large_patch14_dinov2.lvd142m",
                 pretrained=False,
-                img_size=224,
+                img_size=img_size,
                 init_values=1e-5,
+                dynamic_img_size=True,
             )
             state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
             if isinstance(state_dict, dict) and "state_dict" in state_dict:
@@ -1478,7 +1569,7 @@ class GPFMInferenceEncoder(BasePatchEncoder):
         eval_transform = get_eval_transforms(
             mean,
             std,
-            target_img_size=224,
+            target_img_size=img_size,
             interpolation=InterpolationMode.BICUBIC,
             max_size=None,
             antialias=True,
