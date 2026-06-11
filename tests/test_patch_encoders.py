@@ -46,6 +46,28 @@ class TestPatchEncoders(unittest.TestCase):
         self.assertIsNotNone(output)
         self.assertIsInstance(output, torch.Tensor)
         print("\033[94m"+ f"    {encoder_name} forward pass success with output {output}" + "\033[0m")
+        return output
+
+    def _output_dim(self, encoder_name, **kwargs):
+        """Run a forward pass and return the embedding dimension (last axis)."""
+        output = self._test_encoder_forward(encoder_name, **kwargs)
+        return output.shape[-1]
+
+    def _test_encoder_resize(self, encoder_name, target_img_size):
+        """
+        Forward pass at a custom `target_img_size`, and assert the output
+        embedding dimension is unchanged vs. the native resolution. The encoders
+        pool over patch tokens, so a different input resolution changes the
+        number of tokens but must NOT change the feature dimensionality
+        (otherwise downstream feature files become incompatible).
+        """
+        native_dim = self._output_dim(encoder_name)
+        resized_dim = self._output_dim(encoder_name, target_img_size=target_img_size)
+        self.assertEqual(
+            native_dim, resized_dim,
+            f"{encoder_name}: embedding dim changed with target_img_size="
+            f"{target_img_size} ({native_dim} -> {resized_dim})",
+        )
 
     def test_conch_v1_forward(self):
         self._test_encoder_forward('conch_v1', with_proj = True, normalize = True)
@@ -136,6 +158,64 @@ class TestPatchEncoders(unittest.TestCase):
             out_b2 = encoder(torch.stack([x, x]))
         self.assertEqual(tuple(out_b1.shape), (1, 1152))
         self.assertEqual(tuple(out_b2.shape), (2, 1152))
+
+    # ------------------------------------------------------------------
+    # Configurable input resolution (`target_img_size` / dynamic_img_size).
+    # One representative encoder per distinct `_build` branch is exercised.
+    # target_img_size must be a multiple of each model's patch size.
+    # ------------------------------------------------------------------
+    def test_uni_v1_resize(self):
+        # patch_size 16 -> 448 is a multiple. Plain Resize/CenterCrop transform.
+        self._test_encoder_resize('uni_v1', target_img_size=448)
+
+    def test_uni_v2_resize(self):
+        # patch_size 14 -> 448 is a multiple.
+        self._test_encoder_resize('uni_v2', target_img_size=448)
+
+    def test_virchow_resize(self):
+        self._test_encoder_resize('virchow', target_img_size=448)
+
+    def test_virchow2_resize(self):
+        # Exercises the reg-token (output[:, 5:]) pooling path.
+        self._test_encoder_resize('virchow2', target_img_size=448)
+
+    def test_gigapath_resize(self):
+        # Exercises the branched eval-transform (target_img_size is not None).
+        self._test_encoder_resize('gigapath', target_img_size=448)
+
+    def test_hoptimus0_resize(self):
+        # Backbone default was dynamic_img_size=False; now flipped to True.
+        self._test_encoder_resize('hoptimus0', target_img_size=448)
+
+    def test_h0mini_resize(self):
+        # Exercises the resolve_model_data_config rewrite path + num_prefix_tokens.
+        self._test_encoder_resize('h0-mini', target_img_size=448)
+
+    def test_gpfm_resize(self):
+        self._test_encoder_resize('gpfm', target_img_size=448)
+
+    def test_lunitvits8_resize(self):
+        # patch_size 8; exercises the data_config crop_pct=1.0 rewrite path.
+        self._test_encoder_resize('lunit-vits8', target_img_size=448)
+
+    def test_kaiko_vitl14_resize(self):
+        # Special case: backbone built at 518, eval transform at 224 by default.
+        # patch_size 14 -> 448 is a multiple.
+        self._test_encoder_resize('kaiko-vitl14', target_img_size=448)
+
+    def test_kaiko_vits8_resize(self):
+        # patch_size 8 -> 256 is a multiple.
+        self._test_encoder_resize('kaiko-vits8', target_img_size=256)
+
+    def test_resize_rejects_non_multiple(self):
+        # 500 is not a multiple of UNI-v2's patch size (14): must fail loudly.
+        with self.assertRaises(AssertionError):
+            encoder_factory('uni_v2', target_img_size=500)
+
+    def test_resize_rejects_unsupported_encoder_path(self):
+        # conch_v15 has no target_img_size kwarg in its _build -> TypeError.
+        with self.assertRaises(TypeError):
+            encoder_factory('conch_v15', target_img_size=448)
 
 if __name__ == '__main__':
     unittest.main()
