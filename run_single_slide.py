@@ -27,6 +27,15 @@ def parse_arguments():
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
                         choices=patch_encoder_registry.keys(),
                         help='Patch encoder to use')
+    parser.add_argument(
+        '--patch_encoder_img_size', type=int, default=None,
+        help=(
+            "Optional custom input resolution (in pixels) for the patch encoder. When set, the "
+            "encoder resizes patches to this size and interpolates its positional embeddings "
+            "(timm `dynamic_img_size`). Must be a multiple of the model's patch size. Only "
+            "supported for ViT-based encoders. Defaults to the model's native resolution."
+        )
+    )
     parser.add_argument("--mag", type=int, choices=[5, 10, 20, 40], default=20,
                         help="Magnification at which patches/features are extracted")
     parser.add_argument("--patch_size", type=int, default=256, help="Patch size at which coords/features are extracted")
@@ -139,7 +148,17 @@ def process_slide(args):
 
         # Step 4: Feature Extraction
         print("Extracting features from patches...")
-        encoder = encoder_factory(args.patch_encoder)
+        encoder_kwargs = {}
+        patch_encoder_img_size = getattr(args, "patch_encoder_img_size", None)
+        if patch_encoder_img_size is not None:
+            from trident.patch_encoder_models import RESIZE_SUPPORTED_PATCH_ENCODERS
+            if args.patch_encoder not in RESIZE_SUPPORTED_PATCH_ENCODERS:
+                raise ValueError(
+                    f"--patch_encoder_img_size is not supported for '{args.patch_encoder}'. "
+                    f"It is only available for ViT-based encoders: {sorted(RESIZE_SUPPORTED_PATCH_ENCODERS)}."
+                )
+            encoder_kwargs['target_img_size'] = patch_encoder_img_size
+        encoder = encoder_factory(args.patch_encoder, **encoder_kwargs)
         encoder.eval()
         encoder.to(f"cuda:{args.gpu}")
         features_path = features_dir = os.path.join(save_coords, "features_{}".format(args.patch_encoder))

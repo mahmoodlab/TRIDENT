@@ -172,6 +172,16 @@ def build_parser() -> argparse.ArgumentParser:
             "`./trident/patch_encoder_models/local_ckpts.json`."
         )
     )
+    parser.add_argument(
+        '--patch_encoder_img_size', type=int, default=None,
+        help=(
+            "Optional custom input resolution (in pixels) for the patch encoder. When set, the "
+            "encoder resizes patches to this size and interpolates its positional embeddings "
+            "(timm `dynamic_img_size`). Must be a multiple of the model's patch size. Only "
+            "supported for ViT-based encoders; see `RESIZE_SUPPORTED_PATCH_ENCODERS`. Defaults to "
+            "the model's native resolution."
+        )
+    )
     parser.add_argument('--slide_encoder', type=str, default=None, 
                         choices=slide_encoder_registry.keys(), 
                         help='Slide encoder to use')
@@ -303,8 +313,17 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
         )
     elif args.task == 'feat':
         if args.slide_encoder is None: 
-            from trident.patch_encoder_models.load import encoder_factory
-            encoder = encoder_factory(args.patch_encoder, weights_path=args.patch_encoder_ckpt_path)
+            from trident.patch_encoder_models.load import encoder_factory, RESIZE_SUPPORTED_PATCH_ENCODERS
+            encoder_kwargs = {}
+            patch_encoder_img_size = getattr(args, "patch_encoder_img_size", None)
+            if patch_encoder_img_size is not None:
+                if args.patch_encoder not in RESIZE_SUPPORTED_PATCH_ENCODERS:
+                    raise ValueError(
+                        f"--patch_encoder_img_size is not supported for '{args.patch_encoder}'. "
+                        f"It is only available for ViT-based encoders: {sorted(RESIZE_SUPPORTED_PATCH_ENCODERS)}."
+                    )
+                encoder_kwargs['target_img_size'] = patch_encoder_img_size
+            encoder = encoder_factory(args.patch_encoder, weights_path=args.patch_encoder_ckpt_path, **encoder_kwargs)
             mag_str = f"{float(args.mag):g}"
             processor.run_patch_feature_extraction_job(
                 coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',

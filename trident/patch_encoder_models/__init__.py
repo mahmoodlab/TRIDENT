@@ -1,6 +1,7 @@
 from trident.patch_encoder_models.load import (
     encoder_registry,
     encoder_factory,
+    RESIZE_SUPPORTED_PATCH_ENCODERS,
     CustomInferenceEncoder,
     MuskInferenceEncoder,
     Conchv1InferenceEncoder,
@@ -36,6 +37,7 @@ from trident.patch_encoder_models.load import (
 __all__ = [
     "encoder_registry",
     "encoder_factory",
+    "RESIZE_SUPPORTED_PATCH_ENCODERS",
     "CustomInferenceEncoder",
     "MuskInferenceEncoder",
     "Conchv1InferenceEncoder",
