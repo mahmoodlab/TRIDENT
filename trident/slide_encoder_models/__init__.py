@@ -11,7 +11,8 @@ from trident.slide_encoder_models.load import (
     ThreadsSlideEncoder,
     MadeleineSlideEncoder,
     FeatherSlideEncoder,
-    FeatherUni2SlideEncoder
+    FeatherUni2SlideEncoder,
+    CARESlideEncoder
 )
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "CHIEFSlideEncoder",
     "GigaPathSlideEncoder",
     "FeatherSlideEncoder",
-    "FeatherUni2SlideEncoder"
+    "FeatherUni2SlideEncoder",
+    "CARESlideEncoder"
 ]

@@ -59,6 +59,15 @@ class TestSlideEncoders(unittest.TestCase):
         }
         self._test_encoder_forward(TitanSlideEncoder(), sample_batch, torch.float16)
         
+    def test_care_encoder_initialization(self):
+        sample_batch = {
+            'features': torch.randn(1, 100, 768),
+            'coords': torch.randint(0, 512 * 100, (1, 100, 2)),
+            'attributes': {'patch_size_level0': 512}
+        }
+
+        self._test_encoder_forward(CARESlideEncoder(), sample_batch, torch.float32)
+
     def test_gigapath_encoder_initialization(self):
         sample_batch = {
             'features': torch.randn(1, 100, 1536),
