@@ -22,6 +22,14 @@ from trident.wsi_objects.WSIFactory import (
 )
 
 
+def _remove_incomplete_output(path: str) -> None:
+    try:
+        if os.path.isfile(path) or os.path.islink(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
 class Processor:
 
     def __init__(
@@ -277,8 +285,9 @@ class Processor:
                 "mag": getattr(wsi, "mag", None),
                 "level_count": getattr(wsi, "level_count", None),
             }
+            lock_path = os.path.join(saveto, f'{wsi.name}.jpg')
             # Check if contour already exists
-            if os.path.exists(os.path.join(saveto, f'{wsi.name}.jpg')) and not is_locked(os.path.join(saveto, f'{wsi.name}.jpg')):
+            if os.path.exists(lock_path) and not is_locked(lock_path):
                 self.loop.set_postfix_str(f'{wsi.name} already segmented. Skipping...')
                 update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'Tissue segmented.')
                 try:
@@ -296,7 +305,7 @@ class Processor:
                 continue
 
             # Check if another process has claimed this slide
-            if is_locked(os.path.join(saveto, f'{wsi.name}.jpg')):
+            if is_locked(lock_path):
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 try:
                     update_task_state(
@@ -312,9 +321,43 @@ class Processor:
                     pass
                 continue
 
+            lock_acquired = False
             try:
                 self.loop.set_postfix_str(f'Segmenting {wsi}')
-                create_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
+                lock_acquired = create_lock(lock_path)
+                if not lock_acquired:
+                    self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            "segmentation",
+                            "skipped",
+                            reason="locked",
+                            outputs={"contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg")},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                if os.path.exists(lock_path):
+                    remove_lock(lock_path)
+                    lock_acquired = False
+                    self.loop.set_postfix_str(f'{wsi.name} already segmented. Skipping...')
+                    update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'Tissue segmented.')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            "segmentation",
+                            "skipped",
+                            reason="already_segmented",
+                            outputs={"contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg")},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
                 update_log(os.path.join(self.job_dir, '_logs_segmentation.txt'), f'{wsi.name}{wsi.ext}', 'LOCKED. Segmenting tissue...')
                 try:
                     update_task_state(
@@ -349,7 +392,8 @@ class Processor:
                         job_dir=self.job_dir
                     )
 
-                remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
+                remove_lock(lock_path)
+                lock_acquired = False
 
                 gdf = gpd.read_file(gdf_saveto, rows=1)
                 if gdf.empty:
@@ -392,8 +436,6 @@ class Processor:
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(os.path.join(saveto, f'{wsi.name}.jpg'))
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -416,6 +458,10 @@ class Processor:
                     continue
                 else:
                     raise e
+            finally:
+                if lock_acquired:
+                    _remove_incomplete_output(lock_path)
+                    remove_lock(lock_path)
                 
         # Return the directory where the contours are saved
         return saveto
@@ -519,9 +565,10 @@ class Processor:
                 "mag": getattr(wsi, "mag", None),
                 "level_count": getattr(wsi, "level_count", None),
             }
+            lock_path = os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5')
         
             # Check if patch coords already exist
-            if os.path.exists(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5')):
+            if os.path.exists(lock_path) and not is_locked(lock_path):
                 self.loop.set_postfix_str(f'Patch coords already generated for {wsi.name}. Skipping...')
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
                 try:
@@ -541,7 +588,7 @@ class Processor:
                 continue
             
             # Check if another process has claimed this slide
-            if is_locked(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5')):
+            if is_locked(lock_path):
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 try:
                     update_task_state(
@@ -596,10 +643,48 @@ class Processor:
                     pass
                 continue
 
+            lock_acquired = False
             try:
                 self.loop.set_postfix_str(f'Generating patch coords for {wsi.name}{wsi.ext}')
+                lock_acquired = create_lock(lock_path)
+                if not lock_acquired:
+                    self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            "coords",
+                            "skipped",
+                            reason="locked",
+                            outputs={
+                                "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5")
+                            },
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                if os.path.exists(lock_path):
+                    remove_lock(lock_path)
+                    lock_acquired = False
+                    self.loop.set_postfix_str(f'Patch coords already generated for {wsi.name}. Skipping...')
+                    update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            "coords",
+                            "skipped",
+                            reason="already_generated",
+                            outputs={
+                                "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5")
+                            },
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'LOCKED. Generating coords...')
-                create_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 try:
                     update_task_state(
                         self.job_dir,
@@ -643,7 +728,8 @@ class Processor:
                         save_patch_viz=os.path.join(self.job_dir, save_patch_viz),
                     )
 
-                remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
+                remove_lock(lock_path)
+                lock_acquired = False
                 update_log(os.path.join(self.job_dir, saveto, '_logs_coords.txt'), f'{wsi.name}{wsi.ext}', 'Coords generated')
                 try:
                     update_task_state(
@@ -664,8 +750,6 @@ class Processor:
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -688,6 +772,10 @@ class Processor:
                     continue
                 else:
                     raise e
+            finally:
+                if lock_acquired:
+                    _remove_incomplete_output(lock_path)
+                    remove_lock(lock_path)
         
         # Return the directory where the coordinates are saved
         return os.path.join(self.job_dir, saveto)
@@ -839,9 +927,43 @@ class Processor:
                     pass
                 continue
 
+            lock_acquired = False
             try:
                 self.loop.set_postfix_str(f'Extracting features from {wsi.name}{wsi.ext}')
-                create_lock(wsi_feats_fp)
+                lock_acquired = create_lock(wsi_feats_fp)
+                if not lock_acquired:
+                    self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            f"patch_features:{patch_encoder.enc_name if hasattr(patch_encoder,'enc_name') else 'encoder'}",
+                            "skipped",
+                            reason="locked",
+                            outputs={"features_path": wsi_feats_fp},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                if os.path.exists(wsi_feats_fp):
+                    remove_lock(wsi_feats_fp)
+                    lock_acquired = False
+                    self.loop.set_postfix_str(f'Features already extracted for {wsi}. Skipping...')
+                    update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            f"patch_features:{patch_encoder.enc_name if hasattr(patch_encoder,'enc_name') else 'encoder'}",
+                            "skipped",
+                            reason="already_extracted",
+                            outputs={"features_path": wsi_feats_fp},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'LOCKED. Extracting features...')
                 try:
                     update_task_state(
@@ -867,6 +989,7 @@ class Processor:
                 )
 
                 remove_lock(wsi_feats_fp)
+                lock_acquired = False
                 update_log(log_fp, f'{wsi.name}{wsi.ext}', 'Features extracted.')
                 try:
                     update_task_state(
@@ -884,8 +1007,6 @@ class Processor:
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(wsi_feats_fp)
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -908,6 +1029,10 @@ class Processor:
                     continue
                 else:
                     raise e
+            finally:
+                if lock_acquired:
+                    _remove_incomplete_output(wsi_feats_fp)
+                    remove_lock(wsi_feats_fp)
         
         # Return the directory where the features are saved
         return os.path.join(self.job_dir, saveto)
@@ -1069,9 +1194,43 @@ class Processor:
                     pass
                 continue
 
+            lock_acquired = False
             try:
                 self.loop.set_postfix_str(f'Extracting slide features for {wsi.name}{wsi.ext}')
-                create_lock(slide_feature_path)
+                lock_acquired = create_lock(slide_feature_path)
+                if not lock_acquired:
+                    self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            f"slide_features:{slide_encoder.enc_name}",
+                            "skipped",
+                            reason="locked",
+                            outputs={"slide_features_path": slide_feature_path},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                if os.path.exists(slide_feature_path):
+                    remove_lock(slide_feature_path)
+                    lock_acquired = False
+                    self.loop.set_postfix_str(f'Slide features already extracted for {wsi.name}. Skipping...')
+                    update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'Slide features extracted.')
+                    try:
+                        update_task_state(
+                            self.job_dir,
+                            slide_ref,
+                            f"slide_features:{slide_encoder.enc_name}",
+                            "skipped",
+                            reason="already_extracted",
+                            outputs={"slide_features_path": slide_feature_path},
+                            wsi_meta=wsi_meta,
+                        )
+                    except Exception:
+                        pass
+                    continue
                 update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'LOCKED. Extracting slide features...')
                 try:
                     update_task_state(
@@ -1099,6 +1258,7 @@ class Processor:
                 )
 
                 remove_lock(slide_feature_path)
+                lock_acquired = False
                 update_log(os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt'), f'{wsi.name}{wsi.ext}', 'Slide features extracted.')
                 try:
                     update_task_state(
@@ -1119,8 +1279,6 @@ class Processor:
                 # Release WSI resources to prevent memory accumulation
                 wsi.release()
             except Exception as e:
-                if isinstance(e, KeyboardInterrupt):
-                    remove_lock(slide_feature_path)
                 # Release WSI resources even on error to prevent memory leaks
                 try:
                     wsi.release()
@@ -1143,6 +1301,10 @@ class Processor:
                     continue
                 else:
                     raise e
+            finally:
+                if lock_acquired:
+                    _remove_incomplete_output(slide_feature_path)
+                    remove_lock(slide_feature_path)
         
         return os.path.join(self.job_dir, saveto)
 

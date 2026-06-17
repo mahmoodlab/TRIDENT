@@ -1,10 +1,13 @@
 import unittest
+import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 import tempfile
 import os
 import numpy as np
 
-from trident.IO import splitext, coords_to_h5, read_coords
+from trident.IO import splitext, coords_to_h5, read_coords, create_lock, remove_lock
 import trident.wsi_objects.WSIFactory as wsifactory
 from trident.wsi_objects.WSI import WSI
 from trident.wsi_objects.WSIPatcher import WSIPatcher
@@ -41,6 +44,45 @@ class TestSplitExt(unittest.TestCase):
         stem, ext = splitext("slide.ome.zarr")
         self.assertEqual(stem, "slide")
         self.assertEqual(ext, ".ome.zarr")
+
+
+class TestIOLocks(unittest.TestCase):
+    def test_create_lock_does_not_overwrite_existing_lock(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "output.h5")
+
+            self.assertTrue(create_lock(target))
+            with open(f"{target}.lock", "r", encoding="utf-8") as f:
+                first_payload = json.load(f)
+
+            self.assertFalse(create_lock(target))
+            with open(f"{target}.lock", "r", encoding="utf-8") as f:
+                second_payload = json.load(f)
+
+            self.assertEqual(second_payload, first_payload)
+            remove_lock(target)
+            self.assertFalse(os.path.exists(f"{target}.lock"))
+
+    def test_create_lock_allows_only_one_concurrent_acquirer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target = os.path.join(tmpdir, "output.h5")
+            workers = 8
+            barrier = Barrier(workers)
+
+            def acquire_once():
+                barrier.wait()
+                return create_lock(target)
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(lambda _: acquire_once(), range(workers)))
+
+            self.assertEqual(sum(1 for result in results if result), 1)
+            self.assertTrue(os.path.exists(f"{target}.lock"))
+            with open(f"{target}.lock", "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertIn("pid", payload)
+            self.assertIn("hostname", payload)
+            self.assertIn("created_at", payload)
 
 
 class TestWSIFactoryRouting(unittest.TestCase):
