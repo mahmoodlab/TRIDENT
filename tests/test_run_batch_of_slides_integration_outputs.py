@@ -249,6 +249,162 @@ class TestRunBatchOfSlidesIntegrationOutputs(unittest.TestCase):
             created = [p for p in features_dir.iterdir() if p.suffix == ".h5"]
             self.assertEqual(len(created), 2, "Expected exactly 2 feature files for the 2 WSIs")
 
+    def test_otsu_penmarks_5x_uni_all_outputs(self):
+        """
+        Single `--task all` invocation that chains, in one run:
+          * otsu tissue segmentation        (`--segmenter otsu`)
+          * GrandQC penmark detection        (`--remove_penmarks`)
+          * 256x256 patching at 5x           (`--mag 5 --patch_size 256`)
+          * UNI feature extraction           (`--patch_encoder uni_v1`)
+
+        Runs over a mix of single-file `.svs` slides and a multi-file `.mrxs`
+        (MIRAX) slide to exercise both reader paths through the batch pipeline.
+        MRXS slides are laid out exactly like every other format: the `.mrxs`
+        index file(s) sit directly in `wsi_dir`, each alongside its same-named
+        data folder, and the custom list references them by basename. This keeps
+        slide discovery identical to single-file formats.
+
+        `--remove_penmarks` is used rather than `--remove_artifacts`: the full
+        artifact remover is aggressive enough to discard all of CMU-1's tissue,
+        whereas penmark-only removal preserves it.
+
+        Asserts that segmentation, coords, and feature outputs are all produced
+        by the single run and are mutually consistent (one feature row per patch,
+        UNI's 1024-d embedding).
+        """
+        import csv as csv_mod
+        import shutil
+        import run_batch_of_slides as rbs
+        import h5py
+        from huggingface_hub import snapshot_download
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            wsi_dir = tmp_path / "wsis"
+            job_dir = tmp_path / "job"
+            wsi_dir.mkdir(parents=True, exist_ok=True)
+            job_dir.mkdir(parents=True, exist_ok=True)
+
+            # Single-file SVS fixtures: dropped directly into wsi_dir.
+            svs_names = self._pick_two_svs()
+            for filename in svs_names:
+                hf_hub_download(
+                    repo_id=self.HF_REPO,
+                    repo_type="dataset",
+                    filename=filename,
+                    local_dir=str(wsi_dir),
+                )
+
+            # Multi-file MRXS fixture. The repo stores it nested as
+            # `CMU-1/CMU-1.mrxs` + `CMU-1/CMU-1/<data>`; flatten it into the
+            # standard MIRAX layout so it sits in wsi_dir like the SVS files:
+            #   wsi_dir/CMU-1.mrxs          (index file)
+            #   wsi_dir/CMU-1/<data files>  (same-named sibling data folder)
+            staging = snapshot_download(
+                repo_id=self.HF_REPO,
+                repo_type="dataset",
+                allow_patterns=["CMU-1/*"],
+            )
+            shutil.copy(os.path.join(staging, "CMU-1", "CMU-1.mrxs"), wsi_dir / "CMU-1.mrxs")
+            shutil.copytree(os.path.join(staging, "CMU-1", "CMU-1"), wsi_dir / "CMU-1")
+            self.assertTrue((wsi_dir / "CMU-1.mrxs").is_file(), "MRXS index file not laid out in wsi_dir.")
+            self.assertTrue((wsi_dir / "CMU-1").is_dir(), "MRXS data folder not laid out alongside index.")
+
+            # Custom list: 'wsi' column holds basenames relative to wsi_dir,
+            # identical handling for single-file and multi-file formats.
+            slide_names = [*svs_names, "CMU-1.mrxs"]
+            csv_path = tmp_path / "wsis.csv"
+            with csv_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv_mod.DictWriter(f, fieldnames=["wsi"])
+                writer.writeheader()
+                for name in slide_names:
+                    writer.writerow({"wsi": name})
+
+            # Output stems are basenames without extension (e.g. "CMU-1").
+            expected_stems = [os.path.splitext(os.path.basename(p))[0] for p in slide_names]
+
+            mag, patch_size, overlap = 5, 256, 0
+            # Use GPU when available (GrandQC + UNI are deep models); fall back to
+            # CPU so the test stays runnable on CPU-only hosts.
+            gpu_arg = "0" if torch.cuda.is_available() else "-1"
+            argv = [
+                "run_batch_of_slides.py",
+                "--task", "all",
+                "--job_dir", str(job_dir),
+                "--wsi_dir", str(wsi_dir),
+                "--custom_list_of_wsis", str(csv_path),
+                "--wsi_ext", ".svs", ".mrxs",
+                "--segmenter", "otsu",
+                "--remove_penmarks",
+                "--patch_encoder", "uni_v1",
+                "--mag", str(mag),
+                "--patch_size", str(patch_size),
+                "--overlap", str(overlap),
+                "--batch_size", "2",
+                "--seg_batch_size", "2",
+                "--feat_batch_size", "2",
+                "--max_workers", "1",
+                "--gpus", gpu_arg,
+                "--skip_errors",
+            ]
+            rbs.sys.argv = argv
+            rbs.main()
+
+            mag_str = f"{float(mag):g}"
+            coords_dir = f"{mag_str}x_{patch_size}px_{overlap}px_overlap"
+
+            # 1) Segmentation outputs (otsu + grandqc penmark pass).
+            contours_dir = job_dir / "contours"
+            contours_geojson_dir = job_dir / "contours_geojson"
+            self.assertTrue(contours_dir.is_dir(), "Missing `contours/` output dir")
+            self.assertTrue(contours_geojson_dir.is_dir(), "Missing `contours_geojson/` output dir")
+
+            # 2) Coords outputs (256px @ 5x).
+            patches_dir = job_dir / coords_dir / "patches"
+            self.assertTrue(patches_dir.is_dir(), "Missing patch coords `patches/` output dir")
+
+            # 3) Feature outputs (UNI v1).
+            features_dir = job_dir / coords_dir / "features_uni_v1"
+            self.assertTrue(features_dir.is_dir(), "Missing patch features `features_uni_v1/` output dir")
+
+            for stem in expected_stems:
+                # Segmentation artifacts.
+                self.assertTrue((contours_dir / f"{stem}.jpg").exists(), f"Missing contour jpg for {stem}")
+                self.assertTrue(
+                    (contours_geojson_dir / f"{stem}.geojson").exists(),
+                    f"Missing contour geojson for {stem}",
+                )
+
+                # Coords: derive patch count dynamically (depends on tissue after
+                # artifact removal) rather than hard-coding a magic number.
+                coords_fp = patches_dir / f"{stem}_patches.h5"
+                self.assertTrue(coords_fp.exists(), f"Missing coords h5 for {stem}")
+                with h5py.File(coords_fp, "r") as f:
+                    self.assertIn("coords", f, f"coords dataset missing for {stem}")
+                    n_patches = int(f["coords"].shape[0])
+                    self.assertEqual(int(f["coords"].shape[1]), 2, f"coords should be (N, 2) for {stem}")
+                    self.assertGreater(n_patches, 0, f"Expected >0 patches for {stem}")
+                    self.assertEqual(int(f["coords"].attrs["patch_size"]), patch_size)
+                    self.assertEqual(int(f["coords"].attrs.get("overlap", 0)), overlap)
+
+                # Features: one 1024-d UNI row per patch coordinate.
+                feats_fp = features_dir / f"{stem}.h5"
+                self.assertTrue(feats_fp.exists(), f"Missing features h5 for {stem}")
+                with h5py.File(feats_fp, "r") as f:
+                    self.assertIn("features", f, f"features dataset missing for {stem}")
+                    feats = f["features"]
+                    self.assertEqual(
+                        int(feats.shape[0]),
+                        n_patches,
+                        f"features/coords count mismatch for {stem}",
+                    )
+                    self.assertEqual(int(feats.shape[1]), 1024, "UNI v1 embedding dim should be 1024")
+                    self.assertEqual(f["features"].attrs.get("encoder"), "uni_v1")
+                    self.assertEqual(f["features"].attrs.get("name"), stem)
+
+            created = [p for p in features_dir.iterdir() if p.suffix == ".h5"]
+            self.assertEqual(len(created), len(expected_stems), "Expected one feature file per WSI")
+
     def test_idempotent_rerun_outputs_unchanged(self):
         import run_batch_of_slides as rbs
 
