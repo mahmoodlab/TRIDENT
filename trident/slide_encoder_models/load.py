@@ -49,7 +49,8 @@ slide_to_patch_encoder_name = {
     'gigapath': 'gigapath',
     'madeleine': 'conch_v1',
     'feather': 'conch_v15',
-    'feather_uni_v2': 'uni_v2'
+    'feather_uni_v2': 'uni_v2',
+    'care': 'conch_v15',
 }
 
 
@@ -409,6 +410,52 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
         pass
 
 
+class CARESlideEncoder(BaseSlideEncoder):
+    def __init__(self, **build_kwargs):
+        """CARE slide encoder initialization."""
+        super().__init__(**build_kwargs)
+
+    def _build(self, pretrained=True):
+        self.enc_name = 'care'
+        assert pretrained, "CARESlideEncoder has no non-pretrained model. Please load with pretrained=True."
+
+        from transformers import AutoModel
+        try:
+            model = AutoModel.from_pretrained(
+                "Zipper-1/CARE",
+                trust_remote_code=True
+            )
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                "Failed to load CARE from Hugging Face. "
+                "Please make sure you have accepted access conditions for Zipper-1/CARE "
+                "and logged in with `huggingface-cli login`."
+            )
+
+        precision = torch.float32
+        embedding_dim = 512
+        return model, precision, embedding_dim
+
+    def forward(self, batch, device='cuda'):
+        features = batch['features'].to(device)
+        coords = batch['coords'].to(device)
+        patch_size = batch['attributes']['patch_size_level0']
+        coords = coords // int(patch_size)
+        if features.dim() == 2:
+            features = features.unsqueeze(0)
+        if coords.dim() == 2:
+            coords = coords.unsqueeze(0)
+        N_values = torch.full(
+            (features.shape[0],),
+            features.shape[1],
+            dtype=torch.long,
+            device=features.device
+        )
+        out = self.model(features, N_values, coords)
+        return out.wsi_embedding
+
+
 class TitanSlideEncoder(BaseSlideEncoder):
     
     def __init__(self, **build_kwargs):
@@ -563,6 +610,7 @@ encoder_registry = {
     'madeleine': MadeleineSlideEncoder,
     'feather': FeatherSlideEncoder,
     'feather_uni_v2': FeatherUni2SlideEncoder,
+    'care': CARESlideEncoder,
     'abmil': ABMILSlideEncoder,
 
     # Mean encoders
