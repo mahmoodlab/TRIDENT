@@ -50,6 +50,9 @@ Run checks before launching jobs:
 
 ### 🔨 2. **Running Trident**:
 
+> [!TIP]
+> **Using an AI coding agent (e.g. [Claude Code](https://claude.com/claude-code))?** Trident ships an Agent Skill at [`.claude/skills/trident/`](.claude/skills/trident/SKILL.md). Open this repo in Claude Code and your agent can drive Trident end-to-end — segmentation, patching, and patch/slide feature extraction — with the correct encoder↔resolution pairings, output layout, and common-pitfall handling baked in. Copy the folder to `~/.claude/skills/` to use it from any project.
+
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
 ```
