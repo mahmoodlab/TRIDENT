@@ -68,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help='Optional space-separated list of GPU indices to enable multi-GPU execution.')
     parser.add_argument('--task', type=str, default='seg', 
                         choices=['seg', 'coords', 'feat', 'all'], 
-                        help='Task to run: seg (segmentation), coords (save tissue coordinates), img (save tissue images), feat (extract features).')
+                        help='Task to run: seg (segmentation), coords (save tissue coordinates), feat (extract patch/slide features), or all (run the full pipeline).')
     parser.add_argument('--job_dir', type=str, required=True, help='Directory to store outputs.')
     parser.add_argument('--skip_errors', action='store_true', default=False, 
                         help='Skip errored slides and continue processing.')
@@ -100,8 +100,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # Slide-related arguments
-    parser.add_argument('--wsi_dir', type=str, required=True, 
-                        help='Directory containing WSI files (no nesting allowed).')
+    parser.add_argument('--wsi_dir', type=str, required=True,
+                        help='Directory containing WSI files. Top-level files only by default; pass --search_nested to also include slides in subdirectories.')
     parser.add_argument('--wsi_ext', type=str, nargs='+', default=None, 
                         help='List of allowed file extensions for WSI files.')
     parser.add_argument('--custom_mpp_keys', type=str, nargs='+', default=None,
