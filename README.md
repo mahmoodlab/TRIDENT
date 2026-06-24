@@ -14,15 +14,15 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
-- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
-- **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather.
+- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
+- **Slide encoders**: [Titan](https://huggingface.co/MahmoodLab/TITAN), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
 - **Cell segmentation**: run [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus) over tissue patches (`--task patch_seg`) to get per-cell polygons + cell types as GeoJSON (QuPath-ready) and HDF5.
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
 - **WSI cache pipeline** for slow / network storage: `--wsi_cache /local/ssd --cache_batch_size 32` stages slides locally via a producer/consumer pipeline.
-- **Run reports**: every run writes `summary.md` (human-readable), `runs/<id>.json` (manifest), and `wsi_states/<slide>.json` (per-slide tasks, attempts, errors, resume info).
+- **Run reports**: every run writes `summary.md` (human-readable), `runs/<id>.json` (manifest), and `wsi_states/<slide>.json`.
 
 
 ### 🔨 1. **Installation**:
@@ -146,8 +146,8 @@ Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Kaiko**             | 384/768/1024   | `--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20` | [1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795](https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795) |
 | **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
 | **Hibou**             | 1024           | `--patch_encoder hibou_l --patch_size 224 --mag 20`              | [histai/hibou-L](https://huggingface.co/histai/hibou-L) |
-| **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — |
-| **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | — |
+| **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | [hms-dbmi/CHIEF](https://github.com/hms-dbmi/CHIEF) |
+| **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | [He et al. 2015](https://arxiv.org/abs/1512.03385) |
 
 **Step 3b: Slide Feature Extraction:** Extracts slide embeddings using a slide encoder. Will also automatically extract the right patch embeddings. 
  - **Command**:
