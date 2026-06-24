@@ -119,7 +119,12 @@ def _aggregate_states(job_dir: str) -> Tuple[int, Dict[str, Any], Dict[str, Any]
             reason = t.get("reason")
             label = _task_label(status, reason)
 
-            if task_name.startswith("patch_features:"):
+            if task_name.startswith("coords:"):
+                cfg = task_name.split(":", 1)[1]
+                group = task_counts.setdefault("coords", {})
+                cfg_counts = group.setdefault(cfg, {})
+                cfg_counts[label] = int(cfg_counts.get(label, 0)) + 1
+            elif task_name.startswith("patch_features:"):
                 enc = task_name.split(":", 1)[1]
                 group = task_counts.setdefault("patch_features", {})
                 enc_counts = group.setdefault(enc, {})
@@ -129,6 +134,11 @@ def _aggregate_states(job_dir: str) -> Tuple[int, Dict[str, Any], Dict[str, Any]
                 group = task_counts.setdefault("slide_features", {})
                 enc_counts = group.setdefault(enc, {})
                 enc_counts[label] = int(enc_counts.get(label, 0)) + 1
+            elif task_name.startswith("patch_segmentation:"):
+                model = task_name.split(":", 1)[1]
+                group = task_counts.setdefault("patch_segmentation", {})
+                model_counts = group.setdefault(model, {})
+                model_counts[label] = int(model_counts.get(label, 0)) + 1
             else:
                 counts = task_counts.setdefault(task_name, {})
                 counts[label] = int(counts.get(label, 0)) + 1
@@ -197,10 +207,15 @@ def _render_run_section(
         return "\n".join(lines)
 
     # Top-level tasks
-    for task_name in sorted(k for k in task_counts.keys() if k not in {"patch_features", "slide_features"}):
+    _grouped = {"coords", "patch_features", "slide_features", "patch_segmentation"}
+    for task_name in sorted(k for k in task_counts.keys() if k not in _grouped):
         lines.append(f"- {task_name}: {_render_counts(task_counts[task_name])}")
 
-    # Grouped features
+    # Grouped per-config / per-encoder / per-model tasks
+    if "coords" in task_counts:
+        lines.append("- Coords:")
+        for cfg in sorted(task_counts["coords"].keys()):
+            lines.append(f"  - {cfg}: {_render_counts(task_counts['coords'][cfg])}")
     if "patch_features" in task_counts:
         lines.append("- Patch features:")
         for enc in sorted(task_counts["patch_features"].keys()):
@@ -209,6 +224,10 @@ def _render_run_section(
         lines.append("- Slide features:")
         for enc in sorted(task_counts["slide_features"].keys()):
             lines.append(f"  - {enc}: {_render_counts(task_counts['slide_features'][enc])}")
+    if "patch_segmentation" in task_counts:
+        lines.append("- Cell segmentation:")
+        for model in sorted(task_counts["patch_segmentation"].keys()):
+            lines.append(f"  - {model}: {_render_counts(task_counts['patch_segmentation'][model])}")
 
     if errors:
         lines.append(f"- Errors ({len(errors)}):")

@@ -140,24 +140,36 @@ def _merge_attempt(t: Dict[str, Any], attempt_event: Dict[str, Any], final_statu
 def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
     tasks = state.get("tasks", {}) or {}
     summary: Dict[str, Any] = {}
+    coords_cfgs: Dict[str, str] = {}
     patch_feats: Dict[str, str] = {}
     slide_feats: Dict[str, str] = {}
+    patch_segs: Dict[str, str] = {}
 
     for task_name, t in tasks.items():
         status = t.get("status")
         reason = t.get("reason")
         label = status if not reason else f"{status} ({reason})"
-        if task_name.startswith("patch_features:"):
+        if task_name.startswith("coords:"):
+            coords_cfgs[task_name.split(":", 1)[1]] = label
+        elif task_name.startswith("patch_features:"):
             patch_feats[task_name.split(":", 1)[1]] = label
         elif task_name.startswith("slide_features:"):
             slide_feats[task_name.split(":", 1)[1]] = label
+        elif task_name.startswith("patch_segmentation:"):
+            patch_segs[task_name.split(":", 1)[1]] = label
         else:
             summary[task_name] = label
 
+    # Group per-config coords / per-encoder features / per-model cell segmentation
+    # under single summary entries (e.g. "coords:20x_256px_0px_overlap" -> summary.coords).
+    if coords_cfgs:
+        summary["coords"] = coords_cfgs
     if patch_feats:
         summary["patch_features"] = patch_feats
     if slide_feats:
         summary["slide_features"] = slide_feats
+    if patch_segs:
+        summary["patch_segmentation"] = patch_segs
 
     state["summary"] = summary
     return summary
@@ -354,8 +366,10 @@ def update_task_state(
     tasks = state.setdefault("tasks", {})
     t = _ensure_task(tasks, task)
     t["status"] = status
-    if reason is not None:
-        t["reason"] = reason
+    # Always reflect the latest outcome's reason (None for a clean success). Without this,
+    # a task that was skipped (e.g. "geojson_not_found") and later completed would keep the
+    # stale skip-reason, producing contradictory summaries like "completed (geojson_not_found)".
+    t["reason"] = reason
     if message is not None:
         t["message"] = message
     else:

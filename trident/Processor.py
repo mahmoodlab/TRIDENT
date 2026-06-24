@@ -417,6 +417,7 @@ class Processor:
                         outputs={
                             "contour_geojson": gdf_saveto,
                             "contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg"),
+                            "thumbnail": os.path.join(self.job_dir, "thumbnails", f"{wsi.name}.jpg"),
                         },
                         attempt=make_attempt("finished"),
                         wsi_meta=wsi_meta,
@@ -429,6 +430,7 @@ class Processor:
                         outputs={
                             "contour_geojson": gdf_saveto,
                             "contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg"),
+                            "thumbnail": os.path.join(self.job_dir, "thumbnails", f"{wsi.name}.jpg"),
                         },
                         attempt=make_attempt("finished"),
                         wsi_meta=wsi_meta,
@@ -543,8 +545,12 @@ class Processor:
             local_attrs=local_attrs,
             ignore = ['segmentation_model', 'loop', 'valid_slides', 'wsis']
         )
+        # Scope the per-slide state task by coords config (mag/patch/overlap), so multiple
+        # coords extractions in one job_dir don't overwrite each other — mirroring how
+        # patch features are keyed per encoder (`patch_features:<encoder>`).
+        coords_task = f"coords:{saveto}"
         self.loop = tqdm(self.wsis, desc=f'Saving tissue coordinates to {saveto}', total = len(self.wsis))
-        for wsi in self.loop:    
+        for wsi in self.loop:
             slide_ref = make_slide_ref(
                 name=wsi.name,
                 ext=wsi.ext,
@@ -564,7 +570,7 @@ class Processor:
                 self.loop.set_postfix_str(f'Patch coords already generated for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Patch coords already generated; skipping.",
                     reason="already_generated",
                     outputs={
@@ -579,7 +585,7 @@ class Processor:
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Locked by another worker; skipping.",
                     reason="locked",
                     outputs={
@@ -595,7 +601,7 @@ class Processor:
                 self.loop.set_postfix_str(f'GeoJSON not found for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Tissue GeoJSON not found; run segmentation first.",
                     reason="geojson_not_found",
                     outputs={"tissue_geojson": wsi.tissue_seg_path},
@@ -609,7 +615,7 @@ class Processor:
                 self.loop.set_postfix_str(f'Empty GeoDataFrame for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Tissue GeoDataFrame is empty; no coordinates to extract.",
                     reason="empty_geodataframe",
                     outputs={"tissue_geojson": wsi.tissue_seg_path},
@@ -622,7 +628,7 @@ class Processor:
                 create_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "running",
+                    slide_ref, coords_task, "running",
                     "Generating patch coords...",
                     outputs={
                         "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5")
@@ -659,14 +665,20 @@ class Processor:
                     )
 
                 remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
+                # Record exactly the artifacts this run produced (don't list viz/patch
+                # images that weren't generated).
+                coords_outputs = {
+                    "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5"),
+                }
+                if visualize:
+                    coords_outputs["coords_viz"] = os.path.join(self.job_dir, saveto, "visualization", f"{wsi.name}.jpg")
+                if dump_patches:
+                    coords_outputs["patch_images"] = os.path.join(self.job_dir, saveto, "patch_images", wsi.name)
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "completed",
+                    slide_ref, coords_task, "completed",
                     "Patch coords generated.",
-                    outputs={
-                        "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5"),
-                        "coords_viz": os.path.join(self.job_dir, saveto, "visualization", f"{wsi.name}.jpg"),
-                    },
+                    outputs=coords_outputs,
                     attempt=make_attempt("finished"),
                     wsi_meta=wsi_meta,
                 )
@@ -684,7 +696,7 @@ class Processor:
                 if self.skip_errors:
                     self._record_outcome(
                         os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                        slide_ref, "coords", "error",
+                        slide_ref, coords_task, "error",
                         f"ERROR: {e}",
                         attempt=make_attempt("error", error=str(e)),
                         wsi_meta=wsi_meta,
@@ -951,6 +963,11 @@ class Processor:
                 "level_count": getattr(wsi, "level_count", None),
             }
             wsi_seg_fp = os.path.join(self.job_dir, saveto, f'{wsi.name}.geojson')
+            wsi_seg_h5 = os.path.join(self.job_dir, saveto, f'{wsi.name}.h5')
+            # Build the full set of artifacts this task writes, for the per-slide state.
+            seg_outputs = {"segmentation_geojson": wsi_seg_fp, "segmentation_h5": wsi_seg_h5}
+            if save_viz is not None:
+                seg_outputs["segmentation_viz"] = os.path.join(save_viz, f'{wsi.name}_overview.jpg')
             # Check if segmentation already exists
             if os.path.exists(wsi_seg_fp) and not is_locked(wsi_seg_fp):
                 self.loop.set_postfix_str(f'Patches already segmented for {wsi}. Skipping...')
@@ -958,7 +975,7 @@ class Processor:
                     log_fp, slide_ref, seg_task, "skipped",
                     "Patches already segmented; skipping.",
                     reason="already_segmented",
-                    outputs={"segmentation_geojson": wsi_seg_fp},
+                    outputs=seg_outputs,
                     wsi_meta=wsi_meta,
                 )
                 continue
@@ -995,7 +1012,7 @@ class Processor:
                 self._record_outcome(
                     log_fp, slide_ref, seg_task, "running",
                     "Segmenting patches...",
-                    outputs={"segmentation_geojson": wsi_seg_fp, "coords_path": coords_path},
+                    outputs={**seg_outputs, "coords_path": coords_path},
                     attempt=make_attempt("started"),
                     wsi_meta=wsi_meta,
                 )
@@ -1013,7 +1030,7 @@ class Processor:
                 self._record_outcome(
                     log_fp, slide_ref, seg_task, "completed",
                     "Patches segmented.",
-                    outputs={"segmentation_geojson": wsi_seg_fp, "coords_path": coords_path},
+                    outputs={**seg_outputs, "coords_path": coords_path},
                     attempt=make_attempt("finished"),
                     wsi_meta=wsi_meta,
                 )
