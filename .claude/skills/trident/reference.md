@@ -10,6 +10,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - `run_single_slide.py` flags
 - Patch encoders (24) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
+- Cell segmenters (`--task patch_seg`) — HistoPlus, CellViT++
 - Segmenters & artifact removal
 - WSI readers & formats
 - Output artifacts — everything TRIDENT writes
@@ -26,16 +27,18 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 | `trident batch -- ...` / `trident single -- ...` | Same as above via the installed CLI (reproducible, from any project). |
 | `trident convert ...` | Convert images/WSIs to pyramidal TIFF. |
 
-`--task` ∈ {`seg`, `coords`, `feat`, `all`}. **Each value runs exactly one stage; only `all`
-chains them.** `coords` reads the segmentation from `--job_dir` (skips with `geojson_not_found`
-if absent); `feat` reads coords from `--job_dir` (or from `--coords_dir`). So `coords`/`feat`
-on a fresh `--job_dir` do nothing — run `all`, or run the stages in order. For seg+coords
-without features, run `--task seg` then `--task coords`.
+`--task` ∈ {`seg`, `coords`, `feat`, `patch_seg`, `all`}. **Each value runs exactly one stage;
+only `all` chains them (seg → coords → feat — not `patch_seg`).** `coords` reads the segmentation
+from `--job_dir` (skips with `geojson_not_found` if absent); `feat` and `patch_seg` read coords
+from `--job_dir` (or `feat` from `--coords_dir`). So `coords`/`feat`/`patch_seg` on a fresh
+`--job_dir` do nothing — run `all`, or run the stages in order. For seg+coords without features,
+run `--task seg` then `--task coords`. `patch_seg` (cell/nuclei segmentation) is an alternative
+consumer of coords — see the Cell segmenters section.
 
 ## `run_batch_of_slides.py` flags
 
 **Core**
-- `--task {seg,coords,feat,all}` (default `seg`)
+- `--task {seg,coords,feat,patch_seg,all}` (default `seg`)
 - `--job_dir PATH` (required) — output dir; also the resume key.
 - `--wsi_dir PATH` (required) — directory of WSIs.
 - `--gpus INT [INT ...]` — GPU indices; multiple shards pending slides; `-1` = CPU.
@@ -80,7 +83,14 @@ without features, run `--task seg` then `--task coords`.
   (interpolates positional embeddings via timm `dynamic_img_size`; must be a multiple of
   the model patch size; embedding dim is unchanged).
 - `--slide_encoder NAME` — produce slide embeddings (auto-extracts the right patch features first).
-- `--feat_batch_size INT`, `--batch_size INT`.
+- `--feat_batch_size INT`, `--batch_size INT`. (`--feat_batch_size` also caps the `patch_seg` batch.)
+
+**Cell segmentation (`--task patch_seg`)**
+- `--patch_segmenter {histoplus,cellvit_plus_plus}` (default `histoplus`) — see Cell segmenters table.
+- `--patch_segmenter_ckpt_path PATH` — local model weights (offline/air-gapped); otherwise the model
+  package downloads them (HistoPlus from gated HF; CellViT++ from Zenodo).
+- `--seg_viz` — also write debug overlays (slide overview + full-res sample patches) with a
+  color→cell-type legend.
 
 **Cache / locks (slow storage, resume)**
 - `--wsi_cache /local/ssd --cache_batch_size 32` — stage slides locally (producer/consumer).
@@ -146,6 +156,27 @@ pass its required patch_size/mag.
 | `feather_uni_v2` | uni_v2 | `--patch_size 256 --mag 20` |
 | `care` | conch_v15 | `--patch_size 512 --mag 20` |
 | `threads` | conch_v15 | `--patch_size 512 --mag 20` *(coming soon)* |
+
+## Cell segmenters (`--task patch_seg`)
+
+Cell/nuclei instance segmentation + classification over the tissue patches. Each model lives in
+a **separate package** (TRIDENT only wraps it — no model code is vendored) and pulls deps that
+conflict with TRIDENT's, so **install in a separate environment**. Loaded via
+`trident.patch_segmentation_models.patch_segmenter_factory(name)`.
+
+| Encoder (`--patch_segmenter`) | Cell types | Required args | Install |
+|---|---|---|---|
+| `histoplus` | 14 (pan-cancer) | `--patch_size 784 --mag 20` (mpp 0.5) or `--mag 40` (mpp 0.25) | `pip install git+https://github.com/owkin/histoplus.git` — **not on PyPI**; pulls `timm==1.0.8` + `xformers`; weights **gated** on [HF](https://huggingface.co/Owkin-Bioptimus/histoplus) (CC-BY-NC-ND, needs `HF_TOKEN`) |
+| `cellvit_plus_plus` | 5 (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` — Python 3.10/3.11; on 3.13 its pinned Shapely fails to build → `--no-deps` + `colorama colour geojson natsort opt-einsum pyaml`; checkpoint auto-downloads from Zenodo |
+
+Attribution: HistoPlus — Adjadj/Bannier/Horent et al., arXiv:2508.09926 ([owkin/histoplus](https://github.com/owkin/histoplus)).
+CellViT++ — Hörst et al., arXiv:2501.05269 ([TIO-IKIM/CellViT-Plus-Plus](https://github.com/TIO-IKIM/CellViT-Plus-Plus), Apache-2.0 + Commons Clause).
+
+Notes:
+- **Batched attention can segfault on torch ≥ 2.10** (xformers). If a `patch_seg` run dies with no
+  Python traceback, set `--feat_batch_size 1` (single-patch inference is stable).
+- Output goes to `<cdir>/seg_<model>/` (per model). See Output artifacts.
+- `--task patch_seg` runs only this stage; it needs `seg` + `coords` already in `--job_dir`.
 
 ## Segmenters & artifact removal
 
@@ -215,6 +246,17 @@ _logs_segmentation.txt              per-slide seg status line (key: "<slide><ext
 <cdir>/_logs_slide_features_<senc>.txt       per-slide status
 ```
 
+**Cell segmentation stage — under `<cdir>/`** (only with `--task patch_seg`)
+```
+<cdir>/seg_<model>/<slide>.geojson         per-cell polygons (level-0 coords) + class/class_name/confidence; open in QuPath
+<cdir>/seg_<model>/<slide>.h5              compact cells (see h5 layout below)
+<cdir>/seg_<model>/visualization/<slide>_overview.jpg   slide overview with cells + legend — only with --seg_viz
+<cdir>/seg_<model>/visualization/<slide>/<x>_<y>.jpg    full-res sample-patch overlays — only with --seg_viz
+<cdir>/_config_seg_<model>.json            args used
+<cdir>/_logs_seg_<model>.txt               per-slide status
+```
+`<model>` is the segmenter name (`histoplus`, `cellvit_plus_plus`).
+
 **Run-level bookkeeping (job_dir root)**
 ```
 summary.md                          human-readable report, one section appended per run
@@ -236,6 +278,10 @@ wsi_states/<slide>__<hash>.json     per-slide state: task status/reason/message,
   above) *and* `features` `(n_patches, dim)` float32 with attrs `encoder`, `name`. So a feature
   file alone carries both embeddings and their patch coordinates.
 - **`slide_features_<senc>/<slide>.h5`** — dataset `features` shape `(dim,)`.
+- **`seg_<model>/<slide>.h5`** (cell segmentation) — group `cells` with ragged polygons:
+  `contours` `(M,2)` float32 (all vertices, level-0) + `contour_offsets` `(N+1,)` (cell `i` =
+  `contours[offsets[i]:offsets[i+1]]`), plus `centroids` `(N,2)`, `class_ids` `(N,)`,
+  `confidences` `(N,)`. Group attrs: `model`, `class_names` (JSON), `mpp`, source coords meta.
 
 ## Python API (custom pipelines)
 
@@ -283,7 +329,9 @@ proc = Processor(job_dir="out", wsi_source="./wsis", skip_errors=True)
 ```
 
 Registries: `from trident.patch_encoder_models import encoder_registry` (and the
-`slide_encoder_models` equivalent) list valid names.
+`slide_encoder_models` equivalent) list valid names. For cell segmentation:
+`from trident.patch_segmentation_models import patch_segmenter_factory, patch_segmenter_registry`
+then `proc.run_patch_segmentation_job(coords_dir=..., patch_segmenter=patch_segmenter_factory("histoplus"), device="cuda:0", batch_limit=1, visualize=True)` (or, single-slide, `slide.segment_patches(...)`).
 
 For overlays/visualizations, get a downsampled thumbnail with
 `load_wsi(path, lazy_init=False).get_thumbnail((max_w, max_h))` → PIL image; then map level-0

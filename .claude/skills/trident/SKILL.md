@@ -2,11 +2,12 @@
 name: trident
 description: >-
   Process whole-slide pathology images (WSIs) with TRIDENT: tissue segmentation,
-  patch coordinate extraction, and patch/slide feature (embedding) extraction with
-  foundation models (UNI, CONCH, Virchow, Gemma, Titan, GigaPath, etc.). Use when
-  the user works with WSIs (.svs/.tiff/.ndpi/.mrxs/.czi/.dcm), mentions TRIDENT,
-  run_batch_of_slides / run_single_slide, tissue segmentation, patching, or
-  extracting pathology embeddings for downstream ML.
+  patch coordinate extraction, patch/slide feature (embedding) extraction with
+  foundation models (UNI, CONCH, Virchow, Gemma, Titan, GigaPath, etc.), and
+  cell/nuclei segmentation (HistoPlus, CellViT++). Use when the user works with WSIs
+  (.svs/.tiff/.ndpi/.mrxs/.czi/.dcm), mentions TRIDENT, run_batch_of_slides /
+  run_single_slide, tissue segmentation, patching, extracting pathology embeddings,
+  or cell/nuclei segmentation for downstream ML.
 ---
 
 # TRIDENT — whole-slide image processing
@@ -14,16 +15,18 @@ description: >-
 TRIDENT runs a 3-stage pipeline over whole-slide images (WSIs):
 
 ```
-tissue segmentation  →  patch coordinates  →  patch / slide embeddings
-   (--task seg)          (--task coords)        (--task feat)
+tissue segmentation  →  patch coordinates  →  patch / slide embeddings   (--task feat)
+   (--task seg)          (--task coords)    └→  cell / nuclei segmentation (--task patch_seg)
 ```
 
-Outputs are written under a single `--job_dir` and are **resumable** — re-running the same
-command skips finished work.
+Both `feat` and `patch_seg` consume the same patch coordinates; pick whichever output you need
+(or run both). Outputs are written under a single `--job_dir` and are **resumable** — re-running
+the same command skips finished work.
 
 **Tasks run one stage only — they do NOT auto-run prerequisites.** Pick `--task`:
-- `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features.
+- `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features. (It does **not** run `patch_seg`.)
 - `--task seg` / `--task coords` / `--task feat` — run *only* that stage. `coords` needs segmentation already done in `--job_dir`; `feat` needs coords already done (or supply `--coords_dir`). Running `--task coords` on a fresh `--job_dir` produces nothing (it skips with `geojson_not_found`).
+- `--task patch_seg` — run a **cell/nuclei segmentation model** (HistoPlus / CellViT++) over the tissue patches. Like `feat`, it needs `seg` + `coords` done first. See the "Cell / nuclei segmentation" section below.
 - **Seg + coords but no features?** There is no single flag — run two commands: `--task seg` then `--task coords` on the same `--job_dir`.
 
 For the full CLI flag list, the complete encoder tables, output layout, and the Python
@@ -123,6 +126,39 @@ point feat at them — `--task feat --coords_dir ./extracted_mag20x_patch256_fp 
 encoder's required patch_size/mag (must match the coords' resolution). `--wsi_dir` is still
 required (features read pixels from the WSIs).
 
+## Cell / nuclei segmentation (`--task patch_seg`)
+
+Detects and classifies individual cells across the tissue patches (instance segmentation),
+as an alternative consumer of the coords from `--task coords`. Run `seg` + `coords` first
+(or a prior `all`), then:
+
+```bash
+python run_batch_of_slides.py --task patch_seg \
+  --wsi_dir ./wsis --job_dir ./trident_processed \
+  --patch_segmenter histoplus --mag 20 --patch_size 784 \
+  --feat_batch_size 1 --seg_viz --gpus 0
+```
+
+Two models (each its **own** taxonomy and required resolution — copy verbatim):
+
+| `--patch_segmenter` | Cells | Required args | Install (separate env!) |
+|---|---|---|---|
+| `histoplus` | 14 types | `--patch_size 784 --mag 20` (or `--mag 40`) | `pip install git+https://github.com/owkin/histoplus.git` (not on PyPI); gated HF weights |
+| `cellvit_plus_plus` | 5 (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` |
+
+Critical points:
+- **Install in a separate environment.** These pull deps that conflict with TRIDENT's
+  (HistoPlus needs `timm==1.0.8` + `xformers`; TRIDENT pins `timm==0.9.16`). HistoPlus is
+  **not on PyPI** (install from the git URL) and its weights are **gated** on HuggingFace
+  (accept the license + `HF_TOKEN`). CellViT++ wants Python 3.10/3.11; on 3.13 its pinned
+  Shapely fails to build, so `pip install cellvit --no-deps` then add
+  `colorama colour geojson natsort opt-einsum pyaml`.
+- **Batch size 1 on recent PyTorch.** The vendored attention (xformers) can segfault on
+  batched input with torch ≥ 2.10 — pass `--feat_batch_size 1` if a run dies silently.
+- `--seg_viz` (optional) also writes debug overlays with a color→cell-type legend.
+- Output dir is keyed per model: `<cdir>/seg_<model>/` (see Outputs). Outputs: a QuPath-ready
+  GeoJSON of per-cell polygons + a compact HDF5 + (with `--seg_viz`) visualizations.
+
 ## Outputs (under `--job_dir`)
 
 ```
@@ -137,6 +173,9 @@ _logs_segmentation.txt                per-slide seg status
     patch_images/<slide>/*.png        patch image crops — only with --dump_patches
     features_<enc>/<slide>.h5         patch embeddings: datasets `features` (n,dim) + `coords`
     slide_features_<enc>/<slide>.h5   slide embedding `features` (dim,) — only with --slide_encoder
+    seg_<model>/<slide>.geojson       per-cell polygons + class/class_name/confidence — only with --task patch_seg
+    seg_<model>/<slide>.h5            compact cells: contours+contour_offsets, centroids, class_ids, confidences
+    seg_<model>/visualization/        <slide>_overview.jpg + <slide>/ patch overlays — only with --seg_viz
     _config_coords.json / _config_feats_<enc>.json / _config_slide_features_<enc>.json
     _logs_coords.txt / _logs_feats_<enc>.txt / _logs_slide_features_<enc>.txt
 summary.md                            human-readable run report (one section per run)
@@ -187,3 +226,4 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
+- `--task patch_seg` dies silently / "not installed" → install the cell model in a **separate env** (HistoPlus from git, gated; CellViT++ from PyPI), and pass `--feat_batch_size 1` on torch ≥ 2.10. See the cell-segmentation section.
