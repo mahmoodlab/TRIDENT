@@ -14,7 +14,7 @@ from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
-    splitext
+    save_cell_segmentation_h5, overlay_instances_on_thumbnail, splitext
 )
 
 ReadMode = Literal['pil', 'numpy']
@@ -1039,6 +1039,241 @@ class WSI:
             raise ValueError(f'Invalid save_features_as: {saveas}. Only "h5" and "pt" are supported.')
 
         return os.path.join(save_features, f'{self.name}.{saveas}')
+
+    @torch.inference_mode()
+    def segment_patches(
+        self,
+        patch_segmenter: torch.nn.Module,
+        coords_path: str,
+        save_dir: str,
+        device: str = 'cuda:0',
+        batch_limit: int = 512,
+        save_viz: Optional[str] = None,
+        verbose: bool = False,
+    ) -> str:
+        """
+        Run a patch-segmentation model (e.g. HistoPlus, CellViT++) over the tissue patches
+        of the WSI and stitch the per-patch cell/object instances into slide-level artifacts.
+
+        This mirrors `extract_patch_features`: it iterates the same patch coordinates and
+        batches patches through TRIDENT's dataloader, but instead of a feature vector per
+        patch it collects per-cell instances (polygon + class + confidence) translated into
+        level-0 coordinates, and writes three artifacts aligned with the rest of the pipeline:
+
+            * ``<save_dir>/<slide>.geojson`` — per-cell polygons with ``class``/``class_name``/
+              ``confidence`` properties (QuPath-loadable, like the tissue contours).
+            * ``<save_dir>/<slide>.h5`` — compact ragged storage of contours + centroids +
+              class ids + confidences (mirrors the patch-feature ``.h5`` convention).
+            * ``<save_viz>/<slide>.jpg`` — optional debug overlay of polygons on a thumbnail.
+
+        Parameters:
+            patch_segmenter (torch.nn.Module):
+                A `BasePatchSegmenter` exposing `eval_transforms`, `class_names`, and
+                `predict_patches(imgs) -> list-per-image of instance dicts` (contours in
+                input-patch pixel coords).
+            coords_path (str): Path to the patch-coordinate `.h5` from the coords task.
+            save_dir (str): Directory for the GeoJSON + HDF5 outputs.
+            device (str, optional): Compute device. Defaults to 'cuda:0'.
+            batch_limit (int, optional): Max patches per batch. Defaults to 512.
+            save_viz (str, optional): If set, directory for the debug overlay JPEG.
+            verbose (bool, optional): Show a progress bar. Defaults to False.
+
+        Returns:
+            str: Absolute path to the saved GeoJSON.
+        """
+        import json
+        import geopandas as gpd
+        from shapely import Polygon
+
+        self._lazy_initialize()
+        patch_segmenter.to(device)
+        patch_segmenter.eval()
+        patch_transforms = patch_segmenter.eval_transforms
+        class_names = getattr(patch_segmenter, 'class_names', None)
+        model_name = getattr(patch_segmenter, 'seg_name', None)
+
+        coords_attrs, coords = read_coords(coords_path)
+        patch_size = coords_attrs.get('patch_size', None)
+        level0_magnification = coords_attrs.get('level0_magnification', None)
+        target_magnification = coords_attrs.get('target_magnification', None)
+        if None in (patch_size, level0_magnification, target_magnification):
+            raise KeyError('Missing attributes in coords_attrs.')
+
+        # Level-0 pixels spanned by one patch edge. Patches are read at target_magnification,
+        # so each covers patch_size * downsample level-0 pixels. The model returns contours in
+        # the *input image* pixel space, so the level-0 scale is patch_extent / input_edge.
+        downsample = level0_magnification / target_magnification
+        patch_extent_level0 = patch_size * downsample
+
+        patcher = self.create_patcher(
+            patch_size=patch_size,
+            src_mag=level0_magnification,
+            dst_mag=target_magnification,
+            custom_coords=coords,
+            coords_only=False,
+            pil=True,
+        )
+
+        os.makedirs(save_dir, exist_ok=True)
+        geojson_path = os.path.join(save_dir, f'{self.name}.geojson')
+        h5_path = os.path.join(save_dir, f'{self.name}.h5')
+
+        h5_attrs = {
+            'model': model_name or 'unknown',
+            'class_names': json.dumps(class_names) if class_names is not None else '[]',
+            'level0_magnification': float(level0_magnification),
+            'target_magnification': float(target_magnification),
+            'patch_size': int(patch_size),
+            'mpp': float(self.mpp) if self.mpp is not None else -1.0,
+        }
+
+        dataset = WSIPatcherDataset(patcher, patch_transforms)
+        if len(dataset) == 0:
+            warnings.warn(
+                f"No patch coordinates available for slide '{self.name}'. Saving empty outputs."
+            )
+            empty = gpd.GeoDataFrame(columns=['class', 'class_name', 'confidence', 'geometry'], geometry='geometry')
+            empty.set_crs("EPSG:3857", inplace=True)
+            empty.to_file(geojson_path, driver="GeoJSON")
+            save_cell_segmentation_h5(h5_path, [], h5_attrs)
+            return geojson_path
+
+        inferred_workers = get_num_workers(batch_limit, max_workers=self.max_workers)
+        dataloader_kwargs = dict(
+            dataset=dataset,
+            batch_size=batch_limit,
+            num_workers=inferred_workers,
+            pin_memory=False,
+        )
+
+        def _collect_instances(ctx):
+            dl_kwargs = dict(dataloader_kwargs)
+            if ctx is not None:
+                dl_kwargs['multiprocessing_context'] = ctx
+            dataloader = DataLoader(**dl_kwargs)
+            iterator = tqdm(dataloader) if verbose else dataloader
+            collected = []
+            for imgs, (xs, ys) in iterator:
+                imgs = imgs.to(device)
+                input_edge = imgs.shape[-1]
+                scale = patch_extent_level0 / input_edge  # level-0 px per input px
+                scale_holder[0] = scale
+                # Precision is the model's responsibility (instance models such as
+                # HistoPlus manage their own AMP / output casting); the semantic default
+                # path applies autocast internally. So no outer autocast here.
+                per_image = patch_segmenter.predict_patches(imgs)
+                xs = xs.numpy()
+                ys = ys.numpy()
+                for i, instances in enumerate(per_image):
+                    origin = np.array([int(xs[i]), int(ys[i])], dtype=np.float64)
+                    for inst in instances:
+                        contour_l0 = np.asarray(inst['contour'], dtype=np.float64) * scale + origin
+                        centroid_l0 = np.asarray(inst['centroid'], dtype=np.float64) * scale + origin
+                        collected.append({
+                            'contour': contour_l0,
+                            'centroid': centroid_l0,
+                            'class_id': int(inst['class_id']),
+                            'class_name': inst.get('class_name'),
+                            'confidence': float(inst.get('confidence', 1.0)),
+                            'origin': (int(xs[i]), int(ys[i])),
+                        })
+            return collected
+
+        scale_holder = [patch_extent_level0 / patch_size]  # updated with the true input edge
+        instances = _run_with_dataloader_ctx_fallback(
+            _collect_instances,
+            inferred_workers,
+            'patch_seg_spawn_fallback',
+            "[WSI] Falling back to fork-based DataLoader workers for patch segmentation due to pickling limits.",
+            'patch segmentation dataloader',
+        )
+
+        # 1) GeoJSON of per-cell polygons (level-0 coords).
+        records = []
+        for inst in instances:
+            contour = inst['contour']
+            if len(contour) < 3:
+                continue
+            polygon = Polygon(contour)
+            if not polygon.is_valid:
+                polygon = polygon.buffer(0)
+            records.append({
+                'class': inst['class_id'],
+                'class_name': inst['class_name'],
+                'confidence': inst['confidence'],
+                'geometry': polygon,
+            })
+        gdf = gpd.GeoDataFrame(
+            records, columns=['class', 'class_name', 'confidence', 'geometry'], geometry='geometry'
+        )
+        gdf.set_crs("EPSG:3857", inplace=True)
+        gdf.to_file(geojson_path, driver="GeoJSON")
+
+        # 2) Compact HDF5 of all instances.
+        save_cell_segmentation_h5(h5_path, instances, h5_attrs)
+
+        # 3) Optional debug visualization. Two complementary artifacts:
+        #    (a) a slide-thumbnail overview showing where cells are (global density), and
+        #    (b) full-resolution overlays of the most cell-dense patches, where individual
+        #        cells are actually visible (they vanish at thumbnail scale).
+        if save_viz is not None and len(instances) > 0:
+            max_dimension = 2000
+            if self.width >= self.height:
+                thumb_w = max_dimension
+                thumb_h = int(thumb_w * self.height / self.width)
+            else:
+                thumb_h = max_dimension
+                thumb_w = int(thumb_h * self.width / self.height)
+            thumbnail = np.array(self.get_thumbnail((thumb_w, thumb_h)))
+            overlay_instances_on_thumbnail(
+                gdf, thumbnail, os.path.join(save_viz, f'{self.name}_overview.jpg'),
+                thumb_w / self.width,
+            )
+            self._save_patch_segmentation_viz(
+                instances, scale_holder[0], patch_size, level0_magnification,
+                target_magnification, class_names, save_viz, max_patches=8,
+            )
+
+        return geojson_path
+
+    def _save_patch_segmentation_viz(
+        self, instances, scale, patch_size, level0_mag, target_mag,
+        class_names, save_viz, max_patches=8,
+    ) -> None:
+        """
+        Render the most cell-dense patches at full resolution with their instance contours
+        overlaid, saved under ``<save_viz>/<slide>/<x>_<y>.jpg``. This is the useful debug
+        artifact for cell segmentation (cells are too small to see on a slide thumbnail).
+        """
+        from collections import defaultdict
+        import numpy as np
+        from trident.IO import draw_instances_on_tile
+
+        by_patch = defaultdict(list)
+        for inst in instances:
+            by_patch[inst['origin']].append(inst)
+        top = sorted(by_patch.items(), key=lambda kv: -len(kv[1]))[:max_patches]
+        if not top:
+            return
+
+        out_dir = os.path.join(save_viz, self.name)
+        os.makedirs(out_dir, exist_ok=True)
+        sample_coords = np.array([list(origin) for origin, _ in top], dtype=int)
+        patcher = self.create_patcher(
+            patch_size=patch_size, src_mag=level0_mag, dst_mag=target_mag,
+            custom_coords=sample_coords, coords_only=False, pil=True,
+        )
+        for idx, (origin, patch_instances) in enumerate(top):
+            tile, x, y = patcher[idx]
+            origin_arr = np.array(origin, dtype=np.float64)
+            px_instances = [{
+                'contour': (np.asarray(inst['contour'], dtype=np.float64) - origin_arr) / scale,
+                'class_id': inst['class_id'],
+            } for inst in patch_instances]
+            draw_instances_on_tile(
+                np.array(tile), px_instances, class_names,
+                os.path.join(out_dir, f'{int(x)}_{int(y)}.jpg'),
+            )
 
     @torch.inference_mode()
     def extract_slide_features(

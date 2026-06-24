@@ -46,6 +46,11 @@ The CLI entrypoints are thin wrappers around ``Processor``.
    enc = patch_encoder_factory("uni_v1")
    processor.run_patch_feature_extraction_job(coords_dir="20x_256px_0px_overlap", patch_encoder=enc, device="cuda:0", batch_limit=64)
 
+   # Cell segmentation (per-cell polygons + types) over the same coords:
+   from trident.patch_segmentation_models import patch_segmenter_factory
+   cell_seg = patch_segmenter_factory("histoplus")
+   processor.run_patch_segmentation_job(coords_dir="20x_784px_0px_overlap", patch_segmenter=cell_seg, device="cuda:0", batch_limit=1, visualize=True)
+
 Outputs and run tracking
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -203,6 +208,41 @@ Factory for loading patch-level encoder models.
      - —
 
 .. automodule:: trident.patch_encoder_models
+   :members:
+   :undoc-members:
+
+
+Cell Segmenters
+---------------
+
+Factory for cell/nuclei segmentation models used by ``run_patch_segmentation_job`` (``--task patch_seg``).
+Each returns per-cell polygons + cell types; models ship in their own packages.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 12 36 32
+
+   * - Cell Segmenter
+     - Cell types
+     - Args
+     - Install / Link
+   * - **HistoPlus**
+     - 14
+     - ``--patch_segmenter histoplus --patch_size 784 --mag 20``
+     - ``pip install git+https://github.com/owkin/histoplus.git`` · gated `Owkin-Bioptimus/histoplus <https://huggingface.co/Owkin-Bioptimus/histoplus>`__
+   * - **CellViT++**
+     - 5 (PanNuke)
+     - ``--patch_segmenter cellvit_plus_plus --patch_size 1024 --mag 40``
+     - ``pip install cellvit`` · `TIO-IKIM/CellViT-Plus-Plus <https://github.com/TIO-IKIM/CellViT-Plus-Plus>`__
+
+.. note::
+   Install these in a **separate environment** (they pull conflicting deps, e.g. HistoPlus needs ``timm==1.0.8``).
+   HistoPlus is **not on PyPI** (install from the git URL above) and its weights are gated on HuggingFace
+   (accept the license, set ``HF_TOKEN``); on recent PyTorch run it with ``--feat_batch_size 1`` (batched attention
+   can crash). CellViT++ is on PyPI — use Python 3.10/3.11; on 3.13 its pinned Shapely fails to build, so install
+   ``--no-deps`` and add ``colorama colour geojson natsort opt-einsum pyaml``.
+
+.. automodule:: trident.patch_segmentation_models
    :members:
    :undoc-members:
 

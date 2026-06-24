@@ -17,6 +17,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather.
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
+- **Cell segmentation**: run [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus) over tissue patches (`--task patch_seg`) to get per-cell polygons + cell types as GeoJSON (QuPath-ready) and HDF5.
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
@@ -51,7 +52,7 @@ Run checks before launching jobs:
 ### 🔨 2. **Running Trident**:
 
 > [!TIP]
-> **Using an AI coding agent (e.g. [Claude Code](https://claude.com/claude-code))?** Trident ships an Agent Skill at [`.claude/skills/trident/`](.claude/skills/trident/SKILL.md). Open this repo in Claude Code and your agent can drive Trident end-to-end — segmentation, patching, and patch/slide feature extraction — with the correct encoder↔resolution pairings, output layout, and common-pitfall handling baked in. Copy the folder to `~/.claude/skills/` to use it from any project.
+> **Using an AI coding agent?** Trident ships an Agent Skill at [`.claude/skills/trident/`](.claude/skills/trident/SKILL.md). Open this repo in Claude Code and your agent can drive Trident end-to-end. Copy the folder to `~/.claude/skills/` to use it from any project.
 
 **Already familiar with WSI processing?** Perform segmentation, patching, and UNI feature extraction from a directory of WSIs with:
 
@@ -178,6 +179,32 @@ Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](
 
 > [!NOTE]
 > If your task includes multiple slides per patient, you can generate patient-level embeddings by: (1) processing each slide independently and taking their average slide embedding (late fusion) or (2) pooling all patches together and processing that as a single "pseudo-slide" (early fusion). For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).
+
+**Step 4 (optional): Cell Segmentation:** Detects and classifies individual cells/nuclei across the tissue patches. Like feature extraction, it consumes the coordinates from Step 2 (run `--task seg` and `--task coords` first, or rely on a prior `--task all`).
+ - **Command**:
+   ```bash
+   python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./trident_processed \
+       --patch_segmenter histoplus --mag 20 --patch_size 784 --feat_batch_size 1 --seg_viz
+   ```
+   - `--task patch_seg`: Run a cell segmentation model over tissue patches.
+   - `--patch_segmenter histoplus`: Cell model to use (see table below). Use the `--mag`/`--patch_size` from that table.
+   - `--seg_viz` (optional): Also save debug overlays (a slide overview + full-resolution sample patches) with a color→cell-type legend.
+ - **Outputs** (under `./trident_processed/20x_784px_0px_overlap/seg_histoplus/`):
+   - `<slide>.geojson`: one polygon per cell with `class` / `class_name` / `confidence`. Open in [QuPath](https://qupath.github.io/).
+   - `<slide>.h5`: compact per-cell storage — `contours` (ragged, with `contour_offsets`), `centroids`, `class_ids`, `confidences`.
+   - `visualization/` (only with `--seg_viz`): `<slide>_overview.jpg` plus per-patch overlays under `<slide>/`.
+
+Cell segmentation models live in separate packages and are loaded via a [`patch_segmenter_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_segmentation_models/load.py).
+
+| Cell Segmenter | Cell types | Args | Install / Link |
+|----------------|-----------:|------|------|
+| **HistoPlus**  | 14         | `--patch_segmenter histoplus --patch_size 784 --mag 20`            | `pip install git+https://github.com/owkin/histoplus.git` · gated: [Owkin-Bioptimus/histoplus](https://huggingface.co/Owkin-Bioptimus/histoplus) |
+| **CellViT++**  | 5 (PanNuke)| `--patch_segmenter cellvit_plus_plus --patch_size 1024 --mag 40`   | `pip install cellvit` · [TIO-IKIM/CellViT-Plus-Plus](https://github.com/TIO-IKIM/CellViT-Plus-Plus) |
+
+> [!NOTE]
+> These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`), so install them in a **separate environment**.
+> - **HistoPlus** is **not on PyPI yet** — install from source: `pip install git+https://github.com/owkin/histoplus.git`. Its weights are gated on HuggingFace (accept the license, set `HF_TOKEN`). On recent PyTorch, run it with `--feat_batch_size 1` (its batched attention kernel can crash; single-patch inference is stable).
+> - **CellViT++** is on PyPI (`pip install cellvit`); use Python **3.10/3.11** (Trident's supported versions). On Python 3.13 its pinned Shapely fails to build — install with `--no-deps` and add `colorama colour geojson natsort opt-einsum pyaml`.
 
 Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more support as well as a [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.
 

@@ -18,8 +18,9 @@ from typing import List
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-from trident import Processor 
+from trident import Processor
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.patch_segmentation_models import patch_segmenter_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
 from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
@@ -66,9 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--gpus', type=int, nargs='+', default=None,
                         help='Optional space-separated list of GPU indices to enable multi-GPU execution.')
-    parser.add_argument('--task', type=str, default='seg', 
-                        choices=['seg', 'coords', 'feat', 'all'], 
-                        help='Task to run: seg (segmentation), coords (save tissue coordinates), feat (extract patch/slide features), or all (run the full pipeline).')
+    parser.add_argument('--task', type=str, default='seg',
+                        choices=['seg', 'coords', 'feat', 'patch_seg', 'all'],
+                        help='Task to run: seg (tissue vs background segmentation), coords (save tissue coordinates), '
+                             'feat (extract patch/slide features), patch_seg (run a dense patch segmentation model such '
+                             'as HistoPlus/SAM over tissue patches), or all (run the full seg->coords->feat pipeline).')
     parser.add_argument('--job_dir', type=str, required=True, help='Directory to store outputs.')
     parser.add_argument('--skip_errors', action='store_true', default=False, 
                         help='Skip errored slides and continue processing.')
@@ -185,8 +188,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--slide_encoder', type=str, default=None, 
                         choices=slide_encoder_registry.keys(), 
                         help='Slide encoder to use')
-    parser.add_argument('--feat_batch_size', type=int, default=None, 
+    parser.add_argument('--feat_batch_size', type=int, default=None,
                         help='Batch size for feature extraction. Defaults to None (use `batch_size` argument instead).')
+
+    # Patch segmentation arguments (task=patch_seg)
+    parser.add_argument('--patch_segmenter', type=str, default='histoplus',
+                        choices=patch_segmenter_registry.keys(),
+                        help='Cell/object segmentation model to run over tissue patches (task=patch_seg). '
+                             'histoplus expects --patch_size 784 at --mag 20 (mpp 0.5) or 40 (mpp 0.25); '
+                             'if you hit a silent crash on newer torch, set --feat_batch_size 1.')
+    parser.add_argument('--patch_segmenter_ckpt_path', type=str, default=None,
+                        help='Optional local path to patch-segmenter weights (offline environments).')
+    parser.add_argument('--seg_viz', action='store_true', default=False,
+                        help='For task=patch_seg, also save a debug overlay JPEG of the predicted cells per slide.')
     return parser
 
 
@@ -343,6 +357,20 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
                 saveas='h5',
                 batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,
             )
+    elif args.task == 'patch_seg':
+        from trident.patch_segmentation_models import patch_segmenter_factory
+        patch_segmenter = patch_segmenter_factory(
+            args.patch_segmenter,
+            weights_path=args.patch_segmenter_ckpt_path,
+        )
+        mag_str = f"{float(args.mag):g}"
+        processor.run_patch_segmentation_job(
+            coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',
+            patch_segmenter=patch_segmenter,
+            device=device,
+            batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,
+            visualize=getattr(args, 'seg_viz', False),
+        )
     else:
         raise ValueError(f'Invalid task: {args.task}')
 
@@ -392,6 +420,7 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
     seg_done = set()
     coords_done = set()
     feat_done = set()
+    patch_seg_done = set()
 
     if 'seg' in tasks:
         contour_dir = os.path.join(args.job_dir, 'contours')
@@ -429,6 +458,14 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
                 if os.path.splitext(filename)[1] in {'.h5', '.pt'}
             )
 
+    if 'patch_seg' in tasks:
+        seg_dir = os.path.join(args.job_dir, coords_dir, f'seg_{args.patch_segmenter}')
+        patch_seg_done = {
+            os.path.splitext(filename)[0]
+            for filename in safe_listdir(seg_dir)
+            if filename.endswith('.geojson')
+        }
+
     pending = []
     for slide_path in all_slides:
         stem = os.path.splitext(os.path.basename(slide_path))[0]
@@ -440,6 +477,8 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
             elif task_name == 'coords' and stem not in coords_done:
                 is_done = False
             elif task_name == 'feat' and stem not in feat_done:
+                is_done = False
+            elif task_name == 'patch_seg' and stem not in patch_seg_done:
                 is_done = False
 
             if not is_done:

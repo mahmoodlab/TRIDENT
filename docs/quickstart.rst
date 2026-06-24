@@ -164,6 +164,27 @@ Stage-only examples
 
 If patch features for the required underlying encoder don't exist, TRIDENT extracts them automatically.
 
+**Cell segmentation** (per-cell polygons + types; reuses existing coords)
+
+.. code-block:: bash
+
+   python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./out \
+       --patch_segmenter histoplus --mag 20 --patch_size 784 --feat_batch_size 1 --seg_viz
+
+Runs a cell segmentation model (``histoplus`` or ``cellvit_plus_plus``) over tissue patches and
+writes, under ``<mag>x_<patch>px_<overlap>px_overlap/seg_<model>/``:
+
+- ``<slide>.geojson``: one polygon per cell with ``class`` / ``class_name`` / ``confidence`` (open in QuPath).
+- ``<slide>.h5``: compact per-cell storage (``contours`` + ``contour_offsets``, ``centroids``, ``class_ids``, ``confidences``).
+- ``visualization/`` (with ``--seg_viz``): a slide overview plus full-resolution sample-patch overlays, both with a color→cell-type legend.
+
+Each model lives in its own package and pulls conflicting deps, so install it in a **separate environment**:
+HistoPlus is **not on PyPI** — ``pip install git+https://github.com/owkin/histoplus.git`` (gated weights on
+HuggingFace; needs ``HF_TOKEN``); CellViT++ is ``pip install cellvit`` (use Python 3.10/3.11; on 3.13 its pinned
+Shapely fails to build — install ``--no-deps`` and add ``colorama colour geojson natsort opt-einsum pyaml``).
+Use the ``--mag`` / ``--patch_size`` the model expects (HistoPlus: ``784 @ 20x``; CellViT++: ``1024 @ 40x``).
+On recent PyTorch, run HistoPlus with ``--feat_batch_size 1`` (its batched attention kernel can crash).
+
 **Convert awkward formats to pyramidal TIFF**
 
 .. code-block:: bash
@@ -196,8 +217,8 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
 
    * - Flag
      - Use
-   * - ``--task {seg,coords,feat,all}``
-     - Pipeline stage. ``all`` runs ``seg → coords → feat``.
+   * - ``--task {seg,coords,feat,patch_seg,all}``
+     - Pipeline stage. ``all`` runs ``seg → coords → feat``. ``patch_seg`` runs a cell segmentation model over the coords from ``coords``.
    * - ``--gpus 0 1`` / ``--gpus -1 -1``
      - Multi-GPU sharding (positive IDs) or multi-CPU workers (``-1`` entries).
    * - ``--max_workers``
@@ -220,6 +241,8 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
      - Save patch images to disk during ``coords`` (debug / QC).
    * - ``--patch_encoder`` / ``--patch_encoder_ckpt_path`` / ``--slide_encoder``
      - Encoders. See API page for full list.
+   * - ``--patch_segmenter {histoplus,cellvit_plus_plus}`` / ``--patch_segmenter_ckpt_path`` / ``--seg_viz``
+     - Cell segmenter for ``--task patch_seg``, optional local weights, and debug overlays with a cell-type legend.
    * - ``--batch_size`` / ``--seg_batch_size`` / ``--feat_batch_size``
      - Stage-specific batch overrides.
    * - ``--wsi_dir`` / ``--wsi_ext`` / ``--search_nested`` / ``--custom_list_of_wsis`` / ``--custom_mpp_keys`` / ``--reader_type``

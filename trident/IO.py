@@ -778,8 +778,236 @@ def mask_to_gdf(
         polygons.append(polygon)
     
     gdf_contours = gpd.GeoDataFrame(pd.DataFrame(tissue_ids, columns=['tissue_id']), geometry=polygons)
-    
+
     return gdf_contours
+
+
+def mask_to_instances(
+    class_map: np.ndarray,
+    class_names: Optional[List[str]] = None,
+    min_contour_area: float = 16.0,
+) -> List[dict]:
+    """
+    Convert a single patch's dense class-index map into a list of instances, in *patch*
+    pixel coordinates. Used as the default (semantic) `predict_patches` implementation:
+    each connected component of every non-background class becomes one instance.
+
+    Args:
+        class_map (np.ndarray): `(H, W)` integer class indices for one patch. 0 = background.
+        class_names (List[str], optional): Names per class index, for the `class_name` field.
+        min_contour_area (float, optional): Minimum contour area (patch px) to keep. Defaults to 16.
+
+    Returns:
+        List[dict]: instances with keys `contour` (K,2 float patch-px), `class_id` (int),
+            `class_name` (str|None), `confidence` (float, 1.0 for semantic), `centroid` (2,).
+    """
+    instances: List[dict] = []
+    for class_id in np.unique(class_map):
+        if class_id == 0:  # background
+            continue
+        binary = (class_map == class_id).astype(np.uint8)
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            if cv2.contourArea(contour) < min_contour_area:
+                continue
+            pts = contour.squeeze(1).astype(np.float64)
+            if pts.ndim != 2 or len(pts) < 3:
+                continue
+            name = None
+            if class_names is not None and 0 <= int(class_id) < len(class_names):
+                name = class_names[int(class_id)]
+            instances.append({
+                "contour": pts,
+                "class_id": int(class_id),
+                "class_name": name,
+                "confidence": 1.0,
+                "centroid": pts.mean(axis=0),
+            })
+    return instances
+
+
+def save_cell_segmentation_h5(save_path: str, instances: List[dict], attributes: dict) -> str:
+    """
+    Save slide-level cell/object instances to a compact HDF5 file.
+
+    Polygons have variable length, so they are stored ragged: a single flat `(M, 2)`
+    `contours` array plus a `contour_offsets` index of length `N+1` (instance `i` spans
+    `contours[offsets[i]:offsets[i+1]]`). This mirrors the patch-feature `.h5` convention
+    (datasets + attributes via `save_h5`) and is far smaller than dense per-patch masks.
+
+    Args:
+        save_path (str): Destination `.h5` path.
+        instances (List[dict]): Records with level-0 `contour` (K,2), `class_id`,
+            `confidence`, `centroid` (2,).
+        attributes (dict): Metadata stored on the `cells` group (e.g. model name,
+            class_mapping JSON, source coords attrs).
+
+    Returns:
+        str: `save_path`.
+    """
+    n = len(instances)
+    if n:
+        contours = [np.asarray(inst["contour"], dtype=np.float32).reshape(-1, 2) for inst in instances]
+        lengths = np.array([len(c) for c in contours], dtype=np.int64)
+        offsets = np.concatenate([[0], np.cumsum(lengths)]).astype(np.int64)
+        flat_contours = np.concatenate(contours, axis=0).astype(np.float32)
+        class_ids = np.array([inst["class_id"] for inst in instances], dtype=np.int32)
+        confidences = np.array([inst["confidence"] for inst in instances], dtype=np.float32)
+        centroids = np.stack([np.asarray(inst["centroid"], dtype=np.float32) for inst in instances])
+    else:
+        flat_contours = np.empty((0, 2), dtype=np.float32)
+        offsets = np.zeros((1,), dtype=np.int64)
+        class_ids = np.empty((0,), dtype=np.int32)
+        confidences = np.empty((0,), dtype=np.float32)
+        centroids = np.empty((0, 2), dtype=np.float32)
+
+    with h5py.File(save_path, 'w') as f:
+        grp = f.create_group('cells')
+        grp.create_dataset('contours', data=flat_contours)
+        grp.create_dataset('contour_offsets', data=offsets)
+        grp.create_dataset('class_ids', data=class_ids)
+        grp.create_dataset('confidences', data=confidences)
+        grp.create_dataset('centroids', data=centroids)
+        for key, val in (attributes or {}).items():
+            grp.attrs[key] = val
+    return save_path
+
+
+# Distinct, reproducible colors per class id (used as cv2 BGR tuples on the BGR canvas).
+CELL_VIZ_PALETTE = [
+    (228, 26, 28), (55, 126, 184), (77, 175, 74), (152, 78, 163), (255, 127, 0),
+    (255, 215, 0), (166, 86, 40), (247, 129, 191), (153, 153, 153), (26, 188, 156),
+    (52, 152, 219), (155, 89, 182), (241, 196, 15), (231, 76, 60), (149, 165, 166),
+]
+
+
+def cell_class_color(class_id: int) -> tuple:
+    """Color (cv2 BGR-on-BGR-canvas) for a class id; stable across the overview and patches."""
+    return CELL_VIZ_PALETTE[int(class_id) % len(CELL_VIZ_PALETTE)]
+
+
+def _draw_cell_legend(canvas: np.ndarray, entries: List[tuple]) -> np.ndarray:
+    """
+    Draw a color->cell-type legend in the top-left corner of ``canvas`` (BGR, in place).
+
+    Args:
+        canvas (np.ndarray): BGR image to draw on.
+        entries (List[tuple]): ordered ``(label, color)`` pairs (color same as the contours).
+    """
+    if not entries:
+        return canvas
+    h, w = canvas.shape[:2]
+    fs = max(0.45, min(1.2, w / 1600.0))
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    tth = max(1, int(round(fs * 1.5)))
+    sw = int(round(22 * fs))          # swatch side
+    gap = int(round(8 * fs)) + 2
+    row_h = sw + gap
+    text_w = max(cv2.getTextSize(lbl, font, fs, tth)[0][0] for lbl, _ in entries)
+    panel_w = min(sw + 3 * gap + text_w, w - 2 * gap)
+    panel_h = row_h * len(entries) + gap
+    x0, y0 = gap, gap
+    cv2.rectangle(canvas, (x0, y0), (x0 + panel_w, y0 + panel_h), (255, 255, 255), -1)
+    cv2.rectangle(canvas, (x0, y0), (x0 + panel_w, y0 + panel_h), (0, 0, 0), max(1, tth // 2))
+    y = y0 + gap
+    for label, color in entries:
+        cv2.rectangle(canvas, (x0 + gap, y), (x0 + gap + sw, y + sw), color, -1)
+        cv2.rectangle(canvas, (x0 + gap, y), (x0 + gap + sw, y + sw), (0, 0, 0), 1)
+        cv2.putText(canvas, label, (x0 + 2 * gap + sw, y + sw - int(round(5 * fs))),
+                    font, fs, (0, 0, 0), tth, cv2.LINE_AA)
+        y += row_h
+    return canvas
+
+
+def overlay_instances_on_thumbnail(
+    gdf: "gpd.GeoDataFrame",
+    thumbnail: np.ndarray,
+    saveto: str,
+    scale: float,
+) -> str:
+    """
+    Draw instance polygons (level-0 coords) onto a slide thumbnail for debugging and save
+    it as a JPEG. Colors are assigned per class id, with a color->cell-type legend drawn in
+    the corner. Mirrors `overlay_gdf_on_thumbnail` used by tissue segmentation.
+
+    Args:
+        gdf (gpd.GeoDataFrame): Instances with `class`/`class_name` columns and polygon
+            `geometry` (level-0).
+        thumbnail (np.ndarray): RGB thumbnail to draw on.
+        saveto (str): Output `.jpg` path.
+        scale (float): thumbnail-pixels-per-level0-pixel (i.e. thumb_width / wsi_width).
+
+    Returns:
+        str: `saveto`.
+    """
+    canvas = np.ascontiguousarray(thumbnail[..., ::-1])  # RGB -> BGR for cv2
+    present = {}  # class_id -> class_name, for the legend
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None or geom.is_empty:
+            continue
+        class_id = int(row.get('class', 0))
+        present.setdefault(class_id, row.get('class_name'))
+        color = cell_class_color(class_id)
+        polys = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
+        for poly in polys:
+            ext = (np.asarray(poly.exterior.coords) * scale).astype(np.int32)
+            cv2.polylines(canvas, [ext], isClosed=True, color=color, thickness=1)
+
+    entries = [
+        (str(present[cid]) if present[cid] is not None else f"class {cid}", cell_class_color(cid))
+        for cid in sorted(present)
+    ]
+    _draw_cell_legend(canvas, entries)
+
+    os.makedirs(os.path.dirname(saveto), exist_ok=True)
+    cv2.imwrite(saveto, canvas)
+    return saveto
+
+
+def draw_instances_on_tile(
+    tile_rgb: np.ndarray,
+    instances_px: List[dict],
+    class_names: Optional[List[str]],
+    saveto: str,
+    thickness: int = 2,
+) -> str:
+    """
+    Draw per-cell instance contours (in *patch* pixel coords) on a full-resolution tile and
+    save as JPEG. This is the readable debug artifact for cell segmentation: at this zoom the
+    individual cells and their class colors are clearly visible. Color is keyed by class id.
+
+    Args:
+        tile_rgb (np.ndarray): `(H, W, 3)` RGB patch image.
+        instances_px (List[dict]): instances with `contour` (K,2 patch-px) and `class_id`.
+        class_names (List[str], optional): unused for drawing; kept for parity/legend hooks.
+        saveto (str): output `.jpg` path.
+        thickness (int, optional): contour line thickness. Defaults to 2.
+
+    Returns:
+        str: `saveto`.
+    """
+    canvas = np.ascontiguousarray(tile_rgb[..., ::-1])  # RGB -> BGR for cv2
+    present = set()
+    for inst in instances_px:
+        contour = np.asarray(inst['contour'], dtype=np.int32)
+        if contour.ndim != 2 or contour.shape[0] < 3:
+            continue
+        class_id = int(inst['class_id'])
+        present.add(class_id)
+        cv2.polylines(canvas, [contour], isClosed=True, color=cell_class_color(class_id),
+                      thickness=thickness)
+
+    def _name(cid):
+        if class_names is not None and 0 <= cid < len(class_names):
+            return str(class_names[cid])
+        return f"class {cid}"
+    entries = [(_name(cid), cell_class_color(cid)) for cid in sorted(present)]
+    _draw_cell_legend(canvas, entries)
+
+    os.makedirs(os.path.dirname(saveto), exist_ok=True)
+    cv2.imwrite(saveto, canvas)
+    return saveto
 
 
 def filter_contours(contours, hierarchy, filter_params, pixel_size):

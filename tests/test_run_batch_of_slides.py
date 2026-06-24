@@ -14,9 +14,17 @@ class _DummySegmentationModel:
 class _DummyProcessor:
     def __init__(self):
         self.calls = []
+        self.patch_seg_calls = []
 
     def run_segmentation_job(self, *args, **kwargs):
         self.calls.append((args, kwargs))
+
+    def run_patch_segmentation_job(self, *args, **kwargs):
+        self.patch_seg_calls.append((args, kwargs))
+
+
+class _DummyPatchSegmenter:
+    seg_name = "histoplus"
 
 
 class TestRunBatchOfSlides(unittest.TestCase):
@@ -57,6 +65,39 @@ class TestRunBatchOfSlides(unittest.TestCase):
         self.assertEqual(len(processor.calls), 1)
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cuda:0")
+
+    def test_run_task_patch_seg_wires_factory_and_viz(self):
+        processor = _DummyProcessor()
+
+        class Args:
+            pass
+        args = Args()
+        args.task = "patch_seg"
+        args.patch_segmenter = "histoplus"
+        args.patch_segmenter_ckpt_path = None
+        args.coords_dir = None
+        args.mag = 20.0
+        args.patch_size = 784
+        args.overlap = 0
+        args.feat_batch_size = 1
+        args.batch_size = 8
+        args.seg_viz = True
+        args.gpus = [0]
+        args.device = "cuda:0"
+
+        with patch(
+            "trident.patch_segmentation_models.patch_segmenter_factory",
+            return_value=_DummyPatchSegmenter(),
+        ) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_called_once()
+        self.assertEqual(len(processor.patch_seg_calls), 1)
+        kwargs = processor.patch_seg_calls[0][1]
+        self.assertEqual(kwargs["coords_dir"], "20x_784px_0px_overlap")
+        self.assertEqual(kwargs["device"], "cuda:0")
+        self.assertEqual(kwargs["batch_limit"], 1)   # feat_batch_size honored
+        self.assertTrue(kwargs["visualize"])         # --seg_viz wired through
 
     def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:

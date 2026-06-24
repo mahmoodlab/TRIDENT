@@ -881,6 +881,167 @@ class Processor:
         # Return the directory where the features are saved
         return os.path.join(self.job_dir, saveto)
 
+    def run_patch_segmentation_job(
+        self,
+        coords_dir: str,
+        patch_segmenter: torch.nn.Module,
+        device: str,
+        batch_limit: int = 512,
+        saveto: str | None = None,
+        visualize: bool = False,
+    ) -> str:
+        """
+        Run a dense patch-segmentation model (e.g. HistoPlus, SAM) over the tissue patches of
+        every slide and save one slide-level GeoJSON of class-labelled polygons per slide.
+
+        This mirrors `run_patch_feature_extraction_job`: it depends on the coords task having
+        run first, iterates the same patch coordinates, and writes results to
+        `<coords_dir>/seg_<model>/<slide_name>.geojson`.
+
+        Parameters:
+            coords_dir (str):
+                Directory (relative to ``job_dir``) containing patch coordinates.
+            patch_segmenter (torch.nn.Module):
+                A `BasePatchSegmenter` producing a `(B, H, W)` class-index map per patch.
+            device (str):
+                Compute device (e.g. 'cuda:0' or 'cpu').
+            batch_limit (int, optional):
+                Max patches per batch. Defaults to 512.
+            saveto (str, optional):
+                Output directory (relative to ``job_dir``). Defaults to
+                ``<coords_dir>/seg_<model>``.
+            visualize (bool, optional):
+                If True, also save a debug overlay JPEG per slide under
+                ``<saveto>/visualization/``. Defaults to False.
+
+        Returns:
+            str: Absolute path to the directory containing the GeoJSON files.
+        """
+        if saveto is None:
+            saveto = os.path.join(coords_dir, f'seg_{patch_segmenter.seg_name}')
+
+        os.makedirs(os.path.join(self.job_dir, saveto), exist_ok=True)
+        save_viz = os.path.join(self.job_dir, saveto, 'visualization') if visualize else None
+        if save_viz is not None:
+            os.makedirs(save_viz, exist_ok=True)
+
+        sig = signature(self.run_patch_segmentation_job)
+        local_attrs = {k: v for k, v in locals().items() if k in sig.parameters}
+        self.save_config(
+            saveto=os.path.join(self.job_dir, coords_dir, f'_config_seg_{patch_segmenter.seg_name}.json'),
+            local_attrs=local_attrs,
+            ignore=['patch_segmenter', 'loop', 'valid_slides', 'wsis']
+        )
+
+        log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_seg_{patch_segmenter.seg_name}.txt')
+        seg_task = f"patch_segmentation:{patch_segmenter.seg_name}"
+        self.loop = tqdm(self.wsis, desc=f'Segmenting patches from coords in {coords_dir}', total=len(self.wsis))
+        for wsi in self.loop:
+            slide_ref = make_slide_ref(
+                name=wsi.name,
+                ext=wsi.ext,
+                slide_path=getattr(wsi, "slide_path", f"{wsi.name}{wsi.ext}"),
+                rel_path=None,
+                reader_type=getattr(wsi, "__class__", type(wsi)).__name__,
+            )
+            wsi_meta = {
+                "dimensions": getattr(wsi, "dimensions", None),
+                "mpp": getattr(wsi, "mpp", None),
+                "mag": getattr(wsi, "mag", None),
+                "level_count": getattr(wsi, "level_count", None),
+            }
+            wsi_seg_fp = os.path.join(self.job_dir, saveto, f'{wsi.name}.geojson')
+            # Check if segmentation already exists
+            if os.path.exists(wsi_seg_fp) and not is_locked(wsi_seg_fp):
+                self.loop.set_postfix_str(f'Patches already segmented for {wsi}. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, seg_task, "skipped",
+                    "Patches already segmented; skipping.",
+                    reason="already_segmented",
+                    outputs={"segmentation_geojson": wsi_seg_fp},
+                    wsi_meta=wsi_meta,
+                )
+                continue
+
+            # Check if coords exist
+            coords_path = os.path.join(self.job_dir, coords_dir, 'patches', f'{wsi.name}_patches.h5')
+            if not os.path.exists(coords_path):
+                self.loop.set_postfix_str(f'Coords not found for {wsi.name}. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, seg_task, "skipped",
+                    "Patch coords not found; run the coords step first.",
+                    reason="coords_not_found",
+                    outputs={"coords_path": coords_path},
+                    wsi_meta=wsi_meta,
+                )
+                continue
+
+            # Check if another process has claimed this slide
+            if is_locked(wsi_seg_fp):
+                self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, seg_task, "skipped",
+                    "Locked by another worker; skipping.",
+                    reason="locked",
+                    outputs={"segmentation_geojson": wsi_seg_fp},
+                    wsi_meta=wsi_meta,
+                    write_log=False,
+                )
+                continue
+
+            try:
+                self.loop.set_postfix_str(f'Segmenting patches of {wsi.name}{wsi.ext}')
+                create_lock(wsi_seg_fp)
+                self._record_outcome(
+                    log_fp, slide_ref, seg_task, "running",
+                    "Segmenting patches...",
+                    outputs={"segmentation_geojson": wsi_seg_fp, "coords_path": coords_path},
+                    attempt=make_attempt("started"),
+                    wsi_meta=wsi_meta,
+                )
+
+                wsi.segment_patches(
+                    patch_segmenter=patch_segmenter,
+                    coords_path=coords_path,
+                    save_dir=os.path.join(self.job_dir, saveto),
+                    device=device,
+                    batch_limit=batch_limit,
+                    save_viz=save_viz,
+                )
+
+                remove_lock(wsi_seg_fp)
+                self._record_outcome(
+                    log_fp, slide_ref, seg_task, "completed",
+                    "Patches segmented.",
+                    outputs={"segmentation_geojson": wsi_seg_fp, "coords_path": coords_path},
+                    attempt=make_attempt("finished"),
+                    wsi_meta=wsi_meta,
+                )
+
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
+            except Exception as e:
+                if isinstance(e, KeyboardInterrupt):
+                    remove_lock(wsi_seg_fp)
+                # Release WSI resources even on error to prevent memory leaks
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                if self.skip_errors:
+                    self._record_outcome(
+                        log_fp, slide_ref, seg_task, "error",
+                        f"ERROR: {e}",
+                        attempt=make_attempt("error", error=str(e)),
+                        wsi_meta=wsi_meta,
+                    )
+                    continue
+                else:
+                    raise e
+
+        # Return the directory where the segmentations are saved
+        return os.path.join(self.job_dir, saveto)
+
     def run_slide_feature_extraction_job(
         self,
         slide_encoder: torch.nn.Module,
