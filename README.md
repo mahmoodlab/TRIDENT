@@ -203,8 +203,6 @@ Cell segmentation models live in separate packages and are loaded via a [`patch_
 
 > [!NOTE]
 > These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`), so install them in a **separate environment**.
-> - **HistoPlus** is **not on PyPI yet** — install from source: `pip install git+https://github.com/owkin/histoplus.git`. Its weights are gated on HuggingFace (accept the license, set `HF_TOKEN`). On recent PyTorch, run it with `--feat_batch_size 1` (its batched attention kernel can crash; single-patch inference is stable).
-> - **CellViT++** is on PyPI (`pip install cellvit`); use Python **3.10/3.11** (Trident's supported versions). On Python 3.13 its pinned Shapely fails to build — install with `--no-deps` and add `colorama colour geojson natsort opt-einsum pyaml`.
 
 Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more support as well as a [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.
 
