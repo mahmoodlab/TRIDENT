@@ -204,8 +204,6 @@ Cell segmentation models live in separate packages and are loaded via a [`patch_
 
 > [!NOTE]
 > These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`), so install them in a **separate environment**.
-> - **HistoPlus** is **not on PyPI yet** — install from source: `pip install git+https://github.com/owkin/histoplus.git`. Its weights are gated on HuggingFace (accept the license, set `HF_TOKEN`). On recent PyTorch, run it with `--feat_batch_size 1` (its batched attention kernel can crash; single-patch inference is stable).
-> - **CellViT++** is on PyPI (`pip install cellvit`); use Python **3.10/3.11** (Trident's supported versions). On Python 3.13 its pinned Shapely fails to build — install with `--no-deps` and add `colorama colour geojson natsort opt-einsum pyaml`.
 
 **Step 5 (optional): Interrogate ROIs with a vision-language model (VLM):** Ask a free-text question about tissue regions and get a free-text answer, using a pathology VLM such as [Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B). Two modes:
 
