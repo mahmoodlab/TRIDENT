@@ -253,6 +253,133 @@ feature `.h5` are fails.
 
 ---
 
+## VLM track — `--task vlm` *(Patho-R1 question answering)*
+
+These tasks exercise the **vision-language question-answering** stage — a third consumer of the
+patch coordinates (alongside `feat` and `patch_seg`). They test the things that are *specific* to
+`vlm` and easy to get wrong: it does **not** auto-run `seg`/`coords` and is **not** part of
+`--task all`; unlike the patch/slide encoders it has **no fixed `patch_size`/`mag`** (the VLM
+processor resizes any input — pick the pair to frame the field of view); the model installs into the
+TRIDENT env (`transformers` + `qwen-vl-utils`, weights auto-downloaded, **non-commercial** license);
+generation is **autoregressive and slow** so batch sweeps want a tight coords set / coarser field of
+view, and OOM is tuned with `--vlm_batch_size`; the output is a **JSON + GeoJSON answer contract**
+(`vlm_<model>/<slide>.json` with `answers:[{x,y,prompt,answer}]` + a QuPath GeoJSON of patch boxes
+carrying the answer), **not** a feature `.h5`; and a single ROI is queried with the **Python API**
+`WSI.query_region` (no coords). VLM1–VLM6 stay inside TRIDENT; VLM7–VLM8 go beyond it (read the
+answer artifacts and build on them).
+
+**Data note.** Any slide works at any magnification (no native-40× requirement, unlike CellViT++).
+H&E slides give the most meaningful answers — e.g. the TCGA diagnostic slides
+`TCGA-AN-A0XW-01Z-00-DX1….svs` / `TCGA-B6-A0IJ-01Z-00-DX1….svs`, or the 20× `394140.svs`. **Grader
+caveat:** answers are model text and can be confidently wrong — grade the *plumbing* (correct task
+ordering, flags, output contract), never the medical correctness of an answer.
+
+### VLM1 — VLM Q&A, end-to-end on one slide *(easy — the core footgun)*
+**Prompt:** "Ask Patho-R1 'Is tumor present? Describe the tissue.' of every tissue patch in
+`./wsis40/TCGA-AN-A0XW….svs`, into `./out_vlm`."
+
+**Correct:** recognizes `vlm` does **not** run prerequisites, so it first does `--task seg` then
+`--task coords` (or a prior `--task all`) into `./out_vlm`, *then*
+`--task vlm --vlm patho_r1_7b --vlm_prompt "Is tumor present? Describe the tissue." --mag 20 --patch_size 512`.
+**Grade:** does NOT fire a bare `--task vlm` on a fresh dir (would skip with `coords_not_found`);
+passes the question via `--vlm_prompt`; ends by confirming
+`out_vlm/20x_512px_0px_overlap/vlm_patho_r1_7b/<slide>.{json,geojson}` exist — and knows the output is
+JSON/GeoJSON answers, **not** a `features_*.h5`.
+
+### VLM2 — Fresh-dir skip + not in `--task all` *(easy)*
+**Prompt:** "Run `--task vlm` on a brand-new `--job_dir`. And does `--task all` include it?"
+
+**Correct:** explains it produces **nothing** — `vlm` reads coords from `--job_dir` and skips with
+`reason=coords_not_found` (`wsi_states/<slide>.json`: *"Patch coords not found; run the coords step
+first."*); the fix is `seg` → `coords` (or `all`) first. And **no** — `--task all` runs only
+seg→coords→feat; `vlm` (like `patch_seg`) is a separate, explicit task. **Grade:** predicts the skip +
+reason (does not claim it auto-segments); states `vlm` is excluded from `--task all`.
+
+### VLM3 — Any magnification works *(easy→medium — the distinguishing fact vs encoders)*
+**Prompt:** "Does Patho-R1 need a specific `--mag`/`--patch_size` like UNI or CONCH? Can I run it at
+`--mag 10 --patch_size 1024`?"
+
+**Correct:** **No fixed resolution** — unlike the patch/slide encoders (whose `--mag`/`--patch_size`
+are dictated by training, where a mismatch yields garbage), a VLM accepts arbitrary input sizes
+because the Qwen2.5-VL processor resizes any crop. So `--mag 10 --patch_size 1024` is perfectly valid;
+pick `--mag`/`--patch_size` to frame the field of view you want. A **lower** `--mag` or **larger**
+`--patch_size` covers more tissue per patch → fewer patches → a faster sweep. **Grade:** does NOT
+impose a fixed pair or call `--mag 10` "wrong"; explicitly contrasts with the encoders' fixed
+resolution; gets the fewer-patches lever right (lower mag / larger patch, **not** higher mag).
+
+### VLM4 — Install into the TRIDENT env + license *(medium — environment literacy)*
+**Prompt:** "TRIDENT says the VLM isn't installed. How do I set up Patho-R1, and can it live in my
+main TRIDENT env? I only have a 12 GB GPU."
+
+**Correct:** **Yes, it installs into the TRIDENT env** (no separate env): `pip install
+"transformers>=4.49" accelerate qwen-vl-utils`; weights auto-download from HuggingFace on first use
+(**CC-BY-NC-ND-4.0, non-commercial research only**). The 7B needs ~16 GB in bf16, so on a 12 GB GPU
+use `--vlm patho_r1_3b` (~8 GB). **Grade:** names the three pip deps and the shared env; flags the
+non-commercial license; picks the **3B** for the 12 GB card (or lowers `--vlm_batch_size`); does not
+claim a separate env or a `transformers` downgrade is needed.
+
+### VLM5 — Slow / OOM batch sweep *(medium)*
+**Prompt:** "My `--task vlm` run over a whole slide is painfully slow and sometimes OOMs. What can I
+do?"
+
+**Correct:** generation is autoregressive and the batch task sweeps **every** patch, so: scope it
+down — a tight `--custom_list_of_wsis`/coords set, or a coarser field of view (a **lower** `--mag` or
+**larger** `--patch_size` → fewer patches); lower `--vlm_batch_size` (default `4`, drop to `2`/`1`) for
+OOM; or query a single region with the `WSI.query_region` Python API instead of sweeping. **Grade:**
+names `--vlm_batch_size` (not `--batch_size`/`--feat_batch_size`); the throughput lever is
+lower-mag/larger-patch (**not** higher mag); offers the single-ROI API as the scope-down escape hatch.
+
+### VLM6 — Single ROI, no sweep *(medium — the Python API path)*
+**Prompt:** "I don't want to process the whole slide — I just want to ask one question about one
+region I already know the coordinates of."
+
+**Correct:** use the **Python API** `slide.query_region(vlm, prompt, location, size, mag)` (with
+`vlm = vlm_factory("patho_r1_7b")` and `slide = load_wsi(path)`) — it crops that one ROI and returns
+the answer **string**; no `--task`/coords/`--job_dir` needed. `location` is the level-0 (x, y) top-left
+and `size` is the square edge in pixels **at `mag`**. **Grade:** reaches for `query_region` (not the
+`--task vlm` batch CLI); knows no coords/job_dir are required; gets the `location` (level-0) / `size`
+(at `mag`) semantics right.
+
+### VLM7 — Read the answer contract + locate hits *(hard — beyond TRIDENT)*
+**Prompt:** "From the `--task vlm` output for `TCGA-AN-A0XW….svs`, find the patches whose answer
+mentions 'tumor' and show me where they are on the slide. Save a PNG."
+
+**Correct (custom code on artifacts):** open `…/vlm_patho_r1_7b/<slide>.json` → `answers` list of
+`{x, y, prompt, answer}`; filter rows whose `answer` matches /tumou?r/i; get a thumbnail via
+`load_wsi(path).get_thumbnail((W,H))`; scale each hit's level-0 `(x, y)` by the thumbnail downsample
+(`level0_width / thumb_width`, from the **patches** `.h5` attrs or slide props) and draw a box of side
+`patch_size_level0` at each; save the PNG. (Equivalently: load the `<slide>.geojson` patch boxes,
+which already carry `prompt`/`answer` in level-0 coords, and filter on the `answer` property.)
+**Grade:** reads the JSON/GeoJSON answer contract (does **NOT** look for a `features_*.h5`); uses the
+level-0 `(x, y)` scaled to the thumbnail for placement (not patch index); knows the GeoJSON is the
+QuPath-loadable form.
+
+### VLM8 — QuPath interop *(medium→hard)*
+**Prompt:** "Give me the VLM answers as something a pathologist can browse region-by-region in
+QuPath."
+
+**Correct:** point them at `…/vlm_<model>/<slide>.geojson` — one polygon per tissue patch (level-0
+coords) carrying the `prompt` and `answer` as feature properties, so it loads directly in
+[QuPath](https://qupath.github.io/) and each region's answer shows in the annotation table. **Grade:**
+names the **GeoJSON** as the QuPath artifact (not the `.json`, not the `.h5`); knows the answer travels
+as a polygon property; does not invent a `--seg_viz`-style flag (the VLM task has no visualization
+flag — its browsable artifact *is* the GeoJSON).
+
+**VLM-track grader notes.** A `vlm` task **passes** only if: (1) `seg`+`coords` are run before
+`vlm` (or `--task all` first) — never a bare `vlm` on a fresh dir; (2) the agent does **not** invent a
+required `--mag`/`--patch_size` — any pair is valid (this is the opposite of the encoder/cell-model
+rule, and the central skill test for this track); (3) `vlm` is treated as **outside** `--task all`;
+(4) batch throughput/OOM is addressed with `--vlm_batch_size` and a coarser field of view
+(lower-mag/larger-patch → fewer patches), **not** `--batch_size`/`--feat_batch_size` or "higher mag";
+(5) install/env reasoning is correct (`transformers`+`qwen-vl-utils` into the TRIDENT env, weights
+auto-downloaded, non-commercial license). For the beyond-TRIDENT tasks, the agent must read the
+**answer contract** — `<slide>.json` `answers:[{x,y,prompt,answer}]` and/or the GeoJSON patch boxes
+with `prompt`/`answer` properties, placed by level-0 `(x, y)` scaled to the thumbnail — and must never
+treat the VLM output like a feature `.h5`. Grading is on plumbing only; the *content* of an answer is
+never a pass/fail criterion (and the agent should caveat that answers are not for clinical use).
+
+---
+
 ## Bonus track — interactive HTML prototypes *(all beyond TRIDENT)*
 
 These turn TRIDENT outputs into **self-contained, single-file HTML** the user can open in a

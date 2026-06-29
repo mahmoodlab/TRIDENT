@@ -785,7 +785,11 @@ class Processor:
         )
 
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_feats_{patch_encoder.enc_name}.txt')
-        feat_task = f"patch_features:{patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else 'encoder'}"
+        # Scope the state task per (encoder, coords config) so extracting the same encoder's
+        # features from two different coords sets in one job_dir don't overwrite each other
+        # (mirrors how coords are keyed per config).
+        _enc_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else 'encoder'
+        feat_task = f"patch_features:{_enc_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Extracting patch features from coords in {coords_dir}', total = len(self.wsis))
         for wsi in self.loop:    
             slide_ref = make_slide_ref(
@@ -946,7 +950,9 @@ class Processor:
         )
 
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_seg_{patch_segmenter.seg_name}.txt')
-        seg_task = f"patch_segmentation:{patch_segmenter.seg_name}"
+        # Scope per (segmenter, coords config): a later run of the same segmenter on a different
+        # coords set (e.g. a restricted cluster subset) must not overwrite this one's state.
+        seg_task = f"patch_segmentation:{patch_segmenter.seg_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Segmenting patches from coords in {coords_dir}', total=len(self.wsis))
         for wsi in self.loop:
             slide_ref = make_slide_ref(
@@ -1104,7 +1110,9 @@ class Processor:
         )
 
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_vlm_{vlm.vlm_name}.txt')
-        vlm_task = f"vlm_query:{vlm.vlm_name}"
+        # Scope per (vlm, coords config): querying the same VLM over different ROI/coords sets
+        # in one job_dir must keep separate state (mirrors coords / features / cell seg).
+        vlm_task = f"vlm_query:{vlm.vlm_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Querying patches from coords in {coords_dir}', total=len(self.wsis))
         for wsi in self.loop:
             slide_ref = make_slide_ref(
@@ -1302,7 +1310,9 @@ class Processor:
         )
 
         slide_feat_log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt')
-        slide_feat_task = f"slide_features:{slide_encoder.enc_name}"
+        # Scope per (slide encoder, coords config) like the other coords-derived tasks, so a
+        # slide encoder aggregated over two different coords sets doesn't overwrite its own state.
+        slide_feat_task = f"slide_features:{slide_encoder.enc_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Extracting slide features using {slide_encoder.enc_name}', total=len(self.wsis))
         for wsi in self.loop:
             slide_ref = make_slide_ref(

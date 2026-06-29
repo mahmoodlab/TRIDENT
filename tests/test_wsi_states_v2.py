@@ -237,6 +237,46 @@ class TestWSIStatesV2(unittest.TestCase):
             self.assertIsNone(st["tasks"]["coords"].get("message"))
 
 
+    def test_same_model_different_coords_do_not_collide(self):
+        """A later run of the same segmenter/encoder/vlm on a DIFFERENT coords set must not
+        overwrite the earlier config's state (keys are scoped per coords config)."""
+        from trident.State import update_task_state, load_all_states
+        with tempfile.TemporaryDirectory() as job_dir:
+            ref = self._mk(job_dir)
+            # HistoPlus completes on the full 20x/784 coords...
+            update_task_state(job_dir, ref, "patch_segmentation:histoplus:20x_784px_0px_overlap",
+                              "completed", outputs={"segmentation_h5": "/x/20x_784px_0px_overlap/seg_histoplus/slideA.h5"})
+            # ...then is skipped on a restricted cluster_coords set (no coords for this slide).
+            update_task_state(job_dir, ref, "patch_segmentation:histoplus:cluster_coords",
+                              "skipped", reason="coords_not_found")
+
+            st = load_all_states(job_dir)[ref["id"]]
+            tasks = st["tasks"]
+            # Both records coexist, each with its own truthful status.
+            self.assertEqual(tasks["patch_segmentation:histoplus:20x_784px_0px_overlap"]["status"], "completed")
+            self.assertIsNone(tasks["patch_segmentation:histoplus:20x_784px_0px_overlap"]["reason"])
+            self.assertEqual(tasks["patch_segmentation:histoplus:cluster_coords"]["status"], "skipped")
+            # The completed run's outputs are NOT polluted by the skip.
+            outs = tasks["patch_segmentation:histoplus:20x_784px_0px_overlap"]["outputs"]
+            self.assertIn("segmentation_h5", outs)
+            # Summary groups both under patch_segmentation, keyed by model:config — no clobber.
+            ps = st["summary"]["patch_segmentation"]
+            self.assertEqual(ps["histoplus:20x_784px_0px_overlap"], "completed")
+            self.assertEqual(ps["histoplus:cluster_coords"], "skipped (coords_not_found)")
+
+    def test_vlm_query_grouped_in_summary(self):
+        """vlm_query:<vlm>:<coords> is grouped under summary.vlm_query (not a flat key)."""
+        from trident.State import update_task_state, load_all_states
+        with tempfile.TemporaryDirectory() as job_dir:
+            ref = self._mk(job_dir)
+            update_task_state(job_dir, ref, "vlm_query:patho_r1_7b:vlm_rois_a", "completed")
+            update_task_state(job_dir, ref, "vlm_query:patho_r1_7b:vlm_rois_b", "completed")
+            st = load_all_states(job_dir)[ref["id"]]
+            vq = st["summary"]["vlm_query"]
+            self.assertEqual(vq["patho_r1_7b:vlm_rois_a"], "completed")
+            self.assertEqual(vq["patho_r1_7b:vlm_rois_b"], "completed")
+
+
 if __name__ == "__main__":
     unittest.main()
 

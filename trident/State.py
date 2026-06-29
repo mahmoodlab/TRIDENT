@@ -144,6 +144,7 @@ def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
     patch_feats: Dict[str, str] = {}
     slide_feats: Dict[str, str] = {}
     patch_segs: Dict[str, str] = {}
+    vlm_queries: Dict[str, str] = {}
 
     for task_name, t in tasks.items():
         status = t.get("status")
@@ -157,11 +158,13 @@ def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
             slide_feats[task_name.split(":", 1)[1]] = label
         elif task_name.startswith("patch_segmentation:"):
             patch_segs[task_name.split(":", 1)[1]] = label
+        elif task_name.startswith("vlm_query:"):
+            vlm_queries[task_name.split(":", 1)[1]] = label
         else:
             summary[task_name] = label
 
-    # Group per-config coords / per-encoder features / per-model cell segmentation
-    # under single summary entries (e.g. "coords:20x_256px_0px_overlap" -> summary.coords).
+    # Group per-config coords / per-encoder features / per-model cell segmentation / per-vlm
+    # queries under single summary entries (e.g. "coords:20x_256px_0px_overlap" -> summary.coords).
     if coords_cfgs:
         summary["coords"] = coords_cfgs
     if patch_feats:
@@ -170,6 +173,8 @@ def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
         summary["slide_features"] = slide_feats
     if patch_segs:
         summary["patch_segmentation"] = patch_segs
+    if vlm_queries:
+        summary["vlm_query"] = vlm_queries
 
     state["summary"] = summary
     return summary
