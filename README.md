@@ -13,12 +13,11 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
-- **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
 - **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://huggingface.co/MahmoodLab/TITAN), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
-- **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
-- **Cell segmentation**: [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus) over tissue patches (`--task patch_seg`) → per-cell polygons + types (GeoJSON/HDF5).
-- **Visual question answering**: interrogate ROIs with a pathology VLM ([Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B)) — over every patch (`--task vlm`) or one region (`run_query_roi.py`).
+- **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu**. Optional `--remove_artifacts` and `--remove_penmarks` clean-up pass.
+- **Cell segmentation**: [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus).
+- **Visual question answering**: Pathology VLM ([Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B)).
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: re-running on the same `--job_dir` skips completed work; `.lock` files guard in-flight tasks (`--clear_dead_locks` clears stale ones).
