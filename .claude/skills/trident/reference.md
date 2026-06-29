@@ -11,7 +11,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Patch encoders (24) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Cell segmenters (`--task patch_seg`) — HistoPlus, CellViT++
-- Vision-language models (`--task vlm` / `run_query_roi.py`) — Patho-R1
+- Vision-language models (`--task vlm`) — Patho-R1
 - Segmenters & artifact removal
 - WSI readers & formats
 - Output artifacts — everything TRIDENT writes
@@ -27,7 +27,6 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 | `python run_single_slide.py ...` | One slide, end-to-end. Good for a first validation run. |
 | `trident batch -- ...` / `trident single -- ...` | Same as above via the installed CLI (reproducible, from any project). |
 | `trident convert ...` | Convert images/WSIs to pyramidal TIFF. |
-| `python run_query_roi.py ...` | Interrogate **one** ROI with a VLM (interactive; no coords needed). |
 
 `--task` ∈ {`seg`, `coords`, `feat`, `patch_seg`, `vlm`, `all`}. **Each value runs exactly one
 stage; only `all` chains them (seg → coords → feat — not `patch_seg`/`vlm`).** `coords` reads the
@@ -198,7 +197,7 @@ Notes:
 - Output goes to `<cdir>/seg_<model>/` (per model). See Output artifacts.
 - `--task patch_seg` runs only this stage; it needs `seg` + `coords` already in `--job_dir`.
 
-## Vision-language models (`--task vlm` / `run_query_roi.py`)
+## Vision-language models (`--task vlm`)
 
 Generative **image+prompt → text** question answering over tissue. Patho-R1 is a Qwen2.5-VL-based
 pathology reasoner. The wrapper only drives `transformers` (no model code vendored). Loaded via
@@ -212,15 +211,11 @@ pathology reasoner. The wrapper only drives `transformers` (no model code vendor
 Attribution: Zhang et al., *"Patho-R1: A Multimodal Reinforcement Learning-Based Pathology Expert
 Reasoner"*, arXiv:2505.11404.
 
-Two modes:
+Two ways to run it:
 - **Batch** (`--task vlm`): asks `--vlm_prompt` of *every* tissue patch; needs `seg` + `coords`
   already in `--job_dir`. Output goes to `<cdir>/vlm_<model>/` (per model). See Output artifacts.
-- **Interactive** (`run_query_roi.py`): asks one prompt of one ROI; no coords needed.
-
-`run_query_roi.py` flags: `--slide_path PATH` (required), `--prompt STR` (required),
-`--location X Y` (level-0 px, required), `--size INT` (square edge in px at `--mag`, default 512),
-`--mag FLOAT` (default: slide-native), `--vlm NAME` (default `patho_r1_7b`), `--vlm_ckpt_path PATH`,
-`--max_new_tokens INT` (default 512), `--gpu INT` (`-1` for CPU), `--reader_type`, `--custom_mpp_keys`.
+- **Single ROI** (Python API): `slide.query_region(vlm, prompt, location, size, mag)` returns the
+  answer string — no coords needed. See the Python API section.
 
 Notes:
 - **Any magnification works.** Unlike the patch/slide encoders (whose `--mag`/`--patch_size` are

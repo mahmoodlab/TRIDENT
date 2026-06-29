@@ -29,7 +29,7 @@ re-running the same command skips finished work.
 - `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features. (It does **not** run `patch_seg` or `vlm`.)
 - `--task seg` / `--task coords` / `--task feat` — run *only* that stage. `coords` needs segmentation already done in `--job_dir`; `feat` needs coords already done (or supply `--coords_dir`). Running `--task coords` on a fresh `--job_dir` produces nothing (it skips with `geojson_not_found`).
 - `--task patch_seg` — run a **cell/nuclei segmentation model** (HistoPlus / CellViT++) over the tissue patches. Like `feat`, it needs `seg` + `coords` done first. See the "Cell / nuclei segmentation" section below.
-- `--task vlm` — interrogate the tissue patches with a **vision-language model** (Patho-R1): ask one free-text prompt of every patch, get a free-text answer. Like `feat`/`patch_seg`, it needs `seg` + `coords` done first. See the "VLM question answering" section below. (For a single ROI, use `run_query_roi.py` instead — no coords needed.)
+- `--task vlm` — interrogate the tissue patches with a **vision-language model** (Patho-R1): ask one free-text prompt of every patch, get a free-text answer. Like `feat`/`patch_seg`, it needs `seg` + `coords` done first. See the "VLM question answering" section below. (For a single ROI, use the `WSI.query_region` Python API — no coords needed.)
 - **Seg + coords but no features?** There is no single flag — run two commands: `--task seg` then `--task coords` on the same `--job_dir`.
 
 For the full CLI flag list, the complete encoder tables, output layout, and the Python
@@ -170,13 +170,12 @@ Install — **both run in the TRIDENT env** (no separate env needed):
 - Output dir is keyed per model: `<cdir>/seg_<model>/` (see Outputs). Outputs: a QuPath-ready
   GeoJSON of per-cell polygons + a compact HDF5 + (with `--seg_viz`) visualizations.
 
-## VLM question answering (`--task vlm` and `run_query_roi.py`)
+## VLM question answering (`--task vlm`)
 
 Interrogate tissue with a **vision-language model** (Patho-R1, a Qwen2.5-VL pathology
-reasoner): give a free-text prompt, get a free-text answer. Two modes:
-
-**Batch** — ask the same prompt of *every* patch (another consumer of the coords from
-`--task coords`; run `seg` + `coords` first, or a prior `all`):
+reasoner): give a free-text prompt, get a free-text answer. Ask the same prompt of *every*
+patch (another consumer of the coords from `--task coords`; run `seg` + `coords` first, or a
+prior `all`):
 
 ```bash
 python run_batch_of_slides.py --task vlm \
@@ -185,14 +184,8 @@ python run_batch_of_slides.py --task vlm \
   --mag 20 --patch_size 512 --gpus 0
 ```
 
-**Interactive** — ask one prompt of one ROI (no coords needed; `--location` is level-0 px,
-`--size` is the square edge in px at `--mag`):
-
-```bash
-python run_query_roi.py --slide_path ./wsis/x.svs \
-  --location 10240 8192 --size 512 --mag 20 \
-  --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
-```
+To query a **single ROI** programmatically (no coords needed), use the Python API
+`WSI.query_region(vlm, prompt, location, size, mag)` — see reference.md.
 
 | `--vlm` | Backbone | Args | Install |
 |---|---|---|---|
@@ -207,7 +200,7 @@ python run_query_roi.py --slide_path ./wsis/x.svs \
   **CC-BY-NC-ND-4.0 (non-commercial)**.
 - **Slow:** generation is autoregressive and the batch task sweeps every patch — prefer a tight
   coords set, a coarser field of view (a **lower** `--mag` or **larger** `--patch_size` covers more
-  tissue per patch → fewer patches), or the interactive ROI path. It is **not** part of `--task all`.
+  tissue per patch → fewer patches), or a single-ROI `WSI.query_region` call. It is **not** part of `--task all`.
 - **Batch size:** `--vlm_batch_size` (default `4`); lower it if you OOM. `--vlm_max_new_tokens`
   (default `512`) caps answer length. Other flags: `--vlm_ckpt_path` (local weights/repo).
 - Output dir is keyed per model: `<cdir>/vlm_<model>/` (see Outputs) — a `<slide>.json` of
@@ -284,4 +277,4 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
 - `--task patch_seg` "not installed" → install the cell model **into the TRIDENT env** (CellViT++ from PyPI; HistoPlus `--no-deps` from git + `timm==1.0.8`, gated weights). Out of GPU memory → lower `--patch_seg_batch_size`. See the cell-segmentation section.
-- `--task vlm` ImportError → `pip install "transformers>=4.49" accelerate qwen-vl-utils`. Out of GPU memory → lower `--vlm_batch_size`. Whole-slide `vlm` is slow (autoregressive, every patch) — for a single region use `run_query_roi.py`, not the batch sweep. `vlm` is **not** part of `--task all`. See the VLM section.
+- `--task vlm` ImportError → `pip install "transformers>=4.49" accelerate qwen-vl-utils`. Out of GPU memory → lower `--vlm_batch_size`. Whole-slide `vlm` is slow (autoregressive, every patch) — for a single region use the `WSI.query_region` Python API, not the batch sweep. `vlm` is **not** part of `--task all`. See the VLM section.

@@ -256,7 +256,7 @@ Vision-Language Models
 ----------------------
 
 Factory for generative vision-language models used by ``run_vlm_query_job`` (``--task vlm``) and
-``WSI.query_region`` (interactive, via ``run_query_roi.py``). Given an image + a free-text prompt
+``WSI.query_region`` (single-ROI Python API). Given an image + a free-text prompt
 they return a free-text answer.
 
 .. list-table::
@@ -282,7 +282,7 @@ they return a free-text answer.
    Runs in the TRIDENT env; weights auto-download from HuggingFace (**CC-BY-NC-ND-4.0**, non-commercial).
    Generation is autoregressive and ``--task vlm`` sweeps every patch, so it is slow and **not** part of
    ``--task all`` — prefer a tight coords set, a coarser field of view (lower ``--mag`` / larger
-   ``--patch_size`` → fewer patches), or the interactive ``run_query_roi.py``. Lower ``--vlm_batch_size``
+   ``--patch_size`` → fewer patches), or the single-ROI ``query_region`` API. Lower ``--vlm_batch_size``
    (default 4) if you OOM. Answers can be confidently wrong — not for clinical use.
 
 .. automodule:: trident.vlm_models

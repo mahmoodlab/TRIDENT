@@ -223,7 +223,7 @@ VLMs are loaded via a [`vlm_factory`](https://github.com/mahmoodlab/trident/blob
 
 > [!NOTE]
 > - **Any magnification works.** Unlike the patch/slide encoders (whose `--mag` / `--patch_size` are fixed by how the model was trained), a VLM accepts arbitrary input sizes — pick `--mag` / `--patch_size` to frame the field of view you want (e.g. `--mag 20 --patch_size 512` for a moderate FoV; a lower `--mag` or larger `--patch_size` gives more context and fewer patches).
-> - VLM generation is **autoregressive and slow** compared with the feed-forward encoders, and `--task vlm` sweeps *every* tissue patch — prefer a tight coords set, a coarser field of view (fewer patches), or the interactive `run_query_roi.py`. It is **not** part of `--task all`. Lower `--vlm_batch_size` (default 4) if you run out of GPU memory; ~16 GB is enough for the 7B in bf16 (~8 GB for the 3B).
+> - VLM generation is **autoregressive and slow** compared with the feed-forward encoders, and `--task vlm` sweeps *every* tissue patch — prefer a tight coords set or a coarser field of view (fewer patches). It is **not** part of `--task all`. Lower `--vlm_batch_size` (default 4) if you run out of GPU memory; ~16 GB is enough for the 7B in bf16 (~8 GB for the 3B).
 > - Patho-R1 weights are **CC-BY-NC-ND-4.0 (non-commercial research only)**. Like any LLM, answers can be confidently wrong — **do not** use them for clinical decisions.
 
 Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more support as well as a [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.

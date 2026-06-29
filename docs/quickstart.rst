@@ -189,14 +189,13 @@ On recent PyTorch, run HistoPlus with ``--feat_batch_size 1`` (its batched atten
 
 .. code-block:: bash
 
-   # Batch: ask the same question of every tissue patch
+   # Ask the same question of every tissue patch
    python run_batch_of_slides.py --task vlm --wsi_dir ./wsis --job_dir ./out \
        --vlm patho_r1_7b --vlm_prompt "Is tumor present? Describe the tissue." \
        --mag 20 --patch_size 512
 
-   # Interactive: ask one question of one ROI (no coords needed)
-   python run_query_roi.py --slide_path ./wsis/x.svs --location 10240 8192 --size 512 --mag 20 \
-       --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
+To interrogate a single ROI instead, use the Python API
+``slide.query_region(vlm, prompt, location, size, mag)`` (no coords needed).
 
 Runs a pathology vision-language model (`Patho-R1 <https://huggingface.co/WenchuanZhang/Patho-R1-7B>`__,
 Qwen2.5-VL) and writes, under ``<mag>x_<patch>px_<overlap>px_overlap/vlm_<model>/``:
@@ -212,7 +211,7 @@ Install into the TRIDENT env: ``pip install "transformers>=4.49" accelerate qwen
 auto-download from HuggingFace; **CC-BY-NC-ND-4.0**, non-commercial). Generation is autoregressive and
 the batch task sweeps every patch, so it is slow and **not** part of ``--task all`` — prefer a tight
 coords set, a coarser field of view (a lower ``--mag`` or larger ``--patch_size`` → fewer patches), or
-the interactive ``run_query_roi.py``. Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be
+the single-ROI ``query_region`` API. Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be
 confidently wrong — not for clinical use.
 
 **Convert awkward formats to pyramidal TIFF**
