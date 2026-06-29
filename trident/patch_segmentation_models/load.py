@@ -1,17 +1,6 @@
 """
 Cell / nuclei segmentation models for TRIDENT's ``patch_seg`` task.
 
-These are thin **wrappers**, not re-implementations. Each wrapper lazily imports the
-upstream package, builds the upstream model, reuses *its* normalization transform, runs
-*its* network, and calls *its* post-processor. TRIDENT only owns the batching / dataloading
-/ I/O (see ``WSI.segment_patches``, mirroring patch feature extraction) and translates each
-upstream per-tile output into TRIDENT's small, model-agnostic ``instance`` dict.
-
-No model architecture or post-processing logic is copied into TRIDENT. The one piece of
-adapted upstream code is CellViT++'s short checkpoint-loading recipe, attributed inline in
-``CellViTPlusPlusSegmenter._build`` (it mirrors ``cellvit`` internals that have no public
-loader). All upstream weights remain under their original licenses (see per-model docstrings).
-
 Instance contract — ``predict_patches(imgs)`` returns, for each image in the batch, a list of:
     {
         "contour":    np.ndarray (K, 2) float, polygon vertices in *input-patch* pixel coords,
@@ -27,7 +16,6 @@ To add a model: subclass ``BasePatchSegmenter``, implement ``_build()`` (return
 override ``predict_patches`` to delegate to the model's own post-processor. Register the
 class in ``patch_segmenter_registry`` at the bottom of this file.
 
-Upstream models wrapped here
 ----------------------------
 * **HistoPlus** — Adjadj, Bannier, Horent et al., *"Towards Comprehensive Cellular
   Characterisation of H&E Slides"*, arXiv:2508.09926 (Owkin/Bioptimus). Repo:
@@ -39,6 +27,7 @@ Upstream models wrapped here
   https://github.com/TIO-IKIM/CellViT-Plus-Plus · License: Apache-2.0 + Commons Clause.
 """
 
+import os
 from typing import Dict, Any, Tuple, Callable, Optional, List
 import numpy as np
 import torch
@@ -186,7 +175,7 @@ class HistoPlusSegmenter(BasePatchSegmenter):
     """
     Wrapper around **HistoPlus** (Owkin/Bioptimus): a CellViT model with an H0-mini
     foundation-model encoder for pan-cancer cell segmentation + classification (14 cell
-    types). This class contains no HistoPlus model code; it only drives the upstream package.
+    types). 
 
     Attribution
     -----------
@@ -228,13 +217,18 @@ class HistoPlusSegmenter(BasePatchSegmenter):
         super().__init__(**build_kwargs)
 
     def _build(self) -> Tuple[nn.Module, Callable, torch.dtype]:
+        # HistoPlus imports xformers, whose flash-attn version check rejects TRIDENT's pinned
+        # flash-attn on torch >= 2.10. HistoPlus only uses xformers for SwiGLU (not attention),
+        # so skipping the check is safe. Set before the import that pulls xformers.
+        os.environ.setdefault("XFORMERS_IGNORE_FLASH_VERSION_CHECK", "1")
         try:
             from histoplus.helpers.segmentor import CellViTSegmentor
         except ImportError as e:
             raise ImportError(
                 "HistoPlus is not installed. It is not yet on PyPI; install from source: "
-                "`pip install git+https://github.com/owkin/histoplus.git`, and accept the gated "
-                "license at https://huggingface.co/Owkin-Bioptimus/histoplus. Original error: " + str(e)
+                "`pip install --no-deps git+https://github.com/owkin/histoplus.git` then "
+                "`pip install timm==1.0.8`, and accept the gated license at "
+                "https://huggingface.co/Owkin-Bioptimus/histoplus. Original error: " + str(e)
             )
 
         segmentor = CellViTSegmentor.from_histoplus(
@@ -243,6 +237,13 @@ class HistoPlusSegmenter(BasePatchSegmenter):
             inference_image_size=self._inference_image_size,
         )
         self._segmentor = segmentor
+        # HistoPlus wraps its network in nn.DataParallel over ALL visible GPUs, which deadlocks
+        # at batch sizes > 1 when more than one GPU is visible. TRIDENT runs one GPU per worker,
+        # so unwrap it to a plain single-device module.
+        import torch.nn as _nn
+        _inf = getattr(segmentor, 'model', None)
+        if isinstance(getattr(_inf, 'module', None), _nn.DataParallel):
+            _inf.module = _inf.module.module
         self.seg_name = 'histoplus'
         self.target_mpp = segmentor.target_mpp
         # class_mapping: {0: 'Background', 1: ...}. Build an index-aligned name list.
@@ -279,8 +280,7 @@ class CellViTPlusPlusSegmenter(BasePatchSegmenter):
     """
     Wrapper around **CellViT++** (TIO-IKIM, University Medicine Essen): a ViT/SAM-based
     cell segmentation + classification model. With the default checkpoint it predicts the
-    5 PanNuke cell types. This class contains no CellViT model code; it only drives the
-    upstream ``cellvit`` package (see ``_build`` for the one adapted loading snippet).
+    5 PanNuke cell types.
 
     Attribution
     -----------

@@ -22,6 +22,7 @@ from trident import Processor
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.patch_segmentation_models import patch_segmenter_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
+from trident.vlm_models import vlm_registry
 from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
 from trident.Summary import start_run, finalize_run
@@ -68,10 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--gpus', type=int, nargs='+', default=None,
                         help='Optional space-separated list of GPU indices to enable multi-GPU execution.')
     parser.add_argument('--task', type=str, default='seg',
-                        choices=['seg', 'coords', 'feat', 'patch_seg', 'all'],
+                        choices=['seg', 'coords', 'feat', 'patch_seg', 'vlm', 'all'],
                         help='Task to run: seg (tissue vs background segmentation), coords (save tissue coordinates), '
                              'feat (extract patch/slide features), patch_seg (run a dense patch segmentation model such '
-                             'as HistoPlus/SAM over tissue patches), or all (run the full seg->coords->feat pipeline).')
+                             'as HistoPlus/SAM over tissue patches), vlm (interrogate tissue patches with a vision-language '
+                             'model such as Patho-R1), or all (run the full seg->coords->feat pipeline).')
     parser.add_argument('--job_dir', type=str, required=True, help='Directory to store outputs.')
     parser.add_argument('--skip_errors', action='store_true', default=False, 
                         help='Skip errored slides and continue processing.')
@@ -195,12 +197,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--patch_segmenter', type=str, default='histoplus',
                         choices=patch_segmenter_registry.keys(),
                         help='Cell/object segmentation model to run over tissue patches (task=patch_seg). '
-                             'histoplus expects --patch_size 784 at --mag 20 (mpp 0.5) or 40 (mpp 0.25); '
-                             'if you hit a silent crash on newer torch, set --feat_batch_size 1.')
+                             'histoplus expects --patch_size 784 at --mag 20 (mpp 0.5) or 40 (mpp 0.25).')
+    parser.add_argument('--patch_seg_batch_size', type=int, default=4,
+                        help='Patches per batch for cell/nuclei segmentation (task=patch_seg). '
+                             'Defaults to 4; lower it if you run out of GPU memory.')
     parser.add_argument('--patch_segmenter_ckpt_path', type=str, default=None,
                         help='Optional local path to patch-segmenter weights (offline environments).')
     parser.add_argument('--seg_viz', action='store_true', default=False,
                         help='For task=patch_seg, also save a debug overlay JPEG of the predicted cells per slide.')
+
+    # Vision-language model (task=vlm) arguments
+    parser.add_argument('--vlm', type=str, default='patho_r1_7b',
+                        choices=vlm_registry.keys(),
+                        help='Vision-language model to interrogate tissue patches with (task=vlm).')
+    parser.add_argument('--vlm_prompt', type=str,
+                        default='Describe the tissue in this region.',
+                        help='Free-text question asked of every tissue patch (task=vlm).')
+    parser.add_argument('--vlm_batch_size', type=int, default=4,
+                        help='Patches per generation batch for task=vlm. Defaults to 4; lower it if you OOM. '
+                             'VLM generation is autoregressive and slow, so prefer a tight coords set.')
+    parser.add_argument('--vlm_max_new_tokens', type=int, default=512,
+                        help='Maximum number of tokens generated per patch answer (task=vlm).')
+    parser.add_argument('--vlm_ckpt_path', type=str, default=None,
+                        help='Optional local path / HF repo for VLM weights (offline environments).')
     return parser
 
 
@@ -368,8 +387,24 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',
             patch_segmenter=patch_segmenter,
             device=device,
-            batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,
+            batch_limit=args.patch_seg_batch_size,
             visualize=getattr(args, 'seg_viz', False),
+        )
+    elif args.task == 'vlm':
+        from trident.vlm_models import vlm_factory
+        vlm = vlm_factory(
+            args.vlm,
+            weights_path=args.vlm_ckpt_path,
+            max_new_tokens=args.vlm_max_new_tokens,
+        )
+        mag_str = f"{float(args.mag):g}"
+        processor.run_vlm_query_job(
+            coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',
+            vlm=vlm,
+            prompt=args.vlm_prompt,
+            device=device,
+            batch_limit=args.vlm_batch_size,
+            max_new_tokens=args.vlm_max_new_tokens,
         )
     else:
         raise ValueError(f'Invalid task: {args.task}')
@@ -466,6 +501,15 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
             if filename.endswith('.geojson')
         }
 
+    vlm_done = set()
+    if 'vlm' in tasks:
+        vlm_dir = os.path.join(args.job_dir, coords_dir, f'vlm_{args.vlm}')
+        vlm_done = {
+            os.path.splitext(filename)[0]
+            for filename in safe_listdir(vlm_dir)
+            if filename.endswith('.json')
+        }
+
     pending = []
     for slide_path in all_slides:
         stem = os.path.splitext(os.path.basename(slide_path))[0]
@@ -479,6 +523,8 @@ def get_pending_slides(args: argparse.Namespace) -> List[str]:
             elif task_name == 'feat' and stem not in feat_done:
                 is_done = False
             elif task_name == 'patch_seg' and stem not in patch_seg_done:
+                is_done = False
+            elif task_name == 'vlm' and stem not in vlm_done:
                 is_done = False
 
             if not is_done:

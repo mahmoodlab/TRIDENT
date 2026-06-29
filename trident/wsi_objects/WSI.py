@@ -5,6 +5,7 @@ import warnings
 import multiprocessing as mp
 import torch 
 from typing import List, Tuple, Optional, Literal, Union
+from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -1047,7 +1048,7 @@ class WSI:
         coords_path: str,
         save_dir: str,
         device: str = 'cuda:0',
-        batch_limit: int = 512,
+        batch_limit: int = 4,
         save_viz: Optional[str] = None,
         verbose: bool = False,
     ) -> str:
@@ -1074,7 +1075,7 @@ class WSI:
             coords_path (str): Path to the patch-coordinate `.h5` from the coords task.
             save_dir (str): Directory for the GeoJSON + HDF5 outputs.
             device (str, optional): Compute device. Defaults to 'cuda:0'.
-            batch_limit (int, optional): Max patches per batch. Defaults to 512.
+            batch_limit (int, optional): Max patches per batch. Defaults to 4.
             save_viz (str, optional): If set, directory for the debug overlay JPEG.
             verbose (bool, optional): Show a progress bar. Defaults to False.
 
@@ -1274,6 +1275,171 @@ class WSI:
                 np.array(tile), px_instances, class_names,
                 os.path.join(out_dir, f'{int(x)}_{int(y)}.jpg'),
             )
+
+    @torch.inference_mode()
+    def query_region(
+        self,
+        vlm: torch.nn.Module,
+        prompt: str,
+        location: Tuple[int, int],
+        size: int,
+        mag: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> str:
+        """
+        Interactively interrogate a single ROI with a vision-language model: crop the
+        region, ask ``prompt``, and return the model's free-text answer.
+
+        This is the interactive counterpart to ``query_patches`` (batch over coords). It
+        reuses the same magnification -> pyramid-level cropping logic as patching by
+        building a one-coordinate patcher, so ``location`` is given in **level-0 pixels**
+        and ``size`` is the square ROI edge in **pixels at the requested ``mag``**.
+
+        Parameters:
+            vlm (torch.nn.Module): A ``BaseVLM`` exposing ``generate(images, prompts)``.
+            prompt (str): The free-text question to ask about the ROI.
+            location (Tuple[int, int]): (x, y) top-left of the ROI in level-0 pixels.
+            size (int): Square ROI edge length, in pixels at ``mag``.
+            mag (float, optional): Magnification to read the ROI at. Defaults to the
+                slide's native magnification (``self.mag``).
+            max_new_tokens (int, optional): Override the model's default answer length.
+
+        Returns:
+            str: The model's answer.
+
+        Example
+        -------
+        >>> wsi.query_region(vlm, "Describe the tissue and any tumor present.",
+        ...                  location=(10240, 8192), size=512, mag=20)
+        'The field shows invasive ductal carcinoma with ...'
+        """
+        self._lazy_initialize()
+        src_mag = self.mag
+        dst_mag = mag if mag is not None else self.mag
+        patcher = self.create_patcher(
+            patch_size=size, src_mag=src_mag, dst_mag=dst_mag,
+            custom_coords=np.array([[int(location[0]), int(location[1])]]),
+            coords_only=False, pil=True,
+        )
+        tile, _, _ = patcher[0]
+        return vlm.generate([tile], [prompt], max_new_tokens=max_new_tokens)[0]
+
+    @torch.inference_mode()
+    def query_patches(
+        self,
+        vlm: torch.nn.Module,
+        coords_path: str,
+        prompt: str,
+        save_dir: str,
+        device: str = 'cuda:0',
+        batch_limit: int = 4,
+        max_new_tokens: Optional[int] = None,
+        verbose: bool = False,
+    ) -> str:
+        """
+        Run a vision-language model over the tissue patches of the WSI, asking the same
+        ``prompt`` of every patch, and save the per-patch answers.
+
+        Batch analog of ``query_region`` and structural twin of ``segment_patches``: it
+        iterates the same patch coordinates, but instead of cell instances it collects one
+        free-text answer per patch. Two artifacts are written, aligned with the rest of the
+        pipeline:
+
+            * ``<save_dir>/<slide>.json`` — list of ``{x, y, prompt, answer}`` (level-0 coords).
+            * ``<save_dir>/<slide>.geojson`` — one patch-box polygon per coord carrying the
+              ``answer`` (and ``prompt``) as properties, loadable as annotations in QuPath.
+
+        Generation is autoregressive and therefore much slower than feed-forward feature
+        extraction; this sweeps *every* patch, so prefer a tight coords set (or the
+        interactive ``query_region``) for large slides.
+
+        Parameters:
+            vlm (torch.nn.Module): A ``BaseVLM`` exposing ``generate(images, prompts)``.
+            coords_path (str): Path to the patch-coordinate ``.h5`` from the coords task.
+            prompt (str): The question asked of every patch.
+            save_dir (str): Directory for the JSON + GeoJSON outputs.
+            device (str, optional): Compute device. Defaults to 'cuda:0'.
+            batch_limit (int, optional): Patches per generation batch. Defaults to 4.
+            max_new_tokens (int, optional): Override the model's default answer length.
+            verbose (bool, optional): Show a progress bar. Defaults to False.
+
+        Returns:
+            str: Absolute path to the saved JSON.
+        """
+        import json
+        import geopandas as gpd
+        from shapely import Polygon
+
+        self._lazy_initialize()
+        vlm.to(device)
+        vlm.eval()
+        model_name = getattr(vlm, 'vlm_name', None)
+
+        coords_attrs, coords = read_coords(coords_path)
+        patch_size = coords_attrs.get('patch_size', None)
+        level0_magnification = coords_attrs.get('level0_magnification', None)
+        target_magnification = coords_attrs.get('target_magnification', None)
+        if None in (patch_size, level0_magnification, target_magnification):
+            raise KeyError('Missing attributes in coords_attrs.')
+
+        # Level-0 pixels spanned by one patch edge (for drawing boxes in slide coords).
+        downsample = level0_magnification / target_magnification
+        patch_extent_level0 = patch_size * downsample
+
+        os.makedirs(save_dir, exist_ok=True)
+        json_path = os.path.join(save_dir, f'{self.name}.json')
+        geojson_path = os.path.join(save_dir, f'{self.name}.geojson')
+
+        patcher = self.create_patcher(
+            patch_size=patch_size, src_mag=level0_magnification,
+            dst_mag=target_magnification, custom_coords=coords,
+            coords_only=False, pil=True,
+        )
+
+        records: List[dict] = []
+        if len(patcher) > 0:
+            batch_imgs: List[Image.Image] = []
+            batch_xy: List[Tuple[int, int]] = []
+            indices = range(len(patcher))
+            iterator = tqdm(indices, desc=f'Querying {self.name}') if verbose else indices
+
+            def _flush():
+                if not batch_imgs:
+                    return
+                answers = vlm.generate(batch_imgs, prompt, max_new_tokens=max_new_tokens)
+                for (x, y), answer in zip(batch_xy, answers):
+                    records.append({'x': int(x), 'y': int(y), 'prompt': prompt, 'answer': answer})
+                batch_imgs.clear()
+                batch_xy.clear()
+
+            for idx in iterator:
+                tile, x, y = patcher[idx]
+                batch_imgs.append(tile)
+                batch_xy.append((x, y))
+                if len(batch_imgs) >= batch_limit:
+                    _flush()
+            _flush()
+
+        # 1) JSON of per-patch answers.
+        with open(json_path, 'w') as f:
+            json.dump({'model': model_name, 'prompt': prompt, 'answers': records}, f, indent=2)
+
+        # 2) GeoJSON of patch boxes carrying the answer (QuPath-loadable annotations).
+        geo_records = []
+        for rec in records:
+            x, y = rec['x'], rec['y']
+            box = Polygon([
+                (x, y), (x + patch_extent_level0, y),
+                (x + patch_extent_level0, y + patch_extent_level0), (x, y + patch_extent_level0),
+            ])
+            geo_records.append({'prompt': rec['prompt'], 'answer': rec['answer'], 'geometry': box})
+        gdf = gpd.GeoDataFrame(
+            geo_records, columns=['prompt', 'answer', 'geometry'], geometry='geometry'
+        )
+        gdf.set_crs("EPSG:3857", inplace=True)
+        gdf.to_file(geojson_path, driver="GeoJSON")
+
+        return json_path
 
     @torch.inference_mode()
     def extract_slide_features(

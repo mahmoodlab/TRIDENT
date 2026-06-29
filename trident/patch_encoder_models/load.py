@@ -911,7 +911,8 @@ class GigaPathInferenceEncoder(BasePatchEncoder):
         target_img_size=None,
     ):
         import timm
-        assert timm.__version__ == '0.9.16', f"Gigapath requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
+        # 0.9.16 and 1.0.8 give bit-identical features here; 1.0.8 lets HistoPlus share the env.
+        assert timm.__version__ in ('0.9.16', '1.0.8'), f"Gigapath requires timm 0.9.16 or 1.0.8, but found {timm.__version__}."
         from torchvision import transforms
 
         self.enc_name = 'gigapath'
@@ -1135,7 +1136,8 @@ class HOptimus0InferenceEncoder(BasePatchEncoder):
         target_img_size=None,
     ):
         import timm
-        assert timm.__version__ == '0.9.16', f"H-Optimus requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
+        # 0.9.16 and 1.0.8 give bit-identical features here; 1.0.8 lets HistoPlus share the env.
+        assert timm.__version__ in ('0.9.16', '1.0.8'), f"H-Optimus requires timm 0.9.16 or 1.0.8, but found {timm.__version__}."
         from torchvision import transforms
 
         self.enc_name = 'hoptimus0'
@@ -1195,7 +1197,8 @@ class HOptimus1InferenceEncoder(BasePatchEncoder):
         **kwargs
     ):
         import timm
-        assert timm.__version__ == '0.9.16', f"H-Optimus requires timm version 0.9.16, but found {timm.__version__}. Please install the correct version using `pip install timm==0.9.16`"
+        # 0.9.16 and 1.0.8 give bit-identical features here; 1.0.8 lets HistoPlus share the env.
+        assert timm.__version__ in ('0.9.16', '1.0.8'), f"H-Optimus requires timm 0.9.16 or 1.0.8, but found {timm.__version__}."
         from torchvision import transforms
 
         self.enc_name = 'hoptimus1'

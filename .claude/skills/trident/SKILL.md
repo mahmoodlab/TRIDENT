@@ -4,10 +4,11 @@ description: >-
   Process whole-slide pathology images (WSIs) with TRIDENT: tissue segmentation,
   patch coordinate extraction, patch/slide feature (embedding) extraction with
   foundation models (UNI, CONCH, Virchow, Gemma, Titan, GigaPath, etc.), and
-  cell/nuclei segmentation (HistoPlus, CellViT++). Use when the user works with WSIs
+  cell/nuclei segmentation (HistoPlus, CellViT++), and VLM question answering over ROIs
+  (Patho-R1). Use when the user works with WSIs
   (.svs/.tiff/.ndpi/.mrxs/.czi/.dcm), mentions TRIDENT, run_batch_of_slides /
   run_single_slide, tissue segmentation, patching, extracting pathology embeddings,
-  or cell/nuclei segmentation for downstream ML.
+  cell/nuclei segmentation, or interrogating ROIs with a vision-language model, for downstream ML.
 ---
 
 # TRIDENT — whole-slide image processing
@@ -16,17 +17,19 @@ TRIDENT runs a 3-stage pipeline over whole-slide images (WSIs):
 
 ```
 tissue segmentation  →  patch coordinates  →  patch / slide embeddings   (--task feat)
-   (--task seg)          (--task coords)    └→  cell / nuclei segmentation (--task patch_seg)
+   (--task seg)          (--task coords)    ├→  cell / nuclei segmentation (--task patch_seg)
+                                            └→  VLM question answering     (--task vlm)
 ```
 
-Both `feat` and `patch_seg` consume the same patch coordinates; pick whichever output you need
-(or run both). Outputs are written under a single `--job_dir` and are **resumable** — re-running
-the same command skips finished work.
+`feat`, `patch_seg`, and `vlm` all consume the same patch coordinates; pick whichever output you
+need (or run several). Outputs are written under a single `--job_dir` and are **resumable** —
+re-running the same command skips finished work.
 
 **Tasks run one stage only — they do NOT auto-run prerequisites.** Pick `--task`:
-- `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features. (It does **not** run `patch_seg`.)
+- `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features. (It does **not** run `patch_seg` or `vlm`.)
 - `--task seg` / `--task coords` / `--task feat` — run *only* that stage. `coords` needs segmentation already done in `--job_dir`; `feat` needs coords already done (or supply `--coords_dir`). Running `--task coords` on a fresh `--job_dir` produces nothing (it skips with `geojson_not_found`).
 - `--task patch_seg` — run a **cell/nuclei segmentation model** (HistoPlus / CellViT++) over the tissue patches. Like `feat`, it needs `seg` + `coords` done first. See the "Cell / nuclei segmentation" section below.
+- `--task vlm` — interrogate the tissue patches with a **vision-language model** (Patho-R1): ask one free-text prompt of every patch, get a free-text answer. Like `feat`/`patch_seg`, it needs `seg` + `coords` done first. See the "VLM question answering" section below. (For a single ROI, use `run_query_roi.py` instead — no coords needed.)
 - **Seg + coords but no features?** There is no single flag — run two commands: `--task seg` then `--task coords` on the same `--job_dir`.
 
 For the full CLI flag list, the complete encoder tables, output layout, and the Python
@@ -39,8 +42,10 @@ pip install -e .                 # core; add ".[patch-encoders]" ".[slide-encode
 trident-doctor --profile base    # preflight; use --profile <profile> --check-gated for model access
 ```
 
-- **`timm==0.9.16`** is required (timm 1.x breaks most encoders). Python 3.10/3.11 is
-  recommended but newer (3.13) works with timm pinned.
+- **`timm==0.9.16`** is the default pin, but **`timm==1.0.8` also works for every encoder**
+  (verified — `gigapath`/`hoptimus` give bit-identical features; needed for HistoPlus). Avoid other
+  timm 1.x releases (untested → cryptic model-build errors). Python 3.10/3.11 is recommended but
+  newer (3.13) works.
 - If `trident-doctor` isn't on PATH (install-dependent), preflight instead with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`.
 - Most encoders download from HuggingFace; gated models (UNI, CONCH, Virchow, …) need an
@@ -136,28 +141,74 @@ as an alternative consumer of the coords from `--task coords`. Run `seg` + `coor
 python run_batch_of_slides.py --task patch_seg \
   --wsi_dir ./wsis --job_dir ./trident_processed \
   --patch_segmenter histoplus --mag 20 --patch_size 784 \
-  --feat_batch_size 1 --seg_viz --gpus 0
+  --seg_viz --gpus 0
 ```
+
+**Batch size:** `--patch_seg_batch_size` (default `4`); lower it if you OOM. CellViT++ at 1024px is
+memory-heavy (~3.8 GB/patch → `8`≈31 GB, `32` OOMs a 95 GB GPU); HistoPlus is lighter.
 
 Two models (each its **own** taxonomy and required resolution — copy verbatim):
 
-| `--patch_segmenter` | Cells | Required args | Install (separate env!) |
+| `--patch_segmenter` | Cells | Required args | Install |
 |---|---|---|---|
-| `histoplus` | 14 types | `--patch_size 784 --mag 20` (or `--mag 40`) | `pip install git+https://github.com/owkin/histoplus.git` (not on PyPI); gated HF weights |
+| `histoplus` | 14 types | `--patch_size 784 --mag 20` (or `--mag 40`) | `pip install --no-deps git+https://github.com/owkin/histoplus.git` + `pip install timm==1.0.8` (not on PyPI); gated HF weights |
 | `cellvit_plus_plus` | 5 (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` |
 
-Critical points:
-- **Install in a separate environment.** These pull deps that conflict with TRIDENT's
-  (HistoPlus needs `timm==1.0.8` + `xformers`; TRIDENT pins `timm==0.9.16`). HistoPlus is
-  **not on PyPI** (install from the git URL) and its weights are **gated** on HuggingFace
-  (accept the license + `HF_TOKEN`). CellViT++ wants Python 3.10/3.11; on 3.13 its pinned
-  Shapely fails to build, so `pip install cellvit --no-deps` then add
-  `colorama colour geojson natsort opt-einsum pyaml`.
-- **Batch size 1 on recent PyTorch.** The vendored attention (xformers) can segfault on
-  batched input with torch ≥ 2.10 — pass `--feat_batch_size 1` if a run dies silently.
+`--mag 40` needs a **40×-native** slide (mpp ≈ 0.25); on a 20×-native slide (`objective-power 20`)
+40× is unreachable — use HistoPlus@`--mag 20` or a 40× slide for CellViT++.
+
+Install — **both run in the TRIDENT env** (no separate env needed):
+- **CellViT++:** `pip install cellvit` (Python 3.10/3.11; on 3.13 use `--no-deps` then add
+  `colorama colour geojson natsort opt-einsum pyaml`). Weights auto-download from Zenodo.
+- **HistoPlus:** `pip install --no-deps git+https://github.com/owkin/histoplus.git && pip install timm==1.0.8`.
+  Not on PyPI; weights gated on [HF](https://huggingface.co/Owkin-Bioptimus/histoplus) (accept the
+  license + `huggingface-cli login`). `timm 1.0.8` is required by HistoPlus and verified safe for all
+  TRIDENT encoders. (TRIDENT handles HistoPlus's xformers quirk automatically — no env vars needed.)
+- **Batch size:** `--patch_seg_batch_size` (default `4`). Both models batch fine; lower it if you OOM
+  (CellViT++ at 1024px is ~3.8 GB/patch).
 - `--seg_viz` (optional) also writes debug overlays with a color→cell-type legend.
 - Output dir is keyed per model: `<cdir>/seg_<model>/` (see Outputs). Outputs: a QuPath-ready
   GeoJSON of per-cell polygons + a compact HDF5 + (with `--seg_viz`) visualizations.
+
+## VLM question answering (`--task vlm` and `run_query_roi.py`)
+
+Interrogate tissue with a **vision-language model** (Patho-R1, a Qwen2.5-VL pathology
+reasoner): give a free-text prompt, get a free-text answer. Two modes:
+
+**Batch** — ask the same prompt of *every* patch (another consumer of the coords from
+`--task coords`; run `seg` + `coords` first, or a prior `all`):
+
+```bash
+python run_batch_of_slides.py --task vlm \
+  --wsi_dir ./wsis --job_dir ./trident_processed \
+  --vlm patho_r1_7b --vlm_prompt "Is tumor present? Describe the tissue." \
+  --mag 20 --patch_size 512 --gpus 0
+```
+
+**Interactive** — ask one prompt of one ROI (no coords needed; `--location` is level-0 px,
+`--size` is the square edge in px at `--mag`):
+
+```bash
+python run_query_roi.py --slide_path ./wsis/x.svs \
+  --location 10240 8192 --size 512 --mag 20 \
+  --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
+```
+
+| `--vlm` | Backbone | Required args | Install |
+|---|---|---|---|
+| `patho_r1_7b` (default) | Qwen2.5-VL, ~16 GB bf16 | `--mag 20 --patch_size 512` | `pip install "transformers>=4.49" accelerate qwen-vl-utils` |
+| `patho_r1_3b` | Qwen2.5-VL, ~8 GB bf16 | `--mag 20 --patch_size 512` | same |
+
+- **Runs in the TRIDENT env** (no separate env). Weights auto-download from HF on first use;
+  **CC-BY-NC-ND-4.0 (non-commercial)**.
+- **Slow:** generation is autoregressive and the batch task sweeps every patch — prefer a tight
+  coords set, a higher `--mag` / larger `--patch_size` (fewer patches), or the interactive ROI
+  path. It is **not** part of `--task all`.
+- **Batch size:** `--vlm_batch_size` (default `4`); lower it if you OOM. `--vlm_max_new_tokens`
+  (default `512`) caps answer length. Other flags: `--vlm_ckpt_path` (local weights/repo).
+- Output dir is keyed per model: `<cdir>/vlm_<model>/` (see Outputs) — a `<slide>.json` of
+  per-patch answers + a QuPath-ready `<slide>.geojson` (patch boxes carrying the answer).
+- ⚠️ Answers can be **confidently wrong** (like any LLM) — never use them for clinical decisions.
 
 ## Outputs (under `--job_dir`)
 
@@ -176,8 +227,10 @@ _logs_segmentation.txt                per-slide seg status
     seg_<model>/<slide>.geojson       per-cell polygons + class/class_name/confidence — only with --task patch_seg
     seg_<model>/<slide>.h5            compact cells: contours+contour_offsets, centroids, class_ids, confidences
     seg_<model>/visualization/        <slide>_overview.jpg + <slide>/ patch overlays — only with --seg_viz
-    _config_coords.json / _config_feats_<enc>.json / _config_slide_features_<enc>.json
-    _logs_coords.txt / _logs_feats_<enc>.txt / _logs_slide_features_<enc>.txt
+    vlm_<model>/<slide>.json          per-patch VLM answers {model,prompt,answers:[{x,y,prompt,answer}]} — only with --task vlm
+    vlm_<model>/<slide>.geojson       one patch box per answer, carrying prompt/answer (QuPath)
+    _config_coords.json / _config_feats_<enc>.json / _config_slide_features_<enc>.json / _config_vlm_<model>.json
+    _logs_coords.txt / _logs_feats_<enc>.txt / _logs_slide_features_<enc>.txt / _logs_vlm_<model>.txt
 summary.md                            human-readable run report (one section per run)
 runs/<id>.json                        machine-readable run manifest
 wsi_states/<slide>__<hash>.json       per-slide tasks, attempts, errors, resume reason
@@ -226,4 +279,5 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
-- `--task patch_seg` dies silently / "not installed" → install the cell model in a **separate env** (HistoPlus from git, gated; CellViT++ from PyPI), and pass `--feat_batch_size 1` on torch ≥ 2.10. See the cell-segmentation section.
+- `--task patch_seg` "not installed" → install the cell model **into the TRIDENT env** (CellViT++ from PyPI; HistoPlus `--no-deps` from git + `timm==1.0.8`, gated weights). Out of GPU memory → lower `--patch_seg_batch_size`. See the cell-segmentation section.
+- `--task vlm` ImportError → `pip install "transformers>=4.49" accelerate qwen-vl-utils`. Out of GPU memory → lower `--vlm_batch_size`. Whole-slide `vlm` is slow (autoregressive, every patch) — for a single region use `run_query_roi.py`, not the batch sweep. `vlm` is **not** part of `--task all`. See the VLM section.

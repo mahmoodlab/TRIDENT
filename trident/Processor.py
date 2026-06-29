@@ -898,7 +898,7 @@ class Processor:
         coords_dir: str,
         patch_segmenter: torch.nn.Module,
         device: str,
-        batch_limit: int = 512,
+        batch_limit: int = 4,
         saveto: str | None = None,
         visualize: bool = False,
     ) -> str:
@@ -1057,6 +1057,161 @@ class Processor:
                     raise e
 
         # Return the directory where the segmentations are saved
+        return os.path.join(self.job_dir, saveto)
+
+    def run_vlm_query_job(
+        self,
+        coords_dir: str,
+        vlm: torch.nn.Module,
+        prompt: str,
+        device: str,
+        batch_limit: int = 4,
+        max_new_tokens: int | None = None,
+        saveto: str | None = None,
+    ) -> str:
+        """
+        Run a vision-language model over the tissue patches of every slide, asking the same
+        ``prompt`` of each patch, and save one JSON + GeoJSON of per-patch answers per slide.
+
+        This mirrors ``run_patch_segmentation_job``: it depends on the coords task having run
+        first, iterates the same patch coordinates, and writes results to
+        ``<coords_dir>/vlm_<model>/<slide_name>.json`` (+ ``.geojson``).
+
+        Parameters:
+            coords_dir (str): Directory (relative to ``job_dir``) containing patch coordinates.
+            vlm (torch.nn.Module): A ``BaseVLM`` exposing ``generate(images, prompts)``.
+            prompt (str): The question asked of every patch.
+            device (str): Compute device (e.g. 'cuda:0' or 'cpu').
+            batch_limit (int, optional): Patches per generation batch. Defaults to 4.
+            max_new_tokens (int, optional): Override the model's default answer length.
+            saveto (str, optional): Output directory (relative to ``job_dir``). Defaults to
+                ``<coords_dir>/vlm_<model>``.
+
+        Returns:
+            str: Absolute path to the directory containing the answer files.
+        """
+        if saveto is None:
+            saveto = os.path.join(coords_dir, f'vlm_{vlm.vlm_name}')
+
+        os.makedirs(os.path.join(self.job_dir, saveto), exist_ok=True)
+
+        sig = signature(self.run_vlm_query_job)
+        local_attrs = {k: v for k, v in locals().items() if k in sig.parameters}
+        self.save_config(
+            saveto=os.path.join(self.job_dir, coords_dir, f'_config_vlm_{vlm.vlm_name}.json'),
+            local_attrs=local_attrs,
+            ignore=['vlm', 'loop', 'valid_slides', 'wsis']
+        )
+
+        log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_vlm_{vlm.vlm_name}.txt')
+        vlm_task = f"vlm_query:{vlm.vlm_name}"
+        self.loop = tqdm(self.wsis, desc=f'Querying patches from coords in {coords_dir}', total=len(self.wsis))
+        for wsi in self.loop:
+            slide_ref = make_slide_ref(
+                name=wsi.name,
+                ext=wsi.ext,
+                slide_path=getattr(wsi, "slide_path", f"{wsi.name}{wsi.ext}"),
+                rel_path=None,
+                reader_type=getattr(wsi, "__class__", type(wsi)).__name__,
+            )
+            wsi_meta = {
+                "dimensions": getattr(wsi, "dimensions", None),
+                "mpp": getattr(wsi, "mpp", None),
+                "mag": getattr(wsi, "mag", None),
+                "level_count": getattr(wsi, "level_count", None),
+            }
+            wsi_vlm_json = os.path.join(self.job_dir, saveto, f'{wsi.name}.json')
+            wsi_vlm_geojson = os.path.join(self.job_dir, saveto, f'{wsi.name}.geojson')
+            vlm_outputs = {"vlm_json": wsi_vlm_json, "vlm_geojson": wsi_vlm_geojson}
+
+            # Check if answers already exist
+            if os.path.exists(wsi_vlm_json) and not is_locked(wsi_vlm_json):
+                self.loop.set_postfix_str(f'Patches already queried for {wsi}. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, vlm_task, "skipped",
+                    "Patches already queried; skipping.",
+                    reason="already_queried",
+                    outputs=vlm_outputs,
+                    wsi_meta=wsi_meta,
+                )
+                continue
+
+            # Check if coords exist
+            coords_path = os.path.join(self.job_dir, coords_dir, 'patches', f'{wsi.name}_patches.h5')
+            if not os.path.exists(coords_path):
+                self.loop.set_postfix_str(f'Coords not found for {wsi.name}. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, vlm_task, "skipped",
+                    "Patch coords not found; run the coords step first.",
+                    reason="coords_not_found",
+                    outputs={"coords_path": coords_path},
+                    wsi_meta=wsi_meta,
+                )
+                continue
+
+            # Check if another process has claimed this slide
+            if is_locked(wsi_vlm_json):
+                self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
+                self._record_outcome(
+                    log_fp, slide_ref, vlm_task, "skipped",
+                    "Locked by another worker; skipping.",
+                    reason="locked",
+                    outputs={"vlm_json": wsi_vlm_json},
+                    wsi_meta=wsi_meta,
+                    write_log=False,
+                )
+                continue
+
+            try:
+                self.loop.set_postfix_str(f'Querying patches of {wsi.name}{wsi.ext}')
+                create_lock(wsi_vlm_json)
+                self._record_outcome(
+                    log_fp, slide_ref, vlm_task, "running",
+                    "Querying patches...",
+                    outputs={**vlm_outputs, "coords_path": coords_path},
+                    attempt=make_attempt("started"),
+                    wsi_meta=wsi_meta,
+                )
+
+                wsi.query_patches(
+                    vlm=vlm,
+                    coords_path=coords_path,
+                    prompt=prompt,
+                    save_dir=os.path.join(self.job_dir, saveto),
+                    device=device,
+                    batch_limit=batch_limit,
+                    max_new_tokens=max_new_tokens,
+                )
+
+                remove_lock(wsi_vlm_json)
+                self._record_outcome(
+                    log_fp, slide_ref, vlm_task, "completed",
+                    "Patches queried.",
+                    outputs={**vlm_outputs, "coords_path": coords_path},
+                    attempt=make_attempt("finished"),
+                    wsi_meta=wsi_meta,
+                )
+
+                # Release WSI resources to prevent memory accumulation
+                wsi.release()
+            except Exception as e:
+                if isinstance(e, KeyboardInterrupt):
+                    remove_lock(wsi_vlm_json)
+                try:
+                    wsi.release()
+                except Exception:
+                    pass
+                if self.skip_errors:
+                    self._record_outcome(
+                        log_fp, slide_ref, vlm_task, "error",
+                        f"ERROR: {e}",
+                        attempt=make_attempt("error", error=str(e)),
+                        wsi_meta=wsi_meta,
+                    )
+                    continue
+                else:
+                    raise e
+
         return os.path.join(self.job_dir, saveto)
 
     def run_slide_feature_extraction_job(

@@ -185,6 +185,31 @@ Shapely fails to build — install ``--no-deps`` and add ``colorama colour geojs
 Use the ``--mag`` / ``--patch_size`` the model expects (HistoPlus: ``784 @ 20x``; CellViT++: ``1024 @ 40x``).
 On recent PyTorch, run HistoPlus with ``--feat_batch_size 1`` (its batched attention kernel can crash).
 
+**VLM question answering** (free-text Q&A over ROIs; reuses existing coords)
+
+.. code-block:: bash
+
+   # Batch: ask the same question of every tissue patch
+   python run_batch_of_slides.py --task vlm --wsi_dir ./wsis --job_dir ./out \
+       --vlm patho_r1_7b --vlm_prompt "Is tumor present? Describe the tissue." \
+       --mag 20 --patch_size 512
+
+   # Interactive: ask one question of one ROI (no coords needed)
+   python run_query_roi.py --slide_path ./wsis/x.svs --location 10240 8192 --size 512 --mag 20 \
+       --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
+
+Runs a pathology vision-language model (`Patho-R1 <https://huggingface.co/WenchuanZhang/Patho-R1-7B>`__,
+Qwen2.5-VL) and writes, under ``<mag>x_<patch>px_<overlap>px_overlap/vlm_<model>/``:
+
+- ``<slide>.json``: per-patch ``{x, y, prompt, answer}``.
+- ``<slide>.geojson``: one patch box per answer carrying ``prompt`` / ``answer`` (open in QuPath).
+
+Install into the TRIDENT env: ``pip install "transformers>=4.49" accelerate qwen-vl-utils`` (weights
+auto-download from HuggingFace; **CC-BY-NC-ND-4.0**, non-commercial). Generation is autoregressive and
+the batch task sweeps every patch, so it is slow and **not** part of ``--task all`` — prefer a tight
+coords set, a higher ``--mag`` / larger ``--patch_size``, or the interactive ``run_query_roi.py``.
+Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be confidently wrong — not for clinical use.
+
 **Convert awkward formats to pyramidal TIFF**
 
 .. code-block:: bash
@@ -217,8 +242,8 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
 
    * - Flag
      - Use
-   * - ``--task {seg,coords,feat,patch_seg,all}``
-     - Pipeline stage. ``all`` runs ``seg → coords → feat``. ``patch_seg`` runs a cell segmentation model over the coords from ``coords``.
+   * - ``--task {seg,coords,feat,patch_seg,vlm,all}``
+     - Pipeline stage. ``all`` runs ``seg → coords → feat``. ``patch_seg`` runs a cell segmentation model, and ``vlm`` runs a VLM Q&A, both over the coords from ``coords``.
    * - ``--gpus 0 1`` / ``--gpus -1 -1``
      - Multi-GPU sharding (positive IDs) or multi-CPU workers (``-1`` entries).
    * - ``--max_workers``
@@ -243,6 +268,8 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
      - Encoders. See API page for full list.
    * - ``--patch_segmenter {histoplus,cellvit_plus_plus}`` / ``--patch_segmenter_ckpt_path`` / ``--seg_viz``
      - Cell segmenter for ``--task patch_seg``, optional local weights, and debug overlays with a cell-type legend.
+   * - ``--vlm {patho_r1_7b,patho_r1_3b}`` / ``--vlm_prompt`` / ``--vlm_batch_size`` / ``--vlm_max_new_tokens`` / ``--vlm_ckpt_path``
+     - VLM for ``--task vlm``: model, the question asked of every patch, generation batch size, answer-length cap, and optional local weights.
    * - ``--batch_size`` / ``--seg_batch_size`` / ``--feat_batch_size``
      - Stage-specific batch overrides.
    * - ``--wsi_dir`` / ``--wsi_ext`` / ``--search_nested`` / ``--custom_list_of_wsis`` / ``--custom_mpp_keys`` / ``--reader_type``

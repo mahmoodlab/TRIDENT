@@ -18,6 +18,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **Slide encoders**: [Titan](https://huggingface.co/MahmoodLab/TITAN), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
 - **Cell segmentation**: run [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus) over tissue patches (`--task patch_seg`) to get per-cell polygons + cell types as GeoJSON (QuPath-ready) and HDF5.
+- **Visual question answering**: interrogate ROIs with a pathology vision-language model such as [Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B) — ask a free-text question of every tissue patch (`--task vlm`) or of a single region (`run_query_roi.py`); answers are saved as JSON and QuPath-ready GeoJSON.
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
@@ -205,6 +206,32 @@ Cell segmentation models live in separate packages and are loaded via a [`patch_
 > These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`), so install them in a **separate environment**.
 > - **HistoPlus** is **not on PyPI yet** — install from source: `pip install git+https://github.com/owkin/histoplus.git`. Its weights are gated on HuggingFace (accept the license, set `HF_TOKEN`). On recent PyTorch, run it with `--feat_batch_size 1` (its batched attention kernel can crash; single-patch inference is stable).
 > - **CellViT++** is on PyPI (`pip install cellvit`); use Python **3.10/3.11** (Trident's supported versions). On Python 3.13 its pinned Shapely fails to build — install with `--no-deps` and add `colorama colour geojson natsort opt-einsum pyaml`.
+
+**Step 5 (optional): Interrogate ROIs with a vision-language model (VLM):** Ask a free-text question about tissue regions and get a free-text answer, using a pathology VLM such as [Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B). Two modes:
+
+ - **Batch** — ask the same question of every tissue patch. Consumes the coords from Step 2 (like cell segmentation):
+   ```bash
+   python run_batch_of_slides.py --task vlm --wsi_dir ./wsis --job_dir ./trident_processed \
+       --vlm patho_r1_7b --vlm_prompt "Is tumor present? Describe the tissue." \
+       --mag 20 --patch_size 512 --gpus 0
+   ```
+   - **Outputs** (under `./trident_processed/20x_512px_0px_overlap/vlm_patho_r1_7b/`): `<slide>.json` (per-patch `{x, y, prompt, answer}`) and `<slide>.geojson` (one patch box per answer, carrying `prompt`/`answer` — open in [QuPath](https://qupath.github.io/)).
+ - **Interactive** — ask one question about one ROI:
+   ```bash
+   python run_query_roi.py --slide_path ./wsis/x.svs --location 10240 8192 --size 512 --mag 20 \
+       --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
+   ```
+
+VLMs are loaded via a [`vlm_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/vlm_models/load.py).
+
+| VLM | Backbone | Args | Install / Link |
+|-----|----------|------|------|
+| **Patho-R1 7B** | Qwen2.5-VL | `--vlm patho_r1_7b` (`--mag 20 --patch_size 512`) | `pip install "transformers>=4.49" accelerate qwen-vl-utils` · [WenchuanZhang/Patho-R1-7B](https://huggingface.co/WenchuanZhang/Patho-R1-7B) |
+| **Patho-R1 3B** | Qwen2.5-VL | `--vlm patho_r1_3b` (`--mag 20 --patch_size 512`) | same · [WenchuanZhang/Patho-R1-3B](https://huggingface.co/WenchuanZhang/Patho-R1-3B) |
+
+> [!NOTE]
+> - VLM generation is **autoregressive and slow** compared with the feed-forward encoders, and `--task vlm` sweeps *every* tissue patch — prefer a tight coords set, a higher `--mag`/larger `--patch_size` (fewer patches), or the interactive `run_query_roi.py`. It is **not** part of `--task all`. Lower `--vlm_batch_size` (default 4) if you run out of GPU memory; ~16 GB is enough for the 7B in bf16 (~8 GB for the 3B).
+> - Patho-R1 weights are **CC-BY-NC-ND-4.0 (non-commercial research only)**. Like any LLM, answers can be confidently wrong — **do not** use them for clinical decisions.
 
 Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutorials) for more support as well as a [detailed readme](https://github.com/mahmoodlab/trident/blob/main/DETAILS.md) for additional features.
 

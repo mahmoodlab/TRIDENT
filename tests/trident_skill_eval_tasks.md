@@ -125,6 +125,134 @@ This is the full "TRIDENT as a feature factory, agent as the analyst" loop.
 
 ---
 
+## Cell-segmentation track — `--task patch_seg` *(HistoPlus / CellViT++)*
+
+These tasks exercise the **cell/nuclei instance-segmentation** stage, a second consumer of the
+patch coordinates (alongside `feat`). They test whether the skill taught the agent the things
+that are *specific* to `patch_seg` and easy to get wrong: it does **not** auto-run `seg`/`coords`;
+each model has its **own** required `patch_size`/`mag` *and its own taxonomy*; the models install into
+the TRIDENT env (HistoPlus is git-only `--no-deps` + `timm==1.0.8` + gated; CellViT++ is PyPI); batch
+size is set with `--patch_seg_batch_size` (lower on OOM); and the output is a
+different `.h5`/GeoJSON contract (a `cells` group of ragged polygons, not `features`). Tasks PS1–PS6 stay
+inside TRIDENT; PS7–PS9 go beyond it (read the cell `.h5`, build overlays, interop with QuPath).
+
+**Data note (magnification matters here).** CellViT++ requires `--mag 40` (mpp 0.25); HistoPlus
+runs at `--mag 20` (mpp 0.5) *or* `--mag 40`. A **20×-native** slide (e.g. `394140.svs`,
+`sem1405_case11.ome.tif`, `CMU-1.tiff` — all `objective-power 20`) **cannot reach 40×** (no
+higher-res level to read), so CellViT++'s native recipe needs a **40×-native** slide. The
+`MahmoodLab/unit-testing` TCGA diagnostic slides are 40× (mpp ≈ 0.25):
+`TCGA-AN-A0XW-01Z-00-DX1….svs` and `TCGA-B6-A0IJ-01Z-00-DX1….svs`. Use one of those for any
+`--mag 40` task; the 20× slides are fine for HistoPlus@20×.
+
+### PS1 — Cell segmentation, end-to-end on one slide *(easy — the core footgun)*
+**Prompt:** "Segment the individual cells in `./wsis40/TCGA-AN-A0XW….svs` with HistoPlus into `./out_cellseg`."
+
+**Correct:** recognizes `patch_seg` does **not** run prerequisites, so it first does `--task seg`
+then `--task coords` (or a prior `--task all`) into `./out_cellseg`, *then*
+`--task patch_seg --patch_segmenter histoplus --patch_size 784 --mag 40`
+(HistoPlus@40× = mpp 0.25; 784/20 is also valid on a 20× slide). **Grade:** does NOT fire a bare
+`--task patch_seg` on a fresh dir (would skip with `coords_not_found`); copies HistoPlus's
+`784`/`{20|40}` verbatim; ends by confirming
+`out_cellseg/40x_784px_0px_overlap/seg_histoplus/<slide>.{geojson,h5}` exist.
+
+### PS2 — Fresh-dir skip footgun *(easy)*
+**Prompt:** "Run `--task patch_seg` with CellViT++ on a brand-new `--job_dir`. What happens?"
+
+**Correct:** explains it produces **nothing** — `patch_seg` reads coords from `--job_dir` and skips
+with `reason=coords_not_found` (`wsi_states/<slide>.json`: *"Patch coords not found; run the coords
+step first."*); the fix is `seg` → `coords` (or `all`) first. **Grade:** predicts the skip + reason
+(does not claim it auto-segments); names the two-stage prerequisite. *(Mirrors the `--task coords`/
+`feat`-on-fresh-dir footgun for the cell stage.)*
+
+### PS3 — Right resolution + taxonomy per model *(easy→medium)*
+**Prompt:** "Run BOTH HistoPlus and CellViT++ on `TCGA-AN-A0XW….svs`, and tell me how many cell
+types each reports."
+
+**Correct:** two `patch_seg` runs into the same `--job_dir` — `histoplus --patch_size 784 --mag 40`
+(→ `40x_784px_0px_overlap/seg_histoplus/`) and `cellvit_plus_plus --patch_size 1024 --mag 40`
+(→ `40x_1024px_0px_overlap/seg_cellvit_plus_plus/`), each landing in a **different** `<cdir>`.
+Answer: HistoPlus = **14** pan-cancer types; CellViT++ = **5** PanNuke types. **Grade:** distinct
+`patch_size` per model (not copy-pasted — 784 vs 1024); taxonomies read from the skill or the `.h5`
+`class_names` attr (HistoPlus class_names also include a Background class → 15 entries, 14 *cell*
+types; CellViT++ → 6 entries incl. Background); both `--mag 40` valid only because the slide is 40×.
+
+### PS4 — Install into the TRIDENT env + gating *(medium — environment literacy)*
+**Prompt:** "TRIDENT says HistoPlus and CellViT++ aren't installed. How do I set them up, and can I
+put them in my main TRIDENT env?"
+
+**Correct:** **Yes, both install into the TRIDENT env** (a separate env is not required). CellViT++:
+`pip install cellvit` (Python 3.10/3.11; on 3.13 `--no-deps` + `colorama colour geojson natsort
+opt-einsum pyaml`), weights from Zenodo. HistoPlus is **not on PyPI** and weights are **gated** on
+HuggingFace → `pip install --no-deps git+https://github.com/owkin/histoplus.git` (the `--no-deps`
+keeps it from disturbing TRIDENT's/CellViT++'s pins) then `pip install "timm==1.0.8"` (HistoPlus
+needs it; verified bit-identical for all TRIDENT encoders), accept the license + `HF_TOKEN`.
+**Grade:** knows it's a shared env with the `--no-deps` + `timm==1.0.8` recipe; git-URL (not
+`pip install histoplus`); flags HistoPlus gating; distinguishes the two install sources. *(A "must
+use a separate env" answer is now outdated.)*
+
+### PS5 — Batch size / OOM *(medium)*
+**Prompt:** "My CellViT++ `patch_seg` run runs out of GPU memory. How do I control the batch size?"
+
+**Correct:** lower `--patch_seg_batch_size` (default `4`). CellViT++ at 1024px is memory-heavy
+(~3.8 GB/patch — `8`≈31 GB, `32` OOMs a 95 GB GPU), so drop to `2`/`1` on a small GPU; HistoPlus is
+lighter. **Grade:** names `--patch_seg_batch_size` (not `--batch_size`/`--feat_batch_size`); ties OOM
+to the large 1024px patches; doesn't claim a separate env or a torch downgrade is needed.
+
+### PS6 — Resolution can't be conjured *(medium — the mag trap)*
+**Prompt:** "Run CellViT++ on `394140.svs`."
+
+**Correct:** notices `394140.svs` is **20×-native** (`objective-power 20`), so CellViT++'s required
+`--mag 40` is **unreachable** (no 40× level to read). Options the agent should surface: use a
+40×-native slide instead, or (with caveats) run CellViT++ at `--mag 20 --patch_size 1024` knowing it
+deviates from the model's trained mpp (0.5 vs 0.25) → degraded results. **Grade:** does not blindly
+emit `--mag 40` on a 20× slide; explains the mpp mismatch; recommends a 40× slide as the clean fix.
+
+### PS7 — Read the cell `.h5` contract *(hard — beyond TRIDENT)*
+**Prompt:** "From the CellViT++ output for `TCGA-AN-A0XW….svs`, tell me how many cells of each type
+were found and the median cell area."
+
+**Correct (custom code on artifacts):** open `…/seg_cellvit_plus_plus/<slide>.h5`, group `cells`;
+read `class_ids (N,)`, map via the `class_names` attr (JSON) → per-class counts; reconstruct each
+cell polygon as `contours[contour_offsets[i]:contour_offsets[i+1]]` (level-0 vertices) and compute
+area (shoelace) → median, converting px→µm² with the `mpp` attr if asked. **Grade:** uses
+`contour_offsets` to slice the ragged `contours` (does NOT assume fixed-length polygons); maps
+`class_ids`→names via `class_names`; knows `centroids`/`confidences` are per-cell `(N,)`.
+
+### PS8 — `--seg_viz` overlays + QuPath interop *(medium→hard)*
+**Prompt:** "Give me something I can eyeball to sanity-check the cells, and something I can open in
+QuPath."
+
+**Correct:** add `--seg_viz` → writes `seg_<model>/visualization/<slide>_overview.jpg` (+ per-patch
+overlays under `<slide>/`) with a color→cell-type legend; and the per-cell **GeoJSON**
+(`seg_<model>/<slide>.geojson`, level-0 polygons + `class`/`class_name`/`confidence`) loads directly
+in QuPath. **Grade:** names the `--seg_viz` overlay path AND the GeoJSON as the QuPath artifact (not
+the `.h5`); knows viz is optional/off by default.
+
+### PS9 — Cell-composition spatial map *(hard — beyond TRIDENT, capstone)*
+**Prompt:** "Paint the detected cells on the slide thumbnail colored by cell type, and give me a
+per-type bar chart and a lymphocyte-density heatmap. Save a PNG."
+
+**Correct (custom code on artifacts):** read `cells/centroids (N,2)` (level-0 px) + `class_ids` +
+`class_names`; get a thumbnail via `load_wsi(path).get_thumbnail((W,H))`; scale centroids by the
+thumbnail downsample (`level0_width / thumb_width` — from the **patches** `.h5` attrs or the slide
+props) and scatter colored by class; bin centroids of the lymphocyte class into a 2-D histogram for
+the density heatmap; bar chart from the class histogram. **Grade:** uses `centroids` (level-0)
+scaled to the thumbnail for placement (not raw px, not patch index); correct class→name mapping;
+overlay aligns with tissue.
+
+**Cell-track grader notes.** A `patch_seg` task **passes** only if: (1) `seg`+`coords` are run
+before `patch_seg` (or `--task all` first) — never a bare `patch_seg` on a fresh dir; (2) the
+model's exact `patch_size`/`mag` are used (HistoPlus 784/{20|40}, CellViT++ 1024/40) and **not**
+swapped between models; (3) `--mag 40` is only used on a 40×-native slide; (4) batch size, if tuned,
+is set via `--patch_seg_batch_size` (lower on OOM) — not `--batch_size`/`--feat_batch_size`; (5) the
+install/env reasoning is correct (both install into the TRIDENT env, git+gated for HistoPlus, PyPI for
+CellViT++). For the beyond-TRIDENT cell tasks, the agent must read the `cells` group correctly —
+ragged polygons via `contour_offsets`, `class_ids`→`class_names`, `centroids` in level-0 px scaled to
+the thumbnail. Emitting `--mag 40` on a 20× slide, swapping 784↔1024, or treating the seg `.h5` like a
+feature `.h5` are fails.
+
+---
+
 ## Bonus track — interactive HTML prototypes *(all beyond TRIDENT)*
 
 These turn TRIDENT outputs into **self-contained, single-file HTML** the user can open in a

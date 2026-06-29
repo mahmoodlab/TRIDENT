@@ -51,6 +51,11 @@ The CLI entrypoints are thin wrappers around ``Processor``.
    cell_seg = patch_segmenter_factory("histoplus")
    processor.run_patch_segmentation_job(coords_dir="20x_784px_0px_overlap", patch_segmenter=cell_seg, device="cuda:0", batch_limit=1, visualize=True)
 
+   # VLM question answering (free-text answer per patch) over the same coords:
+   from trident.vlm_models import vlm_factory
+   vlm = vlm_factory("patho_r1_7b")
+   processor.run_vlm_query_job(coords_dir="20x_512px_0px_overlap", vlm=vlm, prompt="Is tumor present?", device="cuda:0", batch_limit=4)
+
 Outputs and run tracking
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -243,6 +248,42 @@ Each returns per-cell polygons + cell types; models ship in their own packages.
    ``--no-deps`` and add ``colorama colour geojson natsort opt-einsum pyaml``.
 
 .. automodule:: trident.patch_segmentation_models
+   :members:
+   :undoc-members:
+
+
+Vision-Language Models
+----------------------
+
+Factory for generative vision-language models used by ``run_vlm_query_job`` (``--task vlm``) and
+``WSI.query_region`` (interactive, via ``run_query_roi.py``). Given an image + a free-text prompt
+they return a free-text answer.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 18 30 32
+
+   * - VLM
+     - Backbone
+     - Args
+     - Install / Link
+   * - **Patho-R1 7B**
+     - Qwen2.5-VL
+     - ``--vlm patho_r1_7b --patch_size 512 --mag 20``
+     - ``pip install "transformers>=4.49" accelerate qwen-vl-utils`` · `WenchuanZhang/Patho-R1-7B <https://huggingface.co/WenchuanZhang/Patho-R1-7B>`__
+   * - **Patho-R1 3B**
+     - Qwen2.5-VL
+     - ``--vlm patho_r1_3b --patch_size 512 --mag 20``
+     - same · `WenchuanZhang/Patho-R1-3B <https://huggingface.co/WenchuanZhang/Patho-R1-3B>`__
+
+.. note::
+   Runs in the TRIDENT env; weights auto-download from HuggingFace (**CC-BY-NC-ND-4.0**, non-commercial).
+   Generation is autoregressive and ``--task vlm`` sweeps every patch, so it is slow and **not** part of
+   ``--task all`` — prefer a tight coords set, a higher ``--mag`` / larger ``--patch_size``, or the
+   interactive ``run_query_roi.py``. Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be
+   confidently wrong — not for clinical use.
+
+.. automodule:: trident.vlm_models
    :members:
    :undoc-members:
 

@@ -15,6 +15,7 @@ class _DummyProcessor:
     def __init__(self):
         self.calls = []
         self.patch_seg_calls = []
+        self.vlm_calls = []
 
     def run_segmentation_job(self, *args, **kwargs):
         self.calls.append((args, kwargs))
@@ -22,9 +23,16 @@ class _DummyProcessor:
     def run_patch_segmentation_job(self, *args, **kwargs):
         self.patch_seg_calls.append((args, kwargs))
 
+    def run_vlm_query_job(self, *args, **kwargs):
+        self.vlm_calls.append((args, kwargs))
+
 
 class _DummyPatchSegmenter:
     seg_name = "histoplus"
+
+
+class _DummyVLM:
+    vlm_name = "patho_r1_7b"
 
 
 class TestRunBatchOfSlides(unittest.TestCase):
@@ -79,7 +87,7 @@ class TestRunBatchOfSlides(unittest.TestCase):
         args.mag = 20.0
         args.patch_size = 784
         args.overlap = 0
-        args.feat_batch_size = 1
+        args.patch_seg_batch_size = 1
         args.batch_size = 8
         args.seg_viz = True
         args.gpus = [0]
@@ -96,8 +104,46 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.patch_seg_calls[0][1]
         self.assertEqual(kwargs["coords_dir"], "20x_784px_0px_overlap")
         self.assertEqual(kwargs["device"], "cuda:0")
-        self.assertEqual(kwargs["batch_limit"], 1)   # feat_batch_size honored
+        self.assertEqual(kwargs["batch_limit"], 1)   # --patch_seg_batch_size honored
         self.assertTrue(kwargs["visualize"])         # --seg_viz wired through
+
+    def test_run_task_vlm_wires_factory_and_prompt(self):
+        processor = _DummyProcessor()
+
+        class Args:
+            pass
+        args = Args()
+        args.task = "vlm"
+        args.vlm = "patho_r1_7b"
+        args.vlm_ckpt_path = None
+        args.vlm_prompt = "Is tumor present?"
+        args.vlm_batch_size = 2
+        args.vlm_max_new_tokens = 256
+        args.coords_dir = None
+        args.mag = 20.0
+        args.patch_size = 512
+        args.overlap = 0
+        args.gpus = [0]
+        args.device = "cuda:0"
+
+        with patch(
+            "trident.vlm_models.vlm_factory",
+            return_value=_DummyVLM(),
+        ) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_called_once()
+        # factory got the model name + weights path + max_new_tokens.
+        _, fkwargs = factory.call_args
+        self.assertEqual(factory.call_args[0][0], "patho_r1_7b")
+        self.assertEqual(fkwargs["max_new_tokens"], 256)
+        self.assertEqual(len(processor.vlm_calls), 1)
+        kwargs = processor.vlm_calls[0][1]
+        self.assertEqual(kwargs["coords_dir"], "20x_512px_0px_overlap")
+        self.assertEqual(kwargs["device"], "cuda:0")
+        self.assertEqual(kwargs["prompt"], "Is tumor present?")
+        self.assertEqual(kwargs["batch_limit"], 2)        # --vlm_batch_size honored
+        self.assertEqual(kwargs["max_new_tokens"], 256)   # --vlm_max_new_tokens wired through
 
     def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -178,6 +224,40 @@ class TestRunBatchOfSlides(unittest.TestCase):
             args.job_dir = job_dir
             args.slide_encoder = None
             args.patch_encoder = "conch_v15"
+
+            with patch("run_batch_of_slides.collect_valid_slides", return_value=[done_slide, pending_slide]):
+                pending = batch_mod.get_pending_slides(args)
+
+            self.assertEqual(pending, [pending_slide])
+
+    def test_get_pending_slides_skips_completed_vlm_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            job_dir = os.path.join(tmpdir, "job")
+            coords_dir = "20x_512px_0px_overlap"
+            vlm_dir = os.path.join(job_dir, coords_dir, "vlm_patho_r1_7b")
+            os.makedirs(vlm_dir, exist_ok=True)
+
+            done_slide = os.path.join(tmpdir, "done.svs")
+            pending_slide = os.path.join(tmpdir, "pending.svs")
+            with open(os.path.join(vlm_dir, "done.json"), "w", encoding="utf-8"):
+                pass
+
+            class Args:
+                pass
+
+            args = Args()
+            args.wsi_dir = os.path.join(tmpdir, "wsis")
+            args.custom_list_of_wsis = None
+            args.wsi_ext = [".svs"]
+            args.search_nested = False
+            args.max_workers = 1
+            args.task = "vlm"
+            args.mag = 20
+            args.patch_size = 512
+            args.overlap = 0
+            args.coords_dir = None
+            args.job_dir = job_dir
+            args.vlm = "patho_r1_7b"
 
             with patch("run_batch_of_slides.collect_valid_slides", return_value=[done_slide, pending_slide]):
                 pending = batch_mod.get_pending_slides(args)

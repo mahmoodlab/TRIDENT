@@ -29,6 +29,8 @@ Highlights
 
 - **One command for three stages**: segmentation → patch coordinates → patch / slide features.
   Run them together (``--task all``) or independently (``seg`` / ``coords`` / ``feat``).
+- **More consumers of the same coords**: cell / nuclei segmentation (``--task patch_seg``;
+  HistoPlus, CellViT++) and VLM question answering over ROIs (``--task vlm``; Patho-R1).
 - **Smart skip & resume**: if an output already exists and is not actively being written,
   TRIDENT skips that task. Re-running on the same ``--job_dir`` is safe by design.
 - **Per-run reports**: every run produces ``summary.md`` (human-readable) plus
