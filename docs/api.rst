@@ -269,19 +269,21 @@ they return a free-text answer.
      - Install / Link
    * - **Patho-R1 7B**
      - Qwen2.5-VL
-     - ``--vlm patho_r1_7b --patch_size 512 --mag 20``
+     - ``--vlm patho_r1_7b`` (any ``--mag`` / ``--patch_size``)
      - ``pip install "transformers>=4.49" accelerate qwen-vl-utils`` · `WenchuanZhang/Patho-R1-7B <https://huggingface.co/WenchuanZhang/Patho-R1-7B>`__
    * - **Patho-R1 3B**
      - Qwen2.5-VL
-     - ``--vlm patho_r1_3b --patch_size 512 --mag 20``
+     - ``--vlm patho_r1_3b`` (any ``--mag`` / ``--patch_size``)
      - same · `WenchuanZhang/Patho-R1-3B <https://huggingface.co/WenchuanZhang/Patho-R1-3B>`__
 
 .. note::
+   **Any magnification works** — unlike the patch/slide encoders (whose ``--mag`` / ``--patch_size`` are
+   fixed by training), a VLM accepts arbitrary input sizes; pick them to frame the field of view you want.
    Runs in the TRIDENT env; weights auto-download from HuggingFace (**CC-BY-NC-ND-4.0**, non-commercial).
    Generation is autoregressive and ``--task vlm`` sweeps every patch, so it is slow and **not** part of
-   ``--task all`` — prefer a tight coords set, a higher ``--mag`` / larger ``--patch_size``, or the
-   interactive ``run_query_roi.py``. Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be
-   confidently wrong — not for clinical use.
+   ``--task all`` — prefer a tight coords set, a coarser field of view (lower ``--mag`` / larger
+   ``--patch_size`` → fewer patches), or the interactive ``run_query_roi.py``. Lower ``--vlm_batch_size``
+   (default 4) if you OOM. Answers can be confidently wrong — not for clinical use.
 
 .. automodule:: trident.vlm_models
    :members:

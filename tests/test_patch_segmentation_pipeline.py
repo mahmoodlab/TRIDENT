@@ -157,6 +157,53 @@ class TestPatchSegPipeline(unittest.TestCase):
         p.release()
         self.assertTrue(os.path.isdir(out_dir))
 
+    def test_visualization_failure_does_not_fail_task(self):
+        """A crash in the optional --seg_viz step must not mark the slide as errored:
+        the GeoJSON + HDF5 are already written, so the task should still complete."""
+        import tempfile
+        from unittest.mock import patch
+        from trident.State import load_all_states
+
+        viz_tmp = tempfile.mkdtemp(prefix="vizfail_")
+        try:
+            p = Processor(job_dir=viz_tmp, wsi_source=self.wsi_dir, skip_errors=True)
+            otsu = segmentation_model_factory("otsu", confidence_thresh=0.5)
+            p.run_segmentation_job(otsu, seg_mag=otsu.target_mag, device="cpu")
+            coords_dir = os.path.relpath(
+                p.run_patching_job(target_magnification=5, patch_size=512, overlap=0, visualize=False),
+                viz_tmp,
+            )
+
+            # Force the visualization to blow up *after* the artifacts are written.
+            def _boom(*a, **k):
+                raise RuntimeError("simulated viz crash")
+
+            with patch("trident.wsi_objects.WSI.overlay_instances_on_thumbnail", side_effect=_boom):
+                out_dir = p.run_patch_segmentation_job(
+                    coords_dir=coords_dir, patch_segmenter=_FakeInstanceSegmenter(),
+                    device="cpu", batch_limit=16, visualize=True,
+                )
+            p.release()
+
+            # Real outputs exist despite the viz crash.
+            geojsons = [f for f in os.listdir(out_dir) if f.endswith(".geojson")]
+            self.assertEqual(len(geojsons), 1)
+            name = geojsons[0][:-len(".geojson")]
+            self.assertTrue(os.path.exists(os.path.join(out_dir, f"{name}.h5")))
+
+            # And the slide state says completed, not error.
+            states = load_all_states(viz_tmp)
+            self.assertEqual(len(states), 1)
+            st = next(iter(states.values()))
+            seg_tasks = {k: v for k, v in st["tasks"].items() if k.startswith("patch_segmentation:")}
+            self.assertEqual(len(seg_tasks), 1)
+            task = next(iter(seg_tasks.values()))
+            self.assertEqual(task["status"], "completed")
+            self.assertNotIn("last_error", st.get("resume", {}))
+        finally:
+            import shutil
+            shutil.rmtree(viz_tmp, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -194,16 +194,20 @@ python run_query_roi.py --slide_path ./wsis/x.svs \
   --vlm patho_r1_7b --prompt "Describe the tissue and report any tumor."
 ```
 
-| `--vlm` | Backbone | Required args | Install |
+| `--vlm` | Backbone | Args | Install |
 |---|---|---|---|
-| `patho_r1_7b` (default) | Qwen2.5-VL, ~16 GB bf16 | `--mag 20 --patch_size 512` | `pip install "transformers>=4.49" accelerate qwen-vl-utils` |
-| `patho_r1_3b` | Qwen2.5-VL, ~8 GB bf16 | `--mag 20 --patch_size 512` | same |
+| `patho_r1_7b` (default) | Qwen2.5-VL, ~16 GB bf16 | any `--mag` / `--patch_size` (e.g. `--mag 20 --patch_size 512`) | `pip install "transformers>=4.49" accelerate qwen-vl-utils` |
+| `patho_r1_3b` | Qwen2.5-VL, ~8 GB bf16 | any `--mag` / `--patch_size` | same |
 
+- **Any magnification works** — unlike the patch/slide encoders (whose `--mag`/`--patch_size` are
+  fixed by training; a mismatch gives garbage features), a VLM accepts arbitrary input sizes. Pick
+  `--mag`/`--patch_size` to frame the field of view you want; there is no required pair. A lower
+  `--mag` or larger `--patch_size` gives more context and fewer (so faster) patches.
 - **Runs in the TRIDENT env** (no separate env). Weights auto-download from HF on first use;
   **CC-BY-NC-ND-4.0 (non-commercial)**.
 - **Slow:** generation is autoregressive and the batch task sweeps every patch — prefer a tight
-  coords set, a higher `--mag` / larger `--patch_size` (fewer patches), or the interactive ROI
-  path. It is **not** part of `--task all`.
+  coords set, a coarser field of view (a **lower** `--mag` or **larger** `--patch_size` covers more
+  tissue per patch → fewer patches), or the interactive ROI path. It is **not** part of `--task all`.
 - **Batch size:** `--vlm_batch_size` (default `4`); lower it if you OOM. `--vlm_max_new_tokens`
   (default `512`) caps answer length. Other flags: `--vlm_ckpt_path` (local weights/repo).
 - Output dir is keyed per model: `<cdir>/vlm_<model>/` (see Outputs) — a `<slide>.json` of

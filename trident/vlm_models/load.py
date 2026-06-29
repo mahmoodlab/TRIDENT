@@ -191,6 +191,13 @@ class PathoR1VLM(BaseVLM):
       autoregressive, so a batch sweep over many patches is far slower than the
       feed-forward encoders — prefer targeted ROIs.
 
+    Magnification / patch size
+    --------------------------
+    There is **no fixed input resolution**: unlike the patch/slide encoders (trained at a
+    specific mag/patch_size, where a mismatch yields garbage), the Qwen2.5-VL processor
+    resizes any input, so the ROI may be read at **any** ``--mag`` / ``--patch_size`` — pick
+    them to frame the field of view you want.
+
     Args:
         variant (str): ``"7b"`` (default) or ``"3b"``.
         device_map (str | None): Passed to ``from_pretrained``. ``None`` (default) loads

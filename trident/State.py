@@ -195,6 +195,12 @@ def _update_resume(
             "message": message,
             "error": (attempt or {}).get("error") if attempt else message,
         }
+    else:
+        # A later non-error outcome for the same task resolves a prior recorded error;
+        # drop the stale `last_error` so a recovered slide doesn't keep reporting it.
+        prev_error = resume.get("last_error")
+        if isinstance(prev_error, dict) and prev_error.get("task") == task:
+            resume.pop("last_error", None)
 
 
 def ensure_states_dir(job_dir: str) -> str:

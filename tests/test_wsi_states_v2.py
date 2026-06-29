@@ -105,6 +105,44 @@ class TestWSIStatesV2(unittest.TestCase):
             self.assertEqual(st["resume"]["last_error"]["task"], "patch_features:uni_v1")
             self.assertIn("cuda oom", st["resume"]["last_error"]["error"])
 
+    def test_resume_last_error_cleared_when_same_task_recovers(self):
+        """A later successful run of a task that previously errored must drop the stale
+        resume.last_error, so a recovered slide stops reporting an error it no longer has."""
+        from trident.State import make_attempt, update_task_state, load_all_states
+
+        with tempfile.TemporaryDirectory() as job_dir:
+            ref = self._mk(job_dir)
+            task = "patch_segmentation:histoplus"
+            # 1) First attempt errors.
+            update_task_state(job_dir, ref, task, "error", reason="exception",
+                              message="viz boom", attempt=make_attempt("error", error="viz boom"))
+            st = load_all_states(job_dir)[ref["id"]]
+            self.assertIn("last_error", st["resume"])
+
+            # 2) Re-run succeeds for the SAME task.
+            update_task_state(job_dir, ref, task, "completed",
+                              attempt=make_attempt("finished"))
+            st = load_all_states(job_dir)[ref["id"]]
+            self.assertNotIn("last_error", st["resume"])              # stale error cleared
+            self.assertEqual(st["tasks"][task]["status"], "completed")
+            self.assertIsNone(st["tasks"][task]["reason"])
+            self.assertEqual(st["summary"]["patch_segmentation"]["histoplus"], "completed")
+
+    def test_resume_last_error_kept_when_a_different_task_succeeds(self):
+        """Recovery only clears the error for the SAME task; an unrelated task's success
+        must not hide a still-unresolved error elsewhere."""
+        from trident.State import make_attempt, update_task_state, load_all_states
+
+        with tempfile.TemporaryDirectory() as job_dir:
+            ref = self._mk(job_dir)
+            update_task_state(job_dir, ref, "patch_segmentation:histoplus", "error",
+                              reason="exception", message="boom",
+                              attempt=make_attempt("error", error="boom"))
+            update_task_state(job_dir, ref, "coords:20x_256px_0px_overlap", "completed")
+            st = load_all_states(job_dir)[ref["id"]]
+            self.assertIn("last_error", st["resume"])
+            self.assertEqual(st["resume"]["last_error"]["task"], "patch_segmentation:histoplus")
+
     def test_output_stats_added_for_paths(self):
         from trident.State import update_task_state, load_all_states
 

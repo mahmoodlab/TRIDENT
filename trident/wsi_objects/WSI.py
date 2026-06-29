@@ -1217,23 +1217,33 @@ class WSI:
         #    (a) a slide-thumbnail overview showing where cells are (global density), and
         #    (b) full-resolution overlays of the most cell-dense patches, where individual
         #        cells are actually visible (they vanish at thumbnail scale).
+        # The GeoJSON + HDF5 above are the real deliverables and are already on disk, so a
+        # visualization failure must NOT fail the whole task (it would mark the slide as
+        # errored despite the cell segmentation having succeeded). Best-effort, warn only.
         if save_viz is not None and len(instances) > 0:
-            max_dimension = 2000
-            if self.width >= self.height:
-                thumb_w = max_dimension
-                thumb_h = int(thumb_w * self.height / self.width)
-            else:
-                thumb_h = max_dimension
-                thumb_w = int(thumb_h * self.width / self.height)
-            thumbnail = np.array(self.get_thumbnail((thumb_w, thumb_h)))
-            overlay_instances_on_thumbnail(
-                gdf, thumbnail, os.path.join(save_viz, f'{self.name}_overview.jpg'),
-                thumb_w / self.width,
-            )
-            self._save_patch_segmentation_viz(
-                instances, scale_holder[0], patch_size, level0_magnification,
-                target_magnification, class_names, save_viz, max_patches=8,
-            )
+            try:
+                max_dimension = 2000
+                if self.width >= self.height:
+                    thumb_w = max_dimension
+                    thumb_h = int(thumb_w * self.height / self.width)
+                else:
+                    thumb_h = max_dimension
+                    thumb_w = int(thumb_h * self.width / self.height)
+                thumbnail = np.array(self.get_thumbnail((thumb_w, thumb_h)))
+                overlay_instances_on_thumbnail(
+                    gdf, thumbnail, os.path.join(save_viz, f'{self.name}_overview.jpg'),
+                    thumb_w / self.width,
+                )
+                self._save_patch_segmentation_viz(
+                    instances, scale_holder[0], patch_size, level0_magnification,
+                    target_magnification, class_names, save_viz, max_patches=8,
+                )
+            except Exception as e:
+                warnings.warn(
+                    f"[WSI] Cell-segmentation visualization failed for '{self.name}' "
+                    f"({type(e).__name__}: {e}). The GeoJSON and HDF5 outputs were written "
+                    f"successfully; only the optional --seg_viz overlay was skipped."
+                )
 
         return geojson_path
 

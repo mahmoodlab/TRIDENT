@@ -204,11 +204,16 @@ Qwen2.5-VL) and writes, under ``<mag>x_<patch>px_<overlap>px_overlap/vlm_<model>
 - ``<slide>.json``: per-patch ``{x, y, prompt, answer}``.
 - ``<slide>.geojson``: one patch box per answer carrying ``prompt`` / ``answer`` (open in QuPath).
 
+**Any magnification works.** Unlike the patch/slide encoders (whose ``--mag`` / ``--patch_size`` are
+fixed by training), a VLM accepts arbitrary input sizes — pick ``--mag`` / ``--patch_size`` to frame
+the field of view you want; ``--mag 20 --patch_size 512`` above is just an example.
+
 Install into the TRIDENT env: ``pip install "transformers>=4.49" accelerate qwen-vl-utils`` (weights
 auto-download from HuggingFace; **CC-BY-NC-ND-4.0**, non-commercial). Generation is autoregressive and
 the batch task sweeps every patch, so it is slow and **not** part of ``--task all`` — prefer a tight
-coords set, a higher ``--mag`` / larger ``--patch_size``, or the interactive ``run_query_roi.py``.
-Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be confidently wrong — not for clinical use.
+coords set, a coarser field of view (a lower ``--mag`` or larger ``--patch_size`` → fewer patches), or
+the interactive ``run_query_roi.py``. Lower ``--vlm_batch_size`` (default 4) if you OOM. Answers can be
+confidently wrong — not for clinical use.
 
 **Convert awkward formats to pyramidal TIFF**
 

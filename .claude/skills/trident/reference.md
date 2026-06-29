@@ -204,10 +204,10 @@ Generative **image+prompt → text** question answering over tissue. Patho-R1 is
 pathology reasoner. The wrapper only drives `transformers` (no model code vendored). Loaded via
 `trident.vlm_models.vlm_factory(name)`.
 
-| Model (`--vlm`) | Backbone / memory | Required args | Install (into the TRIDENT env) |
+| Model (`--vlm`) | Backbone / memory | Args | Install (into the TRIDENT env) |
 |---|---|---|---|
-| `patho_r1_7b` (default) | Qwen2.5-VL, ~16 GB bf16 | `--mag 20 --patch_size 512` | `pip install "transformers>=4.49" accelerate qwen-vl-utils`; weights auto-download from [HF](https://huggingface.co/WenchuanZhang/Patho-R1-7B) (**CC-BY-NC-ND-4.0**, non-commercial) |
-| `patho_r1_3b` | Qwen2.5-VL, ~8 GB bf16 | `--mag 20 --patch_size 512` | same; [WenchuanZhang/Patho-R1-3B](https://huggingface.co/WenchuanZhang/Patho-R1-3B) |
+| `patho_r1_7b` (default) | Qwen2.5-VL, ~16 GB bf16 | any `--mag` / `--patch_size` (e.g. `--mag 20 --patch_size 512`) | `pip install "transformers>=4.49" accelerate qwen-vl-utils`; weights auto-download from [HF](https://huggingface.co/WenchuanZhang/Patho-R1-7B) (**CC-BY-NC-ND-4.0**, non-commercial) |
+| `patho_r1_3b` | Qwen2.5-VL, ~8 GB bf16 | any `--mag` / `--patch_size` | same; [WenchuanZhang/Patho-R1-3B](https://huggingface.co/WenchuanZhang/Patho-R1-3B) |
 
 Attribution: Zhang et al., *"Patho-R1: A Multimodal Reinforcement Learning-Based Pathology Expert
 Reasoner"*, arXiv:2505.11404.
@@ -223,9 +223,13 @@ Two modes:
 `--max_new_tokens INT` (default 512), `--gpu INT` (`-1` for CPU), `--reader_type`, `--custom_mpp_keys`.
 
 Notes:
+- **Any magnification works.** Unlike the patch/slide encoders (whose `--mag`/`--patch_size` are
+  fixed by training), a VLM accepts arbitrary input sizes — pick `--mag`/`--patch_size` to frame the
+  field of view you want; there is no required pair.
 - **Slow / autoregressive.** The batch task sweeps every patch and generation is token-by-token —
-  far slower than the feed-forward encoders. Prefer a tight coords set, a higher `--mag` / larger
-  `--patch_size` (fewer patches), or the interactive ROI path. `vlm` is **not** part of `--task all`.
+  far slower than the feed-forward encoders. Prefer a tight coords set, a coarser field of view (a
+  **lower** `--mag` or **larger** `--patch_size` → fewer patches), or the interactive ROI path.
+  `vlm` is **not** part of `--task all`.
 - **Batch size** with `--vlm_batch_size` (default `4`); lower it if you OOM. `--vlm_max_new_tokens`
   caps answer length.
 - Like any LLM, answers can be confidently wrong — not for clinical use.
