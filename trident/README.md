@@ -1,6 +1,6 @@
 # `trident/` — package layout
 
-A map of what each module does. The pipeline is: **segment tissue → extract patch coordinates → run a model over those patches** (feature extraction, cell segmentation, or VLM Q&A). The `Processor` orchestrates it; the `*_models/` packages supply the models; `wsi_objects/` reads the slides.
+The pipeline is: **segment tissue vs. background → extract patch coordinates → run a model over those patches** (feature extraction, cell segmentation, or VLM Q&A). The `Processor` orchestrates it; the `*_models/` packages supply the models and `wsi_objects/` reads the slides.
 
 ## Orchestration & pipeline
 
@@ -43,5 +43,3 @@ Each follows the same shape: a `*_factory(name)` + a `*_registry` of names, a ba
 | `cli_doctor.py` | `trident-doctor` — preflight checks for installs, GPU, and gated-model access. |
 | `Maintenance.py` | The `@deprecated` decorator. |
 | `__init__.py` | Public exports (`Processor`, `load_wsi`, …). |
-
-> The two top-level scripts that drive all of this — `run_batch_of_slides.py` (a directory of slides) and `run_single_slide.py` (one slide) — live in the **repo root**, not here, alongside `run_query_roi.py` (interactive VLM query). See the [main README](../README.md).
