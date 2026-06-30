@@ -13,6 +13,8 @@ import pandas as pd
 from geopandas import gpd
 from shapely import Polygon
 
+# Polygon-overlay rendering lives in trident.Visualization (the single visualization module);
+# score/attention heatmaps live there too. IO.py is now purely persistence / discovery / locks.
 
 COMPOUND_EXTENSIONS = {'.ome.tif', '.ome.tiff', '.ome.zarr'}
 
@@ -873,143 +875,6 @@ def save_cell_segmentation_h5(save_path: str, instances: List[dict], attributes:
     return save_path
 
 
-# Distinct, reproducible colors per class id (used as cv2 BGR tuples on the BGR canvas).
-CELL_VIZ_PALETTE = [
-    (228, 26, 28), (55, 126, 184), (77, 175, 74), (152, 78, 163), (255, 127, 0),
-    (255, 215, 0), (166, 86, 40), (247, 129, 191), (153, 153, 153), (26, 188, 156),
-    (52, 152, 219), (155, 89, 182), (241, 196, 15), (231, 76, 60), (149, 165, 166),
-]
-
-
-def cell_class_color(class_id: int) -> tuple:
-    """Color (cv2 BGR-on-BGR-canvas) for a class id; stable across the overview and patches."""
-    return CELL_VIZ_PALETTE[int(class_id) % len(CELL_VIZ_PALETTE)]
-
-
-def _draw_cell_legend(canvas: np.ndarray, entries: List[tuple]) -> np.ndarray:
-    """
-    Draw a color->cell-type legend in the top-left corner of ``canvas`` (BGR, in place).
-
-    Args:
-        canvas (np.ndarray): BGR image to draw on.
-        entries (List[tuple]): ordered ``(label, color)`` pairs (color same as the contours).
-    """
-    if not entries:
-        return canvas
-    h, w = canvas.shape[:2]
-    fs = max(0.45, min(1.2, w / 1600.0))
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    tth = max(1, int(round(fs * 1.5)))
-    sw = int(round(22 * fs))          # swatch side
-    gap = int(round(8 * fs)) + 2
-    row_h = sw + gap
-    text_w = max(cv2.getTextSize(lbl, font, fs, tth)[0][0] for lbl, _ in entries)
-    panel_w = min(sw + 3 * gap + text_w, w - 2 * gap)
-    panel_h = row_h * len(entries) + gap
-    x0, y0 = gap, gap
-    cv2.rectangle(canvas, (x0, y0), (x0 + panel_w, y0 + panel_h), (255, 255, 255), -1)
-    cv2.rectangle(canvas, (x0, y0), (x0 + panel_w, y0 + panel_h), (0, 0, 0), max(1, tth // 2))
-    y = y0 + gap
-    for label, color in entries:
-        cv2.rectangle(canvas, (x0 + gap, y), (x0 + gap + sw, y + sw), color, -1)
-        cv2.rectangle(canvas, (x0 + gap, y), (x0 + gap + sw, y + sw), (0, 0, 0), 1)
-        cv2.putText(canvas, label, (x0 + 2 * gap + sw, y + sw - int(round(5 * fs))),
-                    font, fs, (0, 0, 0), tth, cv2.LINE_AA)
-        y += row_h
-    return canvas
-
-
-def overlay_instances_on_thumbnail(
-    gdf: "gpd.GeoDataFrame",
-    thumbnail: np.ndarray,
-    saveto: str,
-    scale: float,
-) -> str:
-    """
-    Draw instance polygons (level-0 coords) onto a slide thumbnail for debugging and save
-    it as a JPEG. Colors are assigned per class id, with a color->cell-type legend drawn in
-    the corner. Mirrors `overlay_gdf_on_thumbnail` used by tissue segmentation.
-
-    Args:
-        gdf (gpd.GeoDataFrame): Instances with `class`/`class_name` columns and polygon
-            `geometry` (level-0).
-        thumbnail (np.ndarray): RGB thumbnail to draw on.
-        saveto (str): Output `.jpg` path.
-        scale (float): thumbnail-pixels-per-level0-pixel (i.e. thumb_width / wsi_width).
-
-    Returns:
-        str: `saveto`.
-    """
-    canvas = np.ascontiguousarray(thumbnail[..., ::-1])  # RGB -> BGR for cv2
-    present = {}  # class_id -> class_name, for the legend
-    for _, row in gdf.iterrows():
-        geom = row.geometry
-        if geom is None or geom.is_empty:
-            continue
-        class_id = int(row.get('class', 0))
-        present.setdefault(class_id, row.get('class_name'))
-        color = cell_class_color(class_id)
-        polys = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
-        for poly in polys:
-            ext = (np.asarray(poly.exterior.coords) * scale).astype(np.int32)
-            cv2.polylines(canvas, [ext], isClosed=True, color=color, thickness=1)
-
-    entries = [
-        (str(present[cid]) if present[cid] is not None else f"class {cid}", cell_class_color(cid))
-        for cid in sorted(present)
-    ]
-    _draw_cell_legend(canvas, entries)
-
-    os.makedirs(os.path.dirname(saveto), exist_ok=True)
-    cv2.imwrite(saveto, canvas)
-    return saveto
-
-
-def draw_instances_on_tile(
-    tile_rgb: np.ndarray,
-    instances_px: List[dict],
-    class_names: Optional[List[str]],
-    saveto: str,
-    thickness: int = 2,
-) -> str:
-    """
-    Draw per-cell instance contours (in *patch* pixel coords) on a full-resolution tile and
-    save as JPEG. This is the readable debug artifact for cell segmentation: at this zoom the
-    individual cells and their class colors are clearly visible. Color is keyed by class id.
-
-    Args:
-        tile_rgb (np.ndarray): `(H, W, 3)` RGB patch image.
-        instances_px (List[dict]): instances with `contour` (K,2 patch-px) and `class_id`.
-        class_names (List[str], optional): unused for drawing; kept for parity/legend hooks.
-        saveto (str): output `.jpg` path.
-        thickness (int, optional): contour line thickness. Defaults to 2.
-
-    Returns:
-        str: `saveto`.
-    """
-    canvas = np.ascontiguousarray(tile_rgb[..., ::-1])  # RGB -> BGR for cv2
-    present = set()
-    for inst in instances_px:
-        contour = np.asarray(inst['contour'], dtype=np.int32)
-        if contour.ndim != 2 or contour.shape[0] < 3:
-            continue
-        class_id = int(inst['class_id'])
-        present.add(class_id)
-        cv2.polylines(canvas, [contour], isClosed=True, color=cell_class_color(class_id),
-                      thickness=thickness)
-
-    def _name(cid):
-        if class_names is not None and 0 <= cid < len(class_names):
-            return str(class_names[cid])
-        return f"class {cid}"
-    entries = [(_name(cid), cell_class_color(cid)) for cid in sorted(present)]
-    _draw_cell_legend(canvas, entries)
-
-    os.makedirs(os.path.dirname(saveto), exist_ok=True)
-    cv2.imwrite(saveto, canvas)
-    return saveto
-
-
 def filter_contours(contours, hierarchy, filter_params, pixel_size):
     """
     The `filter_contours` function processes a list of contours and their hierarchy, filtering 
@@ -1159,70 +1024,7 @@ def scale_contours(contours, scale, is_nested=False):
     return [np.array(cont * scale, dtype='int32') for cont in contours]
 
 
-def overlay_gdf_on_thumbnail(
-    gdf_contours, thumbnail, contours_saveto, scale, tissue_color=(0, 255, 0), hole_color=(255, 0, 0)
-):
-    """
-    The `overlay_gdf_on_thumbnail` function overlays polygons from a GeoDataFrame onto a scaled 
-    thumbnail image using OpenCV. This is particularly useful for visualizing tissue regions and 
-    their boundaries on smaller representations of whole-slide images.
-
-    Parameters:
-    -----------
-    gdf_contours : gpd.GeoDataFrame
-        A GeoDataFrame containing the polygons to overlay, with a `geometry` column.
-    thumbnail : np.ndarray
-        The thumbnail image as a NumPy array.
-    contours_saveto : str
-        The file path to save the annotated thumbnail.
-    scale : float
-        The scaling factor between the GeoDataFrame coordinates and the thumbnail resolution.
-    tissue_color : tuple, optional
-        The color (BGR format) for tissue polygons. Defaults to green `(0, 255, 0)`.
-    hole_color : tuple, optional
-        The color (BGR format) for hole polygons. Defaults to red `(255, 0, 0)`.
-
-    Returns:
-    --------
-    None
-        The function saves the annotated image to the specified file path.
-
-    Example:
-    --------
-    >>> overlay_gdf_on_thumbnail(
-    ...     gdf_contours=gdf, 
-    ...     thumbnail=thumbnail_img, 
-    ...     contours_saveto="annotated_thumbnail.png", 
-    ...     scale=0.5
-    ... )
-    """
-
-    for poly in gdf_contours.geometry:
-        if poly.is_empty:
-            continue
-
-        # Draw tissue boundary
-        if poly.exterior:
-            exterior_coords = (np.array(poly.exterior.coords) * scale).astype(np.int32)
-            cv2.polylines(thumbnail, [exterior_coords], isClosed=True, color=tissue_color, thickness=2)
-
-        # Draw holes (if any) in a different color
-        if poly.interiors:
-            for interior in poly.interiors:
-                interior_coords = (np.array(interior.coords) * scale).astype(np.int32)
-                cv2.polylines(thumbnail, [interior_coords], isClosed=True, color=hole_color, thickness=2)
-
-    # Crop black borders of the annotated image
-    nz = np.nonzero(cv2.cvtColor(thumbnail, cv2.COLOR_BGR2GRAY))  # Non-zero pixel locations
-    xmin, xmax, ymin, ymax = np.min(nz[1]), np.max(nz[1]), np.min(nz[0]), np.max(nz[0])
-    cropped_annotated = thumbnail[ymin:ymax, xmin:xmax]
- 
-    # Save the annotated image
-    os.makedirs(os.path.dirname(contours_saveto), exist_ok=True)
-    cropped_annotated = cv2.cvtColor(cropped_annotated, cv2.COLOR_BGR2RGB)
-    cv2.imwrite(contours_saveto, cropped_annotated)
-
-def get_num_workers(batch_size: int, 
+def get_num_workers(batch_size: int,
                     factor: float = 0.75, 
                     fallback: int = 16, 
                     max_workers: int | None = None) -> int:

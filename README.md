@@ -249,6 +249,7 @@ trident batch  -- --task all --wsi_dir ./wsis --job_dir ./job --patch_encoder un
 ```
 
   - If you need to call Trident from Python, just use the public API (`Processor`, `load_wsi`).
+  - To **overlay** tissue or cell/nuclei segmentation on a slide or a region of interest, use `wsi.overlay(geojson_path, mode="fill"|"outline", region=(x,y,w,h), color_by="class")` — it reads the GeoJSON Trident already writes and renders on a thumbnail or ROI. For per-patch score/attention heatmaps, use `from trident import visualize_heatmap`.
 
 - **Q**: I am not satisfied with the tissue vs background segmentation. What can I do?
    - **A**: Trident uses GeoJSON to store and load segmentations. This format is natively supported by [QuPath](https://qupath.github.io/). You can load the Trident segmentation into QuPath, modify it using QuPath's annotation tools, and save the updated segmentation back to GeoJSON.

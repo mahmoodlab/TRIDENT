@@ -207,6 +207,27 @@ To query a **single ROI** programmatically (no coords needed), use the Python AP
   per-patch answers + a QuPath-ready `<slide>.geojson` (patch boxes carrying the answer).
 - ⚠️ Answers can be **confidently wrong** (like any LLM) — never use them for clinical decisions.
 
+## Overlays & visualization (Python API)
+
+To **overlay** tissue or cell/nuclei segmentation on a slide, use the native `WSI.overlay` —
+it reads the GeoJSON the pipeline already writes (`contours_geojson/<slide>.geojson` for
+tissue, `seg_<model>/<slide>.geojson` for cells) and renders on a whole-slide thumbnail or a
+cropped ROI:
+
+```python
+from trident import load_wsi
+with load_wsi("./wsis/x.svs", lazy_init=False) as slide:
+    slide.overlay("./out/contours_geojson/x.geojson", mode="fill", saveto="tissue.jpg")
+    slide.overlay("./out/20x_784px_0px_overlap/seg_histoplus/x.geojson",
+                  region=(10000, 8000, 4096, 4096), color_by="class", saveto="roi_cells.jpg")
+```
+
+`mode="outline"` (boundaries) or `"fill"` (translucent, holes preserved); `region=(x,y,w,h)`
+in level-0 px crops an ROI (omit → whole-slide thumbnail); `color_by="class"` colors per cell
+type with a legend. Returns a PIL image. For per-patch **score/attention heatmaps** use
+`from trident import visualize_heatmap`. During `--task patch_seg`, pass `--seg_viz` to auto-write
+overlays. Full signature + the shared `render_overlay` core: see [reference.md](reference.md).
+
 ## Outputs (under `--job_dir`)
 
 ```

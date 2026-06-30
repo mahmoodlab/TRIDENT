@@ -14,8 +14,12 @@ from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
     save_h5, read_coords,
-    mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
-    save_cell_segmentation_h5, overlay_instances_on_thumbnail, splitext
+    mask_to_gdf, get_num_workers, coords_to_h5,
+    save_cell_segmentation_h5, splitext,
+)
+from trident.Visualization import (
+    overlay_gdf_on_thumbnail, overlay_instances_on_thumbnail,
+    render_overlay, cell_class_color,
 )
 
 ReadMode = Literal['pil', 'numpy']
@@ -803,6 +807,147 @@ class WSI:
         img.save(viz_coords_path)
         return viz_coords_path
 
+    def overlay(
+        self,
+        geometries: Union[str, "gpd.GeoDataFrame"],
+        *,
+        region: Optional[Tuple[int, int, int, int]] = None,
+        mode: str = 'outline',
+        color_by: Optional[str] = None,
+        label_by: str = 'class_name',
+        color: Tuple[int, int, int] = (0, 255, 0),
+        thickness: int = 2,
+        alpha: float = 0.4,
+        max_dim: int = 2000,
+        legend: bool = True,
+        saveto: Optional[str] = None,
+    ) -> Image.Image:
+        """
+        Overlay polygon geometries (tissue contours, cell/nuclei instances, or any
+        GeoDataFrame of level-0 polygons) onto a thumbnail of the whole slide or onto a
+        cropped region of interest (ROI). This is the single, native entrypoint for slide
+        overlays; it shares its renderer (:func:`trident.Visualization.render_overlay`) with
+        the tissue- and cell-segmentation visualizations, so styling is consistent everywhere.
+
+        For per-patch *score* heatmaps (e.g. attention) use :func:`trident.visualize_heatmap`
+        instead — that is the complementary, score-based overlay.
+
+        Parameters:
+            geometries (str | gpd.GeoDataFrame):
+                A GeoDataFrame of polygons in **level-0 pixel coordinates**, or a path to a
+                ``.geojson`` file (e.g. TRIDENT's ``contours_geojson/<slide>.geojson`` for
+                tissue, or ``seg_<model>/<slide>.geojson`` for cells).
+            region (tuple[int, int, int, int], optional):
+                ``(x, y, w, h)`` in level-0 pixels. If given, the overlay is drawn on this ROI
+                read from the slide. If ``None`` (default), it is drawn on a whole-slide thumbnail.
+            mode (str):
+                ``'outline'`` draws polygon boundaries; ``'fill'`` draws translucent filled
+                regions (alpha-blended, holes preserved). Defaults to ``'outline'``.
+            color_by (str, optional):
+                Column name whose integer values pick a stable per-class color (e.g. ``'class'``
+                for cells). If ``None`` (default), every polygon uses ``color``.
+            label_by (str):
+                Column used for legend labels when ``color_by`` is set. Defaults to ``'class_name'``;
+                falls back to the class id when the column is absent.
+            color (tuple[int, int, int]):
+                BGR color used when ``color_by`` is ``None``. Defaults to green ``(0, 255, 0)``.
+            thickness (int):
+                Outline thickness in pixels (outline mode only). Defaults to 2.
+            alpha (float):
+                Blend strength for fill mode in ``[0, 1]``. Defaults to 0.4.
+            max_dim (int):
+                Longest side (in pixels) of the rendered raster. Defaults to 2000.
+            legend (bool):
+                Draw a color->class legend when ``color_by`` is set. Defaults to True.
+            saveto (str, optional):
+                If given, save the overlay image to this path (parent dirs created as needed).
+
+        Returns:
+            PIL.Image.Image: The rendered RGB overlay.
+
+        Example
+        -------
+        >>> # Tissue vs background, filled and translucent, on a whole-slide thumbnail
+        >>> wsi.overlay("contours_geojson/slide.geojson", mode='fill', saveto='tissue.jpg')
+        >>> # Nuclear segmentation colored by class, on a 4096x4096 ROI at (10000, 8000)
+        >>> wsi.overlay("seg_histoplus/slide.geojson", region=(10000, 8000, 4096, 4096),
+        ...             color_by='class', saveto='roi_cells.jpg')
+        """
+        import geopandas as gpd
+
+        self._lazy_initialize()
+
+        if isinstance(geometries, str):
+            gdf = gpd.read_file(geometries)
+        else:
+            gdf = geometries
+
+        # Resolve the raster to draw on and the level-0 -> raster transform (scale, offset).
+        if region is None:
+            if self.width >= self.height:
+                raster_w = max_dim
+                raster_h = max(1, int(round(max_dim * self.height / self.width)))
+            else:
+                raster_h = max_dim
+                raster_w = max(1, int(round(max_dim * self.width / self.height)))
+            raster = np.array(self.get_thumbnail((raster_w, raster_h)).convert('RGB'))
+            scale = raster.shape[1] / self.width
+            off_x, off_y = 0, 0
+        else:
+            off_x, off_y, w, h = (int(v) for v in region)
+            desired_ds = max(1.0, max(w, h) / max_dim)
+            level, _ = self.get_best_level_and_custom_downsample(desired_ds)
+            level_ds = self.level_downsamples[level]
+            read_w = max(1, int(round(w / level_ds)))
+            read_h = max(1, int(round(h / level_ds)))
+            region_img = self.read_region((off_x, off_y), level, (read_w, read_h), read_as='pil').convert('RGB')
+            out_w = max(1, int(round(w / desired_ds)))
+            out_h = max(1, int(round(h / desired_ds)))
+            if (read_w, read_h) != (out_w, out_h):
+                region_img = region_img.resize((out_w, out_h), resample=Image.Resampling.BICUBIC)
+            raster = np.array(region_img)
+            scale = out_w / w
+
+        canvas = np.ascontiguousarray(raster[..., ::-1])  # RGB -> BGR for cv2
+
+        has_class = color_by is not None and color_by in gdf.columns
+        polygons = []
+        present = {}  # class_id -> label, for the legend
+        for _, row in gdf.iterrows():
+            geom = row.geometry
+            if geom is None or geom.is_empty:
+                continue
+            if has_class:
+                class_id = int(row[color_by])
+                poly_color = cell_class_color(class_id)
+                if class_id not in present:
+                    lbl = row[label_by] if (label_by in gdf.columns and row.get(label_by) is not None) else None
+                    present[class_id] = str(lbl) if lbl is not None else f"class {class_id}"
+            else:
+                poly_color = tuple(color)
+            polys = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
+            for poly in polys:
+                if poly.is_empty or not poly.exterior:
+                    continue
+                ext = ((np.asarray(poly.exterior.coords) - (off_x, off_y)) * scale).astype(np.int32)
+                interiors = [
+                    ((np.asarray(ring.coords) - (off_x, off_y)) * scale).astype(np.int32)
+                    for ring in poly.interiors
+                ]
+                polygons.append((ext, interiors, poly_color))
+
+        entries = (
+            [(present[cid], cell_class_color(cid)) for cid in sorted(present)]
+            if (legend and has_class) else None
+        )
+        render_overlay(canvas, polygons, mode=mode, thickness=thickness, alpha=alpha, legend=entries)
+
+        result = Image.fromarray(canvas[..., ::-1])  # BGR -> RGB
+        if saveto is not None:
+            os.makedirs(os.path.dirname(os.path.abspath(saveto)), exist_ok=True)
+            result.save(saveto)
+        return result
+
     def dump_patches(
         self,
         coords_path: str,
@@ -1258,7 +1403,7 @@ class WSI:
         """
         from collections import defaultdict
         import numpy as np
-        from trident.IO import draw_instances_on_tile
+        from trident.Visualization import draw_instances_on_tile
 
         by_patch = defaultdict(list)
         for inst in instances:

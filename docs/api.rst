@@ -56,6 +56,35 @@ The CLI entrypoints are thin wrappers around ``Processor``.
    vlm = vlm_factory("patho_r1_7b")
    processor.run_vlm_query_job(coords_dir="20x_512px_0px_overlap", vlm=vlm, prompt="Is tumor present?", device="cuda:0", batch_limit=4)
 
+Overlay segmentations on a slide or ROI
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``WSI.overlay`` is the single, native entrypoint for drawing polygon geometries — tissue
+contours or cell/nuclei instances — on a whole-slide thumbnail or on a cropped region of
+interest. It reads the GeoJSON the pipeline already writes (``contours_geojson/<slide>.geojson``
+for tissue, ``seg_<model>/<slide>.geojson`` for cells) and shares its renderer with the
+built-in segmentation visualizations, so styling is consistent everywhere.
+
+.. code-block:: python
+
+   from trident import load_wsi
+
+   with load_wsi("./wsis/example.svs", lazy_init=False) as wsi:
+       # Tissue vs background, translucent fill, on a whole-slide thumbnail
+       wsi.overlay("./job/contours_geojson/example.geojson", mode="fill", saveto="tissue.jpg")
+
+       # Nuclear segmentation colored by cell type, on a 4096x4096 ROI at (x=10000, y=8000)
+       wsi.overlay(
+           "./job/20x_784px_0px_overlap/seg_histoplus/example.geojson",
+           region=(10000, 8000, 4096, 4096),
+           mode="outline", color_by="class", saveto="roi_cells.jpg",
+       )
+
+Use ``mode="outline"`` for boundaries or ``mode="fill"`` for translucent regions (holes
+preserved), ``region=(x, y, w, h)`` (level-0 pixels) to crop an ROI or omit it for a
+whole-slide thumbnail, and ``color_by="class"`` to color per cell type with a legend.
+For per-patch **score** heatmaps (e.g. attention) use :func:`trident.visualize_heatmap`.
+
 Outputs and run tracking
 ^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -27,7 +27,7 @@ Each follows the same shape: a `*_factory(name)` + a `*_registry` of names, a ba
 
 | Module | What it does |
 |---|---|
-| `wsi_objects/WSI.py` | The core `WSI` object: lazy slide access plus the per-slide methods each stage calls (`segment_tissue`, `extract_tissue_coords`, `extract_patch_features`, `segment_patches`, `query_patches`, `query_region`). |
+| `wsi_objects/WSI.py` | The core `WSI` object: lazy slide access plus the per-slide methods each stage calls (`segment_tissue`, `extract_tissue_coords`, `extract_patch_features`, `segment_patches`, `query_patches`, `query_region`, `overlay`). |
 | `wsi_objects/WSIFactory.py` | `load_wsi(...)` — picks the right reader from the file/format. |
 | `wsi_objects/{OpenSlide,CuCIM,Image,OMEZarr,CZI,SDPC}WSI.py` | Format-specific readers, all behind the common `WSI` interface. |
 | `wsi_objects/WSIPatcher.py`, `WSIPatcherDataset.py` | Turn tissue contours into a grid of patch coordinates and serve patch crops to a DataLoader. |
@@ -38,7 +38,7 @@ Each follows the same shape: a `*_factory(name)` + a `*_registry` of names, a ba
 | Module | What it does |
 |---|---|
 | `IO.py` | Shared I/O helpers: slide discovery, HDF5/GeoJSON read-write, coords ↔ instance helpers, weight-path resolution, lock files. |
-| `Visualization.py` | Heatmap / overlay rendering on slide thumbnails. |
+| `Visualization.py` | **All slide rendering.** Score/attention heatmaps (`visualize_heatmap`) and polygon overlays — tissue/cell contours, outline or translucent fill, whole-slide or ROI — via the shared `render_overlay` core (exposed to users as `WSI.overlay`). |
 | `cli.py` | The `trident` console entry point (`trident batch`/`single`/`convert`). |
 | `cli_doctor.py` | `trident-doctor` — preflight checks for installs, GPU, and gated-model access. |
 | `Maintenance.py` | The `@deprecated` decorator. |

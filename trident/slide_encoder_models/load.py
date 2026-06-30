@@ -467,7 +467,16 @@ class TitanSlideEncoder(BaseSlideEncoder):
     def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
-        from transformers import AutoModel 
+        from transformers import AutoModel
+        # transformers compatibility shim: TITAN's remote code references
+        # PreTrainedModel.all_tied_weights_keys, which is absent in some transformers versions
+        # and makes from_pretrained raise. Define it as empty if missing (harmless when present).
+        try:
+            from transformers.modeling_utils import PreTrainedModel
+            if not hasattr(PreTrainedModel, 'all_tied_weights_keys'):
+                PreTrainedModel.all_tied_weights_keys = {}
+        except Exception:
+            pass
         model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
         precision = torch.float16
         embedding_dim = 768

@@ -19,8 +19,8 @@ from torchvision import transforms
 from trident.IO import (
     mask_to_instances,
     save_cell_segmentation_h5,
-    overlay_instances_on_thumbnail,
 )
+from trident.Visualization import overlay_instances_on_thumbnail
 from trident.patch_segmentation_models import (
     patch_segmenter_registry,
     patch_segmenter_factory,

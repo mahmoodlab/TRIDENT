@@ -398,10 +398,28 @@ For VLM question answering: `from trident.vlm_models import vlm_factory, vlm_reg
 `slide.query_region(vlm, "Describe this region.", location=(x, y), size=512, mag=20)` returns the
 answer string (`location` is level-0 px, `size` is the edge in px at `mag`). `vlm.generate(images, prompts)` is the low-level call (one prompt per image, or one prompt broadcast to all).
 
-For overlays/visualizations, get a downsampled thumbnail with
-`load_wsi(path, lazy_init=False).get_thumbnail((max_w, max_h))` → PIL image; then map level-0
-`coords` onto it by dividing by the downsample `level0_width / thumb_width` and draw squares of
-side `patch_size_level0 / downsample`.
+For **overlays** of tissue/cell segmentation, use the native `WSI.overlay` — it reads the
+GeoJSON the pipeline already writes and renders on a whole-slide thumbnail or a cropped ROI:
+
+```python
+with load_wsi(path, lazy_init=False) as slide:
+    # tissue vs background, translucent fill, whole-slide thumbnail
+    slide.overlay(f"{job_dir}/contours_geojson/{slide.name}.geojson",
+                  mode="fill", saveto="tissue.jpg")
+    # nuclear segmentation colored by cell type, on a 4096x4096 ROI at level-0 (x,y)
+    slide.overlay(f"{save_coords}/seg_histoplus/{slide.name}.geojson",
+                  region=(x, y, 4096, 4096), mode="outline", color_by="class",
+                  saveto="roi_cells.jpg")
+```
+
+`geometries` is a GeoDataFrame or `.geojson` path (level-0 polygons); `region=(x,y,w,h)` in
+level-0 px crops an ROI (omit for a whole-slide thumbnail); `mode` is `"outline"` or `"fill"`
+(translucent, holes preserved); `color_by="class"` colors per cell type with a legend;
+`max_dim` caps the rendered long side (default 2000). Returns a PIL image (and saves if
+`saveto` is given). It shares the `trident.Visualization.render_overlay` core with the built-in
+seg visualizations. For per-patch **score/attention heatmaps**, use
+`from trident import visualize_heatmap` instead. Patch-grid previews still come from
+`slide.visualize_coords(coords_path, save_patch_viz=...)`.
 
 ## Install profiles & preflight
 
