@@ -796,7 +796,11 @@ class WSI:
                 src_mag=level0_magnification,
                 dst_mag=target_magnification,
                 custom_coords=coords,
-                coords_only=True
+                coords_only=True,
+                # Pass the coords' own overlap so the thumbnail annotation reports it correctly;
+                # otherwise the patcher keeps the default (0) and the viz mislabels overlap.
+                # `overlap` is 'NA' only if the key was missing; it's an (np) int otherwise.
+                overlap=int(overlap) if overlap != 'NA' else 0,
             )
 
         img =  patcher.visualize()
