@@ -164,7 +164,8 @@ verbatim); weave is **promptable** — it segments whatever a text prompt names,
 
 **weave (promptable SAM3).** JaumeLab's SAM3 finetuned for histopathology — segments whatever
 `--patch_seg_prompt` names (e.g. `"tumor"`, `"glomeruli"`) in every patch, instead of a fixed cell
-taxonomy. **Any** `--mag`/`--patch_size` works (SAM3 resizes internally, like a VLM). `--patch_seg_conf_thresh`
+taxonomy. **Any** `--mag`/`--patch_size` works (SAM3 resizes internally, like a VLM); its native input is
+**1008×1008**, so `--patch_size 1008` feeds the model with no extra resize (recommended). `--patch_seg_conf_thresh`
 (default 0.5) sets the score threshold. Only text-prompt whole-slide mode is exposed (no box prompt).
 Install needs `pycocotools` too. **Single GPU only** (`--gpus 0`); for another physical GPU use
 `CUDA_VISIBLE_DEVICES=<n>` + `--gpus 0`. Its deps (timm 1.x, numpy 1.x, transformers 5.x) conflict
@@ -182,11 +183,16 @@ Output is keyed **per prompt**: `seg_weave_<prompt>/` (e.g. `seg_weave_tumor/`, 
 with matching `_config_seg_weave_<prompt>.json` / `_logs_...`. So you can run several prompts on the
 same `--job_dir`/coords and they coexist (and resume independently) instead of overwriting each other.
 
+Polygon boundaries are simplified (Douglas–Peucker) before saving — cv2 traces the mask at pixel
+granularity, so raw GeoJSON is huge (~47 B/vertex, 100s+ MB). The default is mag-adaptive (weave ≈ 5
+mask px ≈ 10 level-0 px at 20×): **~10–70× smaller files, <0.1% area change** (e.g. tumor map 126 MB → 2 MB).
+Tune with `--patch_seg_simplify_tol <level0_px>` (0 disables); applies to all patch_seg models (cells use ~2 mask px, near-lossless).
+
 ```bash
 python run_batch_of_slides.py --task patch_seg \
   --wsi_dir ./wsis --job_dir ./trident_processed \
   --patch_segmenter weave --patch_seg_prompt "tumor" \
-  --mag 20 --patch_size 1024 --seg_viz --gpus 0
+  --mag 20 --patch_size 1008 --seg_viz --gpus 0
 ```
 
 Install — **both run in the TRIDENT env** (no separate env needed):

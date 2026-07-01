@@ -211,6 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--patch_seg_no_dissolve', action='store_true', default=False,
                         help='For region segmenters (weave): keep raw per-tile polygons instead of '
                              'dissolving patch-border seams into contiguous regions (dissolve is on by default).')
+    parser.add_argument('--patch_seg_simplify_tol', type=float, default=None,
+                        help='Polygon simplification tolerance for task=patch_seg, in level-0 pixels. '
+                             'Cuts GeoJSON/HDF5 size 10-70x with <0.1%% area change. Default (unset) '
+                             'auto-scales per model (~2 mask px for cells, ~5 for weave regions); 0 disables.')
     parser.add_argument('--patch_segmenter_ckpt_path', type=str, default=None,
                         help='Optional local path / hub URI to patch-segmenter weights (offline environments; '
                              'for weave, overrides the default hf:// checkpoint).')
@@ -407,6 +411,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             device=device,
             batch_limit=args.patch_seg_batch_size,
             visualize=getattr(args, 'seg_viz', False),
+            simplify_tolerance=args.patch_seg_simplify_tol,
         )
     elif args.task == 'vlm':
         from trident.vlm_models import vlm_factory

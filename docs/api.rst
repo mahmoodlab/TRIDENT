@@ -284,7 +284,8 @@ free-text prompt. Models ship in their own packages.
 
 .. note::
    **weave** is a promptable SAM3 finetuned for histopathology: it segments whatever ``--patch_seg_prompt``
-   names (e.g. ``"tumor"``, ``"glomeruli"``), at any resolution. It outputs a **semantic region map** by
+   names (e.g. ``"tumor"``, ``"glomeruli"``), at any resolution (native input **1008×1008**, so
+   ``--patch_size 1008`` avoids an extra resize). It outputs a **semantic region map** by
    default — per-tile detections are dissolved into contiguous same-class regions (``--patch_seg_no_dissolve``
    keeps raw per-instance masks). Output is keyed **per prompt** (``seg_weave_<prompt>/``), so prompts coexist
    on one ``--job_dir``. Runs on a **single GPU** (``--gpus 0``; for another GPU use ``CUDA_VISIBLE_DEVICES=<n>``).

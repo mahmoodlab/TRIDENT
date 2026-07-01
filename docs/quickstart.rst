@@ -190,9 +190,10 @@ On recent PyTorch, run HistoPlus with ``--feat_batch_size 1`` (its batched atten
 .. code-block:: bash
 
    python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./out \
-       --patch_segmenter weave --patch_seg_prompt "tumor" --mag 20 --patch_size 1024 --seg_viz
+       --patch_segmenter weave --patch_seg_prompt "tumor" --mag 20 --patch_size 1008 --seg_viz
 
-Any ``--mag`` / ``--patch_size`` works (SAM3 resizes internally). Output is a **semantic region map** by
+Any ``--mag`` / ``--patch_size`` works (SAM3 resizes internally; its native input is **1008×1008**, so
+``--patch_size 1008`` avoids an extra resize). Output is a **semantic region map** by
 default (per-tile detections dissolved into contiguous same-class regions; ``--patch_seg_no_dissolve`` keeps
 raw per-instance masks) and is keyed **per prompt** — ``seg_weave_<prompt>/`` — so prompts coexist on one
 ``--job_dir``. Install ``pip install git+https://github.com/JaumeLab/sam3.git pycocotools`` (gated weights,
@@ -288,6 +289,8 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
      - Segmenter for ``--task patch_seg``, optional local weights, and debug overlays with a class legend.
    * - ``--patch_seg_prompt`` / ``--patch_seg_conf_thresh`` / ``--patch_seg_no_dissolve``
      - For ``weave``: the text prompt to segment (required), the score threshold (default 0.5), and an opt-out of the default seam dissolve (keeps raw per-instance masks).
+   * - ``--patch_seg_simplify_tol``
+     - Polygon simplification tolerance (level-0 px) for ``--task patch_seg``; shrinks GeoJSON/HDF5 10-70x with <0.1%% area change. Default auto-scales per model; 0 disables.
    * - ``--vlm {patho_r1_7b,patho_r1_3b}`` / ``--vlm_prompt`` / ``--vlm_batch_size`` / ``--vlm_max_new_tokens`` / ``--vlm_ckpt_path``
      - VLM for ``--task vlm``: model, the question asked of every patch, generation batch size, answer-length cap, and optional local weights.
    * - ``--batch_size`` / ``--seg_batch_size`` / ``--feat_batch_size``

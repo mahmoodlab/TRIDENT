@@ -233,7 +233,8 @@ weave — JaumeLab, SAM3 (`facebook/sam3`) finetuned for histopathology ([JaumeL
 **weave (promptable SAM3).** Unlike the cell models' fixed taxonomies, weave segments whatever
 `--patch_seg_prompt` names (e.g. `"glomeruli"`, `"tumor"`), asked of every tissue patch. SAM3 emits
 per-instance masks per patch; **any** `--mag`/`--patch_size` works (SAM3 resizes internally, like a
-VLM) — pick the field of view you want, e.g. `--mag 20 --patch_size 1024`. `--patch_seg_conf_thresh`
+VLM) — pick the field of view you want. SAM3's **native input is 1008×1008**, so `--patch_size 1008`
+feeds it with no extra resize (recommended); other sizes are resized internally. `--patch_seg_conf_thresh`
 (default 0.5) sets the score threshold; `--patch_segmenter_ckpt_path` (or an `hf://` URI) overrides the
 default checkpoint `hf://JaumeLab/sam3-finetuned/model.pt`. Weights are bf16 (autocast). Only the
 **text-prompt, whole-slide** mode is wired to the CLI; the box-prompt mode from the card is not exposed.
@@ -257,7 +258,7 @@ slugified for the dir name — lowercased, non-alphanumerics → `_`, capped at 
 python run_batch_of_slides.py --task patch_seg \
   --wsi_dir ./wsis --job_dir ./trident_processed \
   --patch_segmenter weave --patch_seg_prompt "tumor" \
-  --mag 20 --patch_size 1024 --seg_viz --gpus 0
+  --mag 20 --patch_size 1008 --seg_viz --gpus 0
 ```
 
 **`--overlap` is optional for weave** (the default dissolve already removes patch-edge seams). Adding
@@ -288,6 +289,7 @@ Notes:
 - `--mag 40` requires a 40×-native slide (mpp ≈ 0.25); a 20×-native slide cannot be upsampled to 40×.
 - Output goes to `<cdir>/seg_<model>/` (per model; for weave `<model>` = `weave_<prompt>`, so prompts coexist). See Output artifacts.
 - `--task patch_seg` runs only this stage; it needs `seg` + `coords` already in `--job_dir`.
+- **Polygon simplification** (all patch_seg models): boundaries are Douglas–Peucker-simplified before saving, since cv2 traces the upscaled mask at pixel granularity (hundreds–thousands of staircase vertices/region → huge GeoJSON at ~47 B/vertex). Default tolerance auto-scales per model in mask pixels (`simplify_maskpx`: ~2 for cells = near-lossless, ~5 for weave regions ≈ 10 level-0 px at 20×) → **~10–70× smaller GeoJSON/H5 with <0.1% area change** (e.g. a weave tumor map: 126 MB → 2 MB). Override with `--patch_seg_simplify_tol <level0_px>` (0 disables).
 
 ## Vision-language models (`--task vlm`)
 

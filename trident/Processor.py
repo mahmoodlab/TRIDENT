@@ -905,6 +905,7 @@ class Processor:
         batch_limit: int = 4,
         saveto: str | None = None,
         visualize: bool = False,
+        simplify_tolerance: float | None = None,
     ) -> str:
         """
         Run a dense patch-segmentation model (e.g. HistoPlus, SAM) over the tissue patches of
@@ -1034,6 +1035,7 @@ class Processor:
                     device=device,
                     batch_limit=batch_limit,
                     save_viz=save_viz,
+                    simplify_tolerance=simplify_tolerance,
                 )
 
                 remove_lock(wsi_seg_fp)

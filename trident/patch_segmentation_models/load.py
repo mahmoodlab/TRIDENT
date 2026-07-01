@@ -97,6 +97,10 @@ class BasePatchSegmenter(torch.nn.Module):
         # (see WSI._dissolve_instances_by_class). Region/semantic models set this True; cell
         # instance models leave it False so distinct touching cells stay separate.
         self.dissolve_seams: bool = False
+        # Douglas–Peucker simplification tolerance in *mask pixels* (multiplied by the level-0/
+        # mask-pixel scale at save time). ~2 mask px is near-lossless and safe for small cells;
+        # region models raise it. See WSI._simplify_instances.
+        self.simplify_maskpx: float = 2.0
         self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -486,13 +490,20 @@ class WeaveSegmenter(BasePatchSegmenter):
         dissolve_seams (bool): Union same-class polygons across patch borders into contiguous
             regions, removing the straight-edged seams that per-tile inference produces at patch
             boundaries. Defaults to True (weave segments regions, not discrete cells).
+        input_size (int): SAM3's square input resolution (the Sam3Processor resizes every patch to
+            this before the backbone). Defaults to 1008, SAM3's native size. Extracting patches at
+            ``--patch_size 1008`` therefore feeds the model with no extra resize.
     """
 
     _DEFAULT_CHECKPOINT = "hf://JaumeLab/sam3-finetuned/model.pt"
 
+    # SAM3's native input resolution. The Sam3Processor resizes every image to this square size
+    # before the backbone; feeding patches at 1008 px avoids any extra resize (see docs).
+    _NATIVE_INPUT_SIZE = 1008
+
     def __init__(self, prompt: Optional[str] = None, weights_path: Optional[str] = None,
                  confidence_threshold: float = 0.5, min_contour_area: float = 16.0,
-                 dissolve_seams: bool = True, **build_kwargs):
+                 dissolve_seams: bool = True, input_size: int = 1008, **build_kwargs):
         if not prompt or not str(prompt).strip():
             raise ValueError(
                 "WeaveSegmenter requires a non-empty `prompt` (e.g. 'glomeruli'). "
@@ -501,11 +512,15 @@ class WeaveSegmenter(BasePatchSegmenter):
         self._prompt = str(prompt)
         self._confidence_threshold = float(confidence_threshold)
         self._min_contour_area = float(min_contour_area)
+        self._input_size = int(input_size)
         self._checkpoint_path = weights_path or self._DEFAULT_CHECKPOINT
         super().__init__(weights_path=weights_path, **build_kwargs)
         # weave segments regions, not discrete cells, so union polygons split across patch
         # borders into contiguous regions by default (default True; disable for raw per-tile output).
         self.dissolve_seams = bool(dissolve_seams)
+        # Regions have long, pixel-staircased boundaries → simplify more aggressively than the
+        # base default (~5 mask px ≈ 10 level-0 px at 20x): ~70x smaller files, negligible area change.
+        self.simplify_maskpx = 5.0
 
     def describe(self) -> Dict[str, Any]:
         return {
@@ -514,11 +529,14 @@ class WeaveSegmenter(BasePatchSegmenter):
             'prompt': self._prompt,
             'confidence_threshold': self._confidence_threshold,
             'dissolve_seams': self.dissolve_seams,
+            'simplify_maskpx': self.simplify_maskpx,
+            'input_size': self._input_size,
             'checkpoint': self._checkpoint_path,
         }
 
     def _build(self) -> Tuple[nn.Module, Callable, torch.dtype]:
         try:
+            import sam3.model_builder as _sam3_mb
             from sam3 import build_sam3_image_model
         except ImportError as e:
             raise ImportError(
@@ -531,7 +549,24 @@ class WeaveSegmenter(BasePatchSegmenter):
 
         # Build on CPU; TRIDENT's segment_patches moves the module to the target device via
         # `.to(device)`. The Sam3Processor is created lazily in predict_patches (see below).
-        model = build_sam3_image_model(checkpoint_path=self._checkpoint_path, device="cpu")
+        #
+        # Fix a fork/checkpoint mismatch: `sam3.model_builder._create_segmentation_head` hardcodes
+        # `presence_head=False`, but the JaumeLab checkpoint was trained WITH a presence head, so the
+        # default build silently drops its `segmentation_head.presence_head.*` weights (loads with
+        # unexpected keys). We scope-patch the builder's `UniversalSegmentationHead` to force
+        # `presence_head=True` for this construction only, so the checkpoint loads fully (0 missing /
+        # 0 unexpected), then restore the original immediately. (Idempotent if the fork later fixes it.)
+        _RealUSH = getattr(_sam3_mb, 'UniversalSegmentationHead', None)
+        if _RealUSH is not None:
+            def _ush_force_presence(*args, **kwargs):
+                kwargs['presence_head'] = True
+                return _RealUSH(*args, **kwargs)
+            _sam3_mb.UniversalSegmentationHead = _ush_force_presence
+        try:
+            model = build_sam3_image_model(checkpoint_path=self._checkpoint_path, device="cpu")
+        finally:
+            if _RealUSH is not None:
+                _sam3_mb.UniversalSegmentationHead = _RealUSH
         self._processor = None
         self._processor_device = None
 
@@ -559,6 +594,7 @@ class WeaveSegmenter(BasePatchSegmenter):
             from sam3.model.sam3_image_processor import Sam3Processor
             self._processor = Sam3Processor(
                 self.model, device=device, confidence_threshold=self._confidence_threshold,
+                resolution=self._input_size,
             )
             self._processor_device = device
         return self._processor

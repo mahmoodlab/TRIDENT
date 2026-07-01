@@ -1200,6 +1200,7 @@ class WSI:
         batch_limit: int = 4,
         save_viz: Optional[str] = None,
         verbose: bool = False,
+        simplify_tolerance: Optional[float] = None,
     ) -> str:
         """
         Run a patch-segmentation model (e.g. HistoPlus, CellViT++) over the tissue patches
@@ -1350,6 +1351,19 @@ class WSI:
             out_instances = self._dissolve_instances_by_class(
                 instances, bridge_px=2.0 * scale_holder[0],
             )
+
+        # Simplify polygon boundaries before saving. cv2 traces the upscaled mask at pixel
+        # granularity (~hundreds–thousands of staircase vertices per region), which bloats the
+        # GeoJSON/H5 (≈47 B/vertex). Douglas–Peucker at ~a few mask-pixels removes that sub-
+        # resolution noise (10–70x smaller files, <0.1% area change). Tolerance is in level-0 px:
+        # an explicit `simplify_tolerance` wins; else the model's `simplify_maskpx` (mask pixels)
+        # times the level-0/mask-pixel scale; 0 disables.
+        if simplify_tolerance is not None:
+            tol = float(simplify_tolerance)
+        else:
+            tol = float(getattr(patch_segmenter, 'simplify_maskpx', 2.0)) * scale_holder[0]
+        if tol > 0 and len(out_instances) > 0:
+            out_instances = self._simplify_instances(out_instances, tol)
 
         # 1) GeoJSON of per-instance polygons (level-0 coords).
         records = []
@@ -1528,6 +1542,44 @@ class WSI:
                     'centroid': np.asarray(piece.centroid.coords, dtype=np.float64).reshape(2),
                 })
         return merged
+
+    @staticmethod
+    def _simplify_instances(instances: list, tolerance: float) -> list:
+        """Douglas–Peucker-simplify each instance's polygon (Shapely, level-0 px ``tolerance``).
+
+        cv2 traces the upscaled mask at pixel granularity, so region boundaries carry hundreds–
+        thousands of staircase vertices below the mask's true resolution. Simplifying to a few
+        mask-pixels removes that noise (10–70x smaller GeoJSON/H5, <0.1% area change). Degenerate
+        results (empty, <3 pts, ~zero area) are dropped; a MultiPolygon keeps its largest part.
+        Preserves ``class_id``/``class_name``/``confidence`` and recomputes the centroid.
+        """
+        import numpy as np
+        from shapely.geometry import Polygon
+
+        out: list = []
+        for inst in instances:
+            contour = np.asarray(inst['contour'], dtype=np.float64)
+            if contour.ndim != 2 or contour.shape[0] < 3:
+                continue
+            poly = Polygon(contour)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            poly = poly.simplify(tolerance, preserve_topology=True)
+            if poly.geom_type == 'MultiPolygon':
+                poly = max(poly.geoms, key=lambda p: p.area, default=None)
+            if poly is None or poly.is_empty or poly.geom_type != 'Polygon' or poly.area < 1.0:
+                continue
+            ext = np.asarray(poly.exterior.coords, dtype=np.float64)
+            if ext.shape[0] < 3:
+                continue
+            out.append({
+                'contour': ext,
+                'class_id': int(inst['class_id']),
+                'class_name': inst.get('class_name'),
+                'confidence': float(inst.get('confidence', 1.0)),
+                'centroid': np.asarray(poly.centroid.coords, dtype=np.float64).reshape(2),
+            })
+        return out
 
     @torch.inference_mode()
     def query_region(
