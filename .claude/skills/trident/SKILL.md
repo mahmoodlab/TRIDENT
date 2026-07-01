@@ -91,7 +91,10 @@ the slide encoder's required patch_size/mag (from the slide-encoder table). **St
 `--task all`** (or `feat`) with `--slide_encoder` — on its own, the default `--task seg`
 only segments and you get no embeddings. A slide-encoder run also writes the intermediate
 patch features (`features_<patch_encoder>/`) alongside `slide_features_<Y>/`.
-("UNI" = `uni_v1`; "UNI2"/"UNI2-h" = `uni_v2`.)
+("UNI" = `uni_v1`; "UNI2"/"UNI2-h" = `uni_v2`.) The named slide encoders are pretrained
+and frozen; to **train your own** aggregator on the extracted patch features, TRIDENT also
+ships a randomly-initialized `abmil` slide encoder (set `input_feature_dim` to the patch
+encoder's dim) — see the "Trainable ABMIL aggregator" section in [reference.md](reference.md).
 
 **3. Segmenter.** Default `--segmenter hest` (a model — runs on GPU). `grandqc` = fast H&E.
 `otsu` = classical, **CPU-only** — on a machine with no GPU you must pass `--segmenter otsu`

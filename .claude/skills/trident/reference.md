@@ -168,6 +168,36 @@ pass its required patch_size/mag.
 | `care` | conch_v15 | `--patch_size 512 --mag 20` |
 | `threads` | conch_v15 | `--patch_size 512 --mag 20` *(coming soon)* |
 
+### Trainable ABMIL aggregator (`abmil`) — build your own slide model
+
+The encoders above are **pretrained and frozen** (inference only). TRIDENT also ships a
+**randomly-initialized, trainable** ABMIL slide encoder for the downstream step: aggregating the
+patch features you already extracted (`features_<enc>/<slide>.h5`, shape `(n_patches, dim)`) into a
+slide embedding you train yourself — e.g. a WSI classifier. It has no pretrained weights, so build
+it with `pretrained=False` (asserted) and `freeze=False` (you want to train it).
+
+**`input_feature_dim` MUST equal the patch encoder's output `Dim`** (see the Patch encoders table
+above: `uni_v1`→1024, `conch_v15`→768, `virchow`→2560, …). Mismatch → the bag won't matmul.
+
+```python
+from trident.slide_encoder_models import encoder_factory
+
+model = encoder_factory(
+    'abmil', pretrained=False, freeze=False,
+    input_feature_dim=1024,   # == patch encoder Dim (1024 for uni_v1); the only value you must match
+    n_heads=1, head_dim=256, dropout=0.25, gated=True,   # gated=True → gated ABMIL (Ilse et al. 2018)
+)
+
+# One bag = one slide's patch features loaded from features_<enc>/<slide>.h5:
+#   batch = {'features': tensor of shape (B, n_patches, input_feature_dim)}
+slide_emb = model.forward(batch, device='cuda')          # -> (B, input_feature_dim)
+# model.forward(batch, ..., return_raw_attention=True) also returns per-head attention scores.
+```
+
+The wrapper outputs a slide embedding of size `input_feature_dim` (n_branches is fixed to 1) — add
+your own classification head on top and train end-to-end. All build kwargs
+(`input_feature_dim`, `n_heads`, `head_dim`, `dropout`, `gated`) are required (no defaults).
+
 ## Cell segmenters (`--task patch_seg`)
 
 Cell/nuclei instance segmentation + classification over the tissue patches. Each model lives in
