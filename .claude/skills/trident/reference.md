@@ -191,12 +191,26 @@ model = encoder_factory(
 # One bag = one slide's patch features loaded from features_<enc>/<slide>.h5:
 #   batch = {'features': tensor of shape (B, n_patches, input_feature_dim)}
 slide_emb = model.forward(batch, device='cuda')          # -> (B, input_feature_dim)
-# model.forward(batch, ..., return_raw_attention=True) also returns per-head attention scores.
 ```
 
 The wrapper outputs a slide embedding of size `input_feature_dim` (n_branches is fixed to 1) — add
 your own classification head on top and train end-to-end. All build kwargs
 (`input_feature_dim`, `n_heads`, `head_dim`, `dropout`, `gated`) are required (no defaults).
+
+**Attention weights (for heatmaps).** Pass `return_raw_attention=True` to also get the per-patch
+attention scores — the common use case for explaining which patches drove the prediction:
+
+```python
+slide_emb, attn = model.forward(batch, device='cuda', return_raw_attention=True)
+# attn shape: (B, n_branches=1, n_heads, n_patches)
+# These are RAW pre-softmax logits (they do NOT sum to 1). To get per-patch weights:
+weights = attn.softmax(dim=-1)          # normalize over the patch dim
+weights = weights.mean(dim=2)           # average heads (if n_heads > 1) -> (B, 1, n_patches)
+```
+
+Each patch's weight pairs with its row in the bag, whose (x, y) coords live alongside `features` in
+the same `features_<enc>/<slide>.h5` — feed the two to `visualize_heatmap` (see the Overlays
+section) to render an attention heatmap on the slide.
 
 ## Cell segmenters (`--task patch_seg`)
 
