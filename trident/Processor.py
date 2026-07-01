@@ -943,6 +943,10 @@ class Processor:
 
         sig = signature(self.run_patch_segmentation_job)
         local_attrs = {k: v for k, v in locals().items() if k in sig.parameters}
+        # Record the segmenter's own config (prompt, thresholds, …) — the raw module is ignored
+        # below, so promptable models would otherwise lose their defining parameter.
+        if hasattr(patch_segmenter, 'describe'):
+            local_attrs['segmenter'] = patch_segmenter.describe()
         self.save_config(
             saveto=os.path.join(self.job_dir, coords_dir, f'_config_seg_{patch_segmenter.seg_name}.json'),
             local_attrs=local_attrs,

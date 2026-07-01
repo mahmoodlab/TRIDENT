@@ -4,11 +4,11 @@ description: >-
   Process whole-slide pathology images (WSIs) with TRIDENT: tissue segmentation,
   patch coordinate extraction, patch/slide feature (embedding) extraction with
   foundation models (UNI, CONCH, Virchow, Gemma, Titan, GigaPath, etc.), and
-  cell/nuclei segmentation (HistoPlus, CellViT++), and VLM question answering over ROIs
-  (Patho-R1). Use when the user works with WSIs
+  cell/nuclei/structure segmentation (HistoPlus, CellViT++, and the promptable weave/SAM3), and
+  VLM question answering over ROIs (Patho-R1). Use when the user works with WSIs
   (.svs/.tiff/.ndpi/.mrxs/.czi/.dcm), mentions TRIDENT, run_batch_of_slides /
   run_single_slide, tissue segmentation, patching, extracting pathology embeddings,
-  cell/nuclei segmentation, or interrogating ROIs with a vision-language model, for downstream ML.
+  cell/nuclei/prompted segmentation, or interrogating ROIs with a vision-language model, for downstream ML.
 ---
 
 # TRIDENT — whole-slide image processing
@@ -28,7 +28,7 @@ re-running the same command skips finished work.
 **Tasks run one stage only — they do NOT auto-run prerequisites.** Pick `--task`:
 - `--task all` — runs seg → coords → feat in one go (the usual choice). Requires a `--patch_encoder` (or `--slide_encoder`); it always produces features. (It does **not** run `patch_seg` or `vlm`.)
 - `--task seg` / `--task coords` / `--task feat` — run *only* that stage. `coords` needs segmentation already done in `--job_dir`; `feat` needs coords already done (or supply `--coords_dir`). Running `--task coords` on a fresh `--job_dir` produces nothing (it skips with `geojson_not_found`).
-- `--task patch_seg` — run a **cell/nuclei segmentation model** (HistoPlus / CellViT++) over the tissue patches. Like `feat`, it needs `seg` + `coords` done first. See the "Cell / nuclei segmentation" section below.
+- `--task patch_seg` — run an **instance segmentation model** over the tissue patches: a fixed-taxonomy cell/nuclei model (HistoPlus / CellViT++) or the **promptable** weave/SAM3 (segments what `--patch_seg_prompt` names). Like `feat`, it needs `seg` + `coords` done first. See the "Cell / nuclei segmentation" section below.
 - `--task vlm` — interrogate the tissue patches with a **vision-language model** (Patho-R1): ask one free-text prompt of every patch, get a free-text answer. Like `feat`/`patch_seg`, it needs `seg` + `coords` done first. See the "VLM question answering" section below. (For a single ROI, use the `WSI.query_region` Python API — no coords needed.)
 - **Seg + coords but no features?** There is no single flag — run two commands: `--task seg` then `--task coords` on the same `--job_dir`.
 
@@ -136,9 +136,9 @@ required (features read pixels from the WSIs).
 
 ## Cell / nuclei segmentation (`--task patch_seg`)
 
-Detects and classifies individual cells across the tissue patches (instance segmentation),
-as an alternative consumer of the coords from `--task coords`. Run `seg` + `coords` first
-(or a prior `all`), then:
+Instance segmentation across the tissue patches — either individual cells/nuclei with a fixed
+taxonomy (HistoPlus / CellViT++), or an arbitrary prompted structure (weave/SAM3). Another
+consumer of the coords from `--task coords`; run `seg` + `coords` first (or a prior `all`), then:
 
 ```bash
 python run_batch_of_slides.py --task patch_seg \
@@ -150,15 +150,44 @@ python run_batch_of_slides.py --task patch_seg \
 **Batch size:** `--patch_seg_batch_size` (default `4`); lower it if you OOM. CellViT++ at 1024px is
 memory-heavy (~3.8 GB/patch → `8`≈31 GB, `32` OOMs a 95 GB GPU); HistoPlus is lighter.
 
-Two models (each its **own** taxonomy and required resolution — copy verbatim):
+Three models. HistoPlus/CellViT++ have a **fixed cell taxonomy and required resolution** (copy
+verbatim); weave is **promptable** — it segments whatever a text prompt names, at any resolution:
 
-| `--patch_segmenter` | Cells | Required args | Install |
+| `--patch_segmenter` | Classes | Required args | Install |
 |---|---|---|---|
-| `histoplus` | 14 types | `--patch_size 784 --mag 20` (or `--mag 40`) | `pip install --no-deps git+https://github.com/owkin/histoplus.git` + `pip install timm==1.0.8` (not on PyPI); gated HF weights |
+| `histoplus` | 14 cell types | `--patch_size 784 --mag 20` (or `--mag 40`) | `pip install --no-deps git+https://github.com/owkin/histoplus.git` + `pip install timm==1.0.8` (not on PyPI); gated HF weights |
 | `cellvit_plus_plus` | 5 (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` |
+| `weave` | promptable (prompt = the class) | **`--patch_seg_prompt "…"`**; any `--mag`/`--patch_size`; **single GPU** | `pip install 'git+https://github.com/JaumeLab/sam3.git'` + `pip install pycocotools` (not on PyPI); gated HF weights |
 
 `--mag 40` needs a **40×-native** slide (mpp ≈ 0.25); on a 20×-native slide (`objective-power 20`)
 40× is unreachable — use HistoPlus@`--mag 20` or a 40× slide for CellViT++.
+
+**weave (promptable SAM3).** JaumeLab's SAM3 finetuned for histopathology — segments whatever
+`--patch_seg_prompt` names (e.g. `"tumor"`, `"glomeruli"`) in every patch, instead of a fixed cell
+taxonomy. **Any** `--mag`/`--patch_size` works (SAM3 resizes internally, like a VLM). `--patch_seg_conf_thresh`
+(default 0.5) sets the score threshold. Only text-prompt whole-slide mode is exposed (no box prompt).
+Install needs `pycocotools` too. **Single GPU only** (`--gpus 0`); for another physical GPU use
+`CUDA_VISIBLE_DEVICES=<n>` + `--gpus 0`. Its deps (timm 1.x, numpy 1.x, transformers 5.x) conflict
+with TRIDENT's feature-encoder / HistoPlus pins — use a dedicated env if mixing.
+
+**Output = semantic region map by default.** SAM3 produces per-instance masks, but weave segments
+*regions*, so TRIDENT dissolves the per-tile polygons into contiguous same-class regions by default —
+unioning across patch seams (with a morphological-close bridge, so seams vanish even at `--overlap 0`)
+and dropping within-tile duplicate masks. `class_name` = the prompt, `confidence` = area-weighted mean.
+Pass `--patch_seg_no_dissolve` to keep the **raw per-instance** polygons (instance-level, own scores),
+like HistoPlus/CellViT++. So: `--overlap` is **optional** (dissolve already removes seams); adding it
+only helps the model see edge-crossing structures whole (slightly better boundaries, more compute).
+
+Output is keyed **per prompt**: `seg_weave_<prompt>/` (e.g. `seg_weave_tumor/`, `seg_weave_necrosis/`),
+with matching `_config_seg_weave_<prompt>.json` / `_logs_...`. So you can run several prompts on the
+same `--job_dir`/coords and they coexist (and resume independently) instead of overwriting each other.
+
+```bash
+python run_batch_of_slides.py --task patch_seg \
+  --wsi_dir ./wsis --job_dir ./trident_processed \
+  --patch_segmenter weave --patch_seg_prompt "tumor" \
+  --mag 20 --patch_size 1024 --seg_viz --gpus 0
+```
 
 Install — **both run in the TRIDENT env** (no separate env needed):
 - **CellViT++:** `pip install cellvit` (Python 3.10/3.11; on 3.13 use `--no-deps` then add
@@ -170,7 +199,7 @@ Install — **both run in the TRIDENT env** (no separate env needed):
 - **Batch size:** `--patch_seg_batch_size` (default `4`). Both models batch fine; lower it if you OOM
   (CellViT++ at 1024px is ~3.8 GB/patch).
 - `--seg_viz` (optional) also writes debug overlays with a color→cell-type legend.
-- Output dir is keyed per model: `<cdir>/seg_<model>/` (see Outputs). Outputs: a QuPath-ready
+- Output dir is keyed per model: `<cdir>/seg_<model>/` — for weave `<model>` is `weave_<prompt>` (so prompts coexist). Outputs: a QuPath-ready
   GeoJSON of per-cell polygons + a compact HDF5 + (with `--seg_viz`) visualizations.
 
 ## VLM question answering (`--task vlm`)
@@ -300,5 +329,7 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
-- `--task patch_seg` "not installed" → install the cell model **into the TRIDENT env** (CellViT++ from PyPI; HistoPlus `--no-deps` from git + `timm==1.0.8`, gated weights). Out of GPU memory → lower `--patch_seg_batch_size`. See the cell-segmentation section.
+- `--task patch_seg` "not installed" → install the model **into the TRIDENT env** (CellViT++ from PyPI; HistoPlus `--no-deps` from git + `timm==1.0.8`, gated weights; weave from `git+https://github.com/JaumeLab/sam3.git` **plus `pip install pycocotools`**, gated weights). Out of GPU memory → lower `--patch_seg_batch_size`. See the cell-segmentation section.
+- `--patch_segmenter weave` errors immediately with "requires --patch_seg_prompt" → weave is promptable; pass e.g. `--patch_seg_prompt "tumor"`. (The prompt is ignored by the fixed-taxonomy cell models.)
+- `weave` "only runs on the default CUDA device (cuda:0)" → SAM3 pins internal tensors to cuda:0; run with `--gpus 0` (no multi-GPU sharding). For another physical GPU: `CUDA_VISIBLE_DEVICES=<n>` + `--gpus 0`.
 - `--task vlm` ImportError → `pip install "transformers>=4.49" accelerate qwen-vl-utils`. Out of GPU memory → lower `--vlm_batch_size`. Whole-slide `vlm` is slow (autoregressive, every patch) — for a single region use the `WSI.query_region` Python API, not the batch sweep. `vlm` is **not** part of `--task all`. See the VLM section.

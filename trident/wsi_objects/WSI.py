@@ -1334,9 +1334,22 @@ class WSI:
             'patch segmentation dataloader',
         )
 
-        # 1) GeoJSON of per-cell polygons (level-0 coords).
+        # For region/semantic segmenters (e.g. weave), dissolve patch-border seams so a region
+        # split across tiles becomes one contiguous polygon instead of straight-edged fragments.
+        # Instance (cell) models leave this off so distinct touching cells stay separate. The
+        # per-patch detail viz below still uses the original per-tile `instances` (it needs the
+        # 'origin' key and shows exactly what each tile produced).
+        out_instances = instances
+        if getattr(patch_segmenter, 'dissolve_seams', False) and len(instances) > 0:
+            # bridge ~2 level-0 px per mask pixel — enough to close the abutting-tile gap that
+            # remains when patches don't overlap, negligible vs region size.
+            out_instances = self._dissolve_instances_by_class(
+                instances, bridge_px=2.0 * scale_holder[0],
+            )
+
+        # 1) GeoJSON of per-instance polygons (level-0 coords).
         records = []
-        for inst in instances:
+        for inst in out_instances:
             contour = inst['contour']
             if len(contour) < 3:
                 continue
@@ -1356,7 +1369,7 @@ class WSI:
         gdf.to_file(geojson_path, driver="GeoJSON")
 
         # 2) Compact HDF5 of all instances.
-        save_cell_segmentation_h5(h5_path, instances, h5_attrs)
+        save_cell_segmentation_h5(h5_path, out_instances, h5_attrs)
 
         # 3) Optional debug visualization. Two complementary artifacts:
         #    (a) a slide-thumbnail overview showing where cells are (global density), and
@@ -1430,6 +1443,87 @@ class WSI:
                 np.array(tile), px_instances, class_names,
                 os.path.join(out_dir, f'{int(x)}_{int(y)}.jpg'),
             )
+
+    @staticmethod
+    def _dissolve_instances_by_class(instances: list, bridge_px: float = 0.0) -> list:
+        """Merge polygons split at patch borders into contiguous regions, per class.
+
+        Region/semantic patch segmenters (e.g. weave) run per-tile, so a region crossing a
+        patch edge is emitted as separate polygons clipped straight along the seam. This unions
+        same-class polygons (dissolving the seams) and re-explodes to one instance per region.
+        Confidence is area-weighted-averaged over the contributing per-tile polygons and the
+        centroid recomputed. Only exterior rings are kept (matching the rest of the pipeline).
+
+        ``bridge_px`` performs a morphological close (``buffer(+δ) → buffer(-δ)``) on the union
+        so fragments that merely *abut* across a seam still merge: with no patch overlap, each
+        tile's mask typically stops ~1 pixel short of its border, leaving a ~1-pixel-scale gap
+        that a plain union will not bridge. Set it to ~1-2 level-0 px per mask pixel (the caller
+        passes the coordinate scale). 0 disables bridging (plain union only).
+
+        NOT for cell instance models — there each polygon is a distinct nucleus and touching
+        cells must stay separate; callers gate this on ``patch_segmenter.dissolve_seams``.
+        """
+        import numpy as np
+        import geopandas as gpd
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+
+        groups: dict = {}
+        for inst in instances:
+            contour = np.asarray(inst['contour'], dtype=np.float64)
+            if contour.ndim != 2 or contour.shape[0] < 3:
+                continue
+            poly = Polygon(contour)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if poly.is_empty:
+                continue
+            key = (int(inst['class_id']), inst.get('class_name'))
+            g = groups.setdefault(key, {'polys': [], 'confs': []})
+            g['polys'].append(poly)
+            g['confs'].append(float(inst.get('confidence', 1.0)))
+
+        merged: list = []
+        for (class_id, class_name), g in groups.items():
+            polys, confs = g['polys'], g['confs']
+            union = unary_union(polys)
+            # Morphological close to bridge abutting seams (no-overlap gap ~ mask-pixel scale).
+            if bridge_px and bridge_px > 0 and not union.is_empty:
+                union = union.buffer(bridge_px).buffer(-bridge_px)
+            if union.is_empty:
+                continue
+            if union.geom_type == 'Polygon':
+                pieces = [union]
+            else:  # MultiPolygon / GeometryCollection
+                pieces = [p for p in union.geoms if p.geom_type == 'Polygon' and not p.is_empty]
+            if not pieces:
+                continue
+            # Assign each original polygon to the region piece containing its representative
+            # point (spatial-index join), for area-weighted confidence.
+            reps = gpd.GeoDataFrame(
+                {'conf': confs, 'w': [p.area for p in polys]},
+                geometry=[p.representative_point() for p in polys],
+            )
+            pieces_gdf = gpd.GeoDataFrame(geometry=pieces)  # RangeIndex 0..k-1
+            joined = gpd.sjoin(reps, pieces_gdf, predicate='within', how='left')
+            for pid, piece in enumerate(pieces):
+                members = joined[joined['index_right'] == pid]
+                wsum = float(members['w'].sum()) if len(members) else 0.0
+                if wsum > 0:
+                    conf = float((members['conf'] * members['w']).sum() / wsum)
+                else:
+                    conf = float(max(confs))
+                ext = np.asarray(piece.exterior.coords, dtype=np.float64)
+                if ext.shape[0] < 3:
+                    continue
+                merged.append({
+                    'contour': ext,
+                    'class_id': class_id,
+                    'class_name': class_name,
+                    'confidence': conf,
+                    'centroid': np.asarray(piece.centroid.coords, dtype=np.float64).reshape(2),
+                })
+        return merged
 
     @torch.inference_mode()
     def query_region(

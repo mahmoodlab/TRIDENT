@@ -25,13 +25,28 @@ class in ``patch_segmenter_registry`` at the bottom of this file.
   and Classification Using Foundation Models"*, arXiv:2501.05269, building on **CellViT**
   (Hörst et al., *Medical Image Analysis* 2024, arXiv:2306.15350). Repo:
   https://github.com/TIO-IKIM/CellViT-Plus-Plus · License: Apache-2.0 + Commons Clause.
+* **weave** — JaumeLab's SAM3 finetuned for histopathology: a *promptable* segmenter that
+  returns instance masks for a free-text prompt (e.g. "glomeruli") rather than a fixed cell
+  taxonomy. Base model: SAM3 (``facebook/sam3``). Fork: https://github.com/JaumeLab/sam3 ·
+  Weights (gated): https://huggingface.co/JaumeLab/sam3-finetuned
 """
 
 import os
+import re
 from typing import Dict, Any, Tuple, Callable, Optional, List
 import numpy as np
 import torch
 from torch import nn
+
+
+def _slugify_prompt(prompt: str) -> str:
+    """Turn a free-text prompt into a filesystem-safe slug for output-dir naming.
+
+    e.g. "Invasive carcinoma!" -> "invasive_carcinoma". Lowercased, non-alphanumerics
+    collapsed to single underscores, trimmed, capped at 40 chars.
+    """
+    slug = re.sub(r'[^0-9a-z]+', '_', str(prompt).strip().lower()).strip('_')
+    return (slug or 'prompt')[:40]
 from abc import abstractmethod
 
 from trident.IO import mask_to_instances
@@ -78,6 +93,10 @@ class BasePatchSegmenter(torch.nn.Module):
         self.class_names: Optional[List[str]] = None
         self.target_mpp: Optional[float] = None
         self.weights_path: Optional[str] = weights_path
+        # Whether to union same-class polygons across patch borders into contiguous regions
+        # (see WSI._dissolve_instances_by_class). Region/semantic models set this True; cell
+        # instance models leave it False so distinct touching cells stay separate.
+        self.dissolve_seams: bool = False
         self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -106,6 +125,14 @@ class BasePatchSegmenter(torch.nn.Module):
                             enabled=(precision != torch.float32 and device_type == 'cuda')):
             class_maps = self(imgs).detach().cpu().numpy().astype(np.int32)
         return [mask_to_instances(cm, class_names=self.class_names) for cm in class_maps]
+
+    def describe(self) -> Dict[str, Any]:
+        """JSON-serializable summary of the segmenter for the run's ``_config`` provenance.
+
+        The raw module is ignored when saving the config, so subclasses whose behavior depends
+        on constructor args (e.g. weave's prompt) should override this to record them.
+        """
+        return {'seg_name': self.seg_name, 'class_names': self.class_names}
 
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[nn.Module, Callable, torch.dtype]:
@@ -411,7 +438,216 @@ class CellViTPlusPlusSegmenter(BasePatchSegmenter):
         return results
 
 
+class WeaveSegmenter(BasePatchSegmenter):
+    """
+    Wrapper around **weave** (JaumeLab): SAM3 finetuned for histopathology. Unlike the
+    fixed-taxonomy cell models above, weave is *promptable* — you give it a free-text prompt
+    (e.g. ``"glomeruli"``, ``"tumor region"``) and it returns instance masks for that concept.
+    In TRIDENT's ``patch_seg`` pipeline the prompt is fixed at construction and asked of every
+    tissue patch; each returned instance mask becomes a polygon whose ``class_name`` is the
+    prompt (a single foreground class, ``class_id=1``) and whose ``confidence`` is SAM3's score.
+
+    Attribution
+    -----------
+    Finetuned from **SAM3** (``facebook/sam3``) by the JaumeLab team on curated
+    histopathology segmentation datasets.
+    Fork (loader with ``hf://`` support): https://github.com/JaumeLab/sam3 ·
+    Weights (**gated**): https://huggingface.co/JaumeLab/sam3-finetuned. License: see the card.
+
+    Upstream API used (loaded lazily from the ``sam3`` package): ``build_sam3_image_model`` to
+    build the model from a checkpoint, and ``Sam3Processor`` (``.set_image`` + ``.set_text_prompt``)
+    for prompted inference, which yields ``state["masks"]`` (per-instance binary masks) and
+    ``state["scores"]``.
+
+    Requirements
+    ------------
+    * Install the JaumeLab fork (not on PyPI): ``pip install 'git+https://github.com/JaumeLab/sam3.git'``
+      **and** ``pip install pycocotools`` (imported by the fork but missing from its declared deps).
+    * An accepted HF license + ``huggingface-cli login`` for the gated weights (~3.6 GB ``model.pt``,
+      cached after first use).
+    * **Any** ``--mag`` / ``--patch_size`` works — SAM3 resizes internally, so (like a VLM) there is
+      no required resolution; pick the field of view you want (e.g. ``--mag 20 --patch_size 1024``).
+    * **Single GPU only.** SAM3 hard-allocates internal tensors on the default CUDA device, so weave
+      runs only on ``cuda:0`` (``--gpus 0``) and does not support multi-GPU sharding; predict_patches
+      raises a clear error otherwise. To use another physical GPU, set ``CUDA_VISIBLE_DEVICES=<n>``
+      and still pass ``--gpus 0`` (verified).
+    * **Dependency conflicts:** installing ``sam3`` pulls ``timm>=1.0.17``, ``numpy<2`` and
+      ``transformers>=5``, which violate TRIDENT's pins (``timm==0.9.16``, ``transformers<5``) and
+      HistoPlus's (``timm==1.0.8``). The seg/coords/weave path is unaffected (verified end-to-end),
+      but patch/slide **feature** encoders and HistoPlus can misbehave in the same env — use a
+      dedicated env if you mix weave with those.
+
+    Args:
+        prompt (str): Free-text prompt segmented in every patch (e.g. ``"glomeruli"``). Required.
+        weights_path (str | None): Checkpoint to load. Overrides the default hub checkpoint;
+            accepts an ``hf://`` URI or a local ``.pt`` path. Defaults to the JaumeLab hub weights.
+        confidence_threshold (float): Score threshold for keeping instances. Defaults to 0.5.
+        min_contour_area (float): Minimum polygon area (patch px) to keep. Defaults to 16.
+        dissolve_seams (bool): Union same-class polygons across patch borders into contiguous
+            regions, removing the straight-edged seams that per-tile inference produces at patch
+            boundaries. Defaults to True (weave segments regions, not discrete cells).
+    """
+
+    _DEFAULT_CHECKPOINT = "hf://JaumeLab/sam3-finetuned/model.pt"
+
+    def __init__(self, prompt: Optional[str] = None, weights_path: Optional[str] = None,
+                 confidence_threshold: float = 0.5, min_contour_area: float = 16.0,
+                 dissolve_seams: bool = True, **build_kwargs):
+        if not prompt or not str(prompt).strip():
+            raise ValueError(
+                "WeaveSegmenter requires a non-empty `prompt` (e.g. 'glomeruli'). "
+                "Pass it via --patch_seg_prompt."
+            )
+        self._prompt = str(prompt)
+        self._confidence_threshold = float(confidence_threshold)
+        self._min_contour_area = float(min_contour_area)
+        self._checkpoint_path = weights_path or self._DEFAULT_CHECKPOINT
+        super().__init__(weights_path=weights_path, **build_kwargs)
+        # weave segments regions, not discrete cells, so union polygons split across patch
+        # borders into contiguous regions by default (default True; disable for raw per-tile output).
+        self.dissolve_seams = bool(dissolve_seams)
+
+    def describe(self) -> Dict[str, Any]:
+        return {
+            'seg_name': self.seg_name,
+            'class_names': self.class_names,
+            'prompt': self._prompt,
+            'confidence_threshold': self._confidence_threshold,
+            'dissolve_seams': self.dissolve_seams,
+            'checkpoint': self._checkpoint_path,
+        }
+
+    def _build(self) -> Tuple[nn.Module, Callable, torch.dtype]:
+        try:
+            from sam3 import build_sam3_image_model
+        except ImportError as e:
+            raise ImportError(
+                "weave (SAM3) is not installed. Install the JaumeLab fork: "
+                "`pip install 'git+https://github.com/JaumeLab/sam3.git'`, and accept the gated "
+                "weights at https://huggingface.co/JaumeLab/sam3-finetuned (`huggingface-cli login`). "
+                "Original error: " + str(e)
+            )
+        from torchvision import transforms
+
+        # Build on CPU; TRIDENT's segment_patches moves the module to the target device via
+        # `.to(device)`. The Sam3Processor is created lazily in predict_patches (see below).
+        model = build_sam3_image_model(checkpoint_path=self._checkpoint_path, device="cpu")
+        self._processor = None
+        self._processor_device = None
+
+        # Prompt-specific name so multiple prompts on the same job_dir/coords produce separate
+        # outputs (seg_weave_<prompt>/, _config/_logs_seg_weave_<prompt>, distinct resume task key)
+        # instead of colliding. Everything downstream derives its naming from seg_name.
+        self.seg_name = f"weave_{_slugify_prompt(self._prompt)}"
+        # Promptable: a single foreground class whose label is the prompt text (index 0 = background).
+        self.class_names = ["background", self._prompt]
+        # SAM3 does its own resize/normalization from a raw image, so pass patches through as
+        # uint8 CHW (no resize/normalize) and hand PIL crops to the processor in predict_patches.
+        eval_transforms = transforms.PILToTensor()
+        # Weights are stored in bfloat16; predict_patches wraps inference in autocast(bf16).
+        return model, eval_transforms, torch.bfloat16
+
+    def _ensure_processor(self, device: torch.device):
+        """(Re)build the Sam3Processor bound to ``device``.
+
+        Sam3Processor pins its own device at construction (it allocates ``find_stage`` tensors
+        and places every image/text/box tensor there) and does *not* follow the wrapped model.
+        TRIDENT builds the segmenter with no device and only later calls ``.to(device)``, so we
+        bind the processor lazily to wherever the model actually landed, rebuilding if it moves.
+        """
+        if self._processor is None or self._processor_device != device:
+            from sam3.model.sam3_image_processor import Sam3Processor
+            self._processor = Sam3Processor(
+                self.model, device=device, confidence_threshold=self._confidence_threshold,
+            )
+            self._processor_device = device
+        return self._processor
+
+    @torch.inference_mode()
+    def predict_patches(self, imgs: torch.Tensor) -> List[List[dict]]:
+        """Prompt SAM3 with ``self._prompt`` on each patch and turn instance masks into polygons.
+
+        SAM3's ``Sam3Processor`` consumes one raw image at a time (it handles its own
+        preprocessing), so we convert each ``uint8`` patch tensor back to PIL, run the text
+        prompt, and convert every returned instance mask to an external contour carrying that
+        instance's score.
+        """
+        import cv2
+        from torchvision.transforms.functional import to_pil_image
+
+        device = imgs.device
+        # SAM3 hard-allocates some internal tensors (e.g. vision positional encodings) on the
+        # default CUDA device (cuda:0), regardless of where the model is moved — so it only runs
+        # correctly on cuda:0. Fail fast with guidance rather than a cryptic device-mismatch deep
+        # in the backbone. Escape hatch for another physical GPU: `CUDA_VISIBLE_DEVICES=<n>` (which
+        # makes that GPU appear as cuda:0). This also means weave does not support multi-GPU sharding.
+        if device.type == "cuda" and device.index not in (None, 0):
+            raise RuntimeError(
+                f"weave (SAM3) only runs on the default CUDA device (cuda:0), but got {device}. "
+                f"Use a single GPU (`--gpus 0`); to target another physical GPU, set "
+                f"`CUDA_VISIBLE_DEVICES={device.index}` and use `--gpus 0`. Multi-GPU sharding "
+                f"(`--gpus 0 1 …`) is not supported for weave."
+            )
+        processor = self._ensure_processor(device)
+        results: List[List[dict]] = []
+        with torch.autocast(device_type=device.type, dtype=torch.bfloat16,
+                            enabled=(device.type == "cuda")):
+            for img in imgs:
+                pil = to_pil_image(img.detach().cpu())
+                state = processor.set_image(pil)
+                state = processor.set_text_prompt(state=state, prompt=self._prompt)
+                results.append(self._instances_from_state(state, cv2))
+        return results
+
+    def _instances_from_state(self, state: dict, cv2) -> List[dict]:
+        """Convert one SAM3 result state (per-instance masks + scores) into TRIDENT instance dicts."""
+        masks = state.get("masks")
+        if masks is None:
+            return []
+        if hasattr(masks, "detach"):
+            masks = masks.detach().cpu().numpy()
+        masks = np.asarray(masks)
+        # SAM3 returns per-instance masks as (N, 1, H, W); also tolerate (N, H, W) / (H, W).
+        if masks.ndim == 4 and masks.shape[1] == 1:
+            masks = masks[:, 0]
+        elif masks.ndim == 2:
+            masks = masks[None]
+        n = int(masks.shape[0])
+        if n == 0:
+            return []
+
+        scores = state.get("scores")
+        if scores is None:
+            scores = np.ones((n,), dtype=np.float64)
+        else:
+            if hasattr(scores, "detach"):
+                # .float() first: numpy has no bfloat16 dtype (SAM3 runs in bf16).
+                scores = scores.detach().float().cpu().numpy()
+            scores = np.asarray(scores, dtype=np.float64).reshape(-1)
+
+        instances: List[dict] = []
+        for i in range(n):
+            binary = (masks[i] > 0).astype(np.uint8)
+            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            score = float(scores[i]) if i < len(scores) else 1.0
+            for contour in contours:
+                if cv2.contourArea(contour) < self._min_contour_area:
+                    continue
+                pts = contour.squeeze(1).astype(np.float64)
+                if pts.ndim != 2 or len(pts) < 3:
+                    continue
+                instances.append({
+                    "contour": pts,
+                    "class_id": 1,
+                    "class_name": self._prompt,
+                    "confidence": score,
+                    "centroid": pts.mean(axis=0),
+                })
+        return instances
+
+
 patch_segmenter_registry = {
     'histoplus': HistoPlusSegmenter,
     'cellvit_plus_plus': CellViTPlusPlusSegmenter,
+    'weave': WeaveSegmenter,
 }

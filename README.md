@@ -16,7 +16,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://huggingface.co/MahmoodLab/TITAN), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu**. Optional `--remove_artifacts` and `--remove_penmarks` clean-up pass.
-- **Cell segmentation**: [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus).
+- **Cell & structure segmentation**: [HistoPlus](https://huggingface.co/Owkin-Bioptimus/histoplus) or [CellViT++](https://github.com/TIO-IKIM/CellViT-Plus-Plus) for cells/nuclei, or the promptable [weave](https://huggingface.co/JaumeLab/sam3-finetuned) (SAM3) for any text-prompted structure (e.g. `"tumor"`, `"glomeruli"`).
 - **Visual question answering**: Pathology VLM ([Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B)).
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
@@ -180,14 +180,14 @@ Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](
 > [!NOTE]
 > If your task includes multiple slides per patient, you can generate patient-level embeddings by: (1) processing each slide independently and taking their average slide embedding (late fusion) or (2) pooling all patches together and processing that as a single "pseudo-slide" (early fusion). For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).
 
-**Step 4 (optional): Cell Segmentation:** Detects and classifies individual cells/nuclei across the tissue patches. Like feature extraction, it consumes the coordinates from Step 2 (run `--task seg` and `--task coords` first, or rely on a prior `--task all`).
+**Step 4 (optional): Cell / Structure Segmentation:** Segments individual cells/nuclei (HistoPlus, CellViT++) or any text-prompted structure (weave) across the tissue patches. Like feature extraction, it consumes the coordinates from Step 2 (run `--task seg` and `--task coords` first, or rely on a prior `--task all`).
  - **Command**:
    ```bash
    python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./trident_processed \
        --patch_segmenter histoplus --mag 20 --patch_size 784 --feat_batch_size 1 --seg_viz
    ```
    - `--task patch_seg`: Run a cell segmentation model over tissue patches.
-   - `--patch_segmenter histoplus`: Cell model to use (see table below). Use the `--mag`/`--patch_size` from that table.
+   - `--patch_segmenter histoplus`: Model to use (see table below). Use the `--mag`/`--patch_size` from that table. For `weave`, add `--patch_seg_prompt "tumor"` (any `--mag`/`--patch_size`).
    - `--seg_viz` (optional): Also save debug overlays (a slide overview + full-resolution sample patches) with a color→cell-type legend.
  - **Outputs** (under `./trident_processed/20x_784px_0px_overlap/seg_histoplus/`):
    - `<slide>.geojson`: one polygon per cell with `class` / `class_name` / `confidence`. Open in [QuPath](https://qupath.github.io/).
@@ -196,13 +196,16 @@ Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](
 
 Cell segmentation models live in separate packages and are loaded via a [`patch_segmenter_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_segmentation_models/load.py).
 
-| Cell Segmenter | Cell types | Args | Install / Link |
+| Segmenter | Classes | Args | Install / Link |
 |----------------|-----------:|------|------|
-| **HistoPlus**  | 14         | `--patch_segmenter histoplus --patch_size 784 --mag 20`            | `pip install git+https://github.com/owkin/histoplus.git` · gated: [Owkin-Bioptimus/histoplus](https://huggingface.co/Owkin-Bioptimus/histoplus) |
+| **HistoPlus**  | 14 cell types        | `--patch_segmenter histoplus --patch_size 784 --mag 20`            | `pip install git+https://github.com/owkin/histoplus.git` · gated: [Owkin-Bioptimus/histoplus](https://huggingface.co/Owkin-Bioptimus/histoplus) |
 | **CellViT++**  | 5 (PanNuke)| `--patch_segmenter cellvit_plus_plus --patch_size 1024 --mag 40`   | `pip install cellvit` · [TIO-IKIM/CellViT-Plus-Plus](https://github.com/TIO-IKIM/CellViT-Plus-Plus) |
+| **weave** (SAM3) | promptable | `--patch_segmenter weave --patch_seg_prompt "tumor"` (any `--mag`/`--patch_size`) | `pip install git+https://github.com/JaumeLab/sam3.git pycocotools` · gated: [JaumeLab/sam3-finetuned](https://huggingface.co/JaumeLab/sam3-finetuned) |
+
+**weave** is a promptable [SAM3](https://github.com/facebookresearch/sam3) finetuned for histopathology: instead of a fixed cell taxonomy it segments whatever `--patch_seg_prompt` names, at any resolution (it resizes internally, like a VLM). It outputs a **semantic region map** by default — the per-tile detections are dissolved into contiguous same-class regions (pass `--patch_seg_no_dissolve` for raw per-instance masks). Output is keyed **per prompt** (`seg_weave_<prompt>/`), so several prompts coexist on one `--job_dir`. weave runs on a **single GPU** (`--gpus 0`; for another GPU use `CUDA_VISIBLE_DEVICES=<n>`).
 
 > [!NOTE]
-> These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`), so install them in a **separate environment**.
+> These models pull dependencies that conflict with Trident's (e.g. HistoPlus needs `timm==1.0.8` + `xformers`; weave/SAM3 pulls `timm` 1.x, `numpy` 1.x, `transformers` 5.x), so install them in a **separate environment**.
 
 **Step 5: Asl ROIs with a vision-language model (VLM):** Ask a free-text question about tissue regions with [Patho-R1](https://huggingface.co/WenchuanZhang/Patho-R1-7B). 
 

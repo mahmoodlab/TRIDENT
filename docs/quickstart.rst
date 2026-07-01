@@ -164,19 +164,19 @@ Stage-only examples
 
 If patch features for the required underlying encoder don't exist, TRIDENT extracts them automatically.
 
-**Cell segmentation** (per-cell polygons + types; reuses existing coords)
+**Cell / structure segmentation** (per-instance polygons; reuses existing coords)
 
 .. code-block:: bash
 
    python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./out \
        --patch_segmenter histoplus --mag 20 --patch_size 784 --feat_batch_size 1 --seg_viz
 
-Runs a cell segmentation model (``histoplus`` or ``cellvit_plus_plus``) over tissue patches and
-writes, under ``<mag>x_<patch>px_<overlap>px_overlap/seg_<model>/``:
+Runs a fixed-taxonomy cell model (``histoplus`` or ``cellvit_plus_plus``) or the promptable
+``weave`` over tissue patches and writes, under ``<mag>x_<patch>px_<overlap>px_overlap/seg_<model>/``:
 
-- ``<slide>.geojson``: one polygon per cell with ``class`` / ``class_name`` / ``confidence`` (open in QuPath).
-- ``<slide>.h5``: compact per-cell storage (``contours`` + ``contour_offsets``, ``centroids``, ``class_ids``, ``confidences``).
-- ``visualization/`` (with ``--seg_viz``): a slide overview plus full-resolution sample-patch overlays, both with a color→cell-type legend.
+- ``<slide>.geojson``: one polygon per instance with ``class`` / ``class_name`` / ``confidence`` (open in QuPath).
+- ``<slide>.h5``: compact per-instance storage (``contours`` + ``contour_offsets``, ``centroids``, ``class_ids``, ``confidences``).
+- ``visualization/`` (with ``--seg_viz``): a slide overview plus full-resolution sample-patch overlays, both with a color→class legend.
 
 Each model lives in its own package and pulls conflicting deps, so install it in a **separate environment**:
 HistoPlus is **not on PyPI** — ``pip install git+https://github.com/owkin/histoplus.git`` (gated weights on
@@ -184,6 +184,20 @@ HuggingFace; needs ``HF_TOKEN``); CellViT++ is ``pip install cellvit`` (use Pyth
 Shapely fails to build — install ``--no-deps`` and add ``colorama colour geojson natsort opt-einsum pyaml``).
 Use the ``--mag`` / ``--patch_size`` the model expects (HistoPlus: ``784 @ 20x``; CellViT++: ``1024 @ 40x``).
 On recent PyTorch, run HistoPlus with ``--feat_batch_size 1`` (its batched attention kernel can crash).
+
+**weave** (promptable SAM3) segments whatever ``--patch_seg_prompt`` names instead of a fixed taxonomy:
+
+.. code-block:: bash
+
+   python run_batch_of_slides.py --task patch_seg --wsi_dir ./wsis --job_dir ./out \
+       --patch_segmenter weave --patch_seg_prompt "tumor" --mag 20 --patch_size 1024 --seg_viz
+
+Any ``--mag`` / ``--patch_size`` works (SAM3 resizes internally). Output is a **semantic region map** by
+default (per-tile detections dissolved into contiguous same-class regions; ``--patch_seg_no_dissolve`` keeps
+raw per-instance masks) and is keyed **per prompt** — ``seg_weave_<prompt>/`` — so prompts coexist on one
+``--job_dir``. Install ``pip install git+https://github.com/JaumeLab/sam3.git pycocotools`` (gated weights,
+`JaumeLab/sam3-finetuned <https://huggingface.co/JaumeLab/sam3-finetuned>`__). **Single GPU only** (``--gpus 0``;
+for another GPU use ``CUDA_VISIBLE_DEVICES=<n>``).
 
 **VLM question answering** (free-text Q&A over ROIs; reuses existing coords)
 
@@ -270,8 +284,10 @@ The list below is not exhaustive — for full defaults and choices, scroll to "R
      - Save patch images to disk during ``coords`` (debug / QC).
    * - ``--patch_encoder`` / ``--patch_encoder_ckpt_path`` / ``--slide_encoder``
      - Encoders. See API page for full list.
-   * - ``--patch_segmenter {histoplus,cellvit_plus_plus}`` / ``--patch_segmenter_ckpt_path`` / ``--seg_viz``
-     - Cell segmenter for ``--task patch_seg``, optional local weights, and debug overlays with a cell-type legend.
+   * - ``--patch_segmenter {histoplus,cellvit_plus_plus,weave}`` / ``--patch_segmenter_ckpt_path`` / ``--seg_viz``
+     - Segmenter for ``--task patch_seg``, optional local weights, and debug overlays with a class legend.
+   * - ``--patch_seg_prompt`` / ``--patch_seg_conf_thresh`` / ``--patch_seg_no_dissolve``
+     - For ``weave``: the text prompt to segment (required), the score threshold (default 0.5), and an opt-out of the default seam dissolve (keeps raw per-instance masks).
    * - ``--vlm {patho_r1_7b,patho_r1_3b}`` / ``--vlm_prompt`` / ``--vlm_batch_size`` / ``--vlm_max_new_tokens`` / ``--vlm_ckpt_path``
      - VLM for ``--task vlm``: model, the question asked of every patch, generation batch size, answer-length cap, and optional local weights.
    * - ``--batch_size`` / ``--seg_batch_size`` / ``--feat_batch_size``

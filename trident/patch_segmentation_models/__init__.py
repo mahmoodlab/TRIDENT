@@ -1,7 +1,7 @@
 """
 Cell / nuclei segmentation models for the ``patch_seg`` task.
 
-Thin wrappers around upstream packages (HistoPlus, CellViT++); see
+Thin wrappers around upstream packages (HistoPlus, CellViT++, weave/SAM3); see
 ``trident.patch_segmentation_models.load`` for attribution and the model registry.
 """
 from trident.patch_segmentation_models.load import (
@@ -11,6 +11,7 @@ from trident.patch_segmentation_models.load import (
     CustomInferenceSegmenter,
     HistoPlusSegmenter,
     CellViTPlusPlusSegmenter,
+    WeaveSegmenter,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "CustomInferenceSegmenter",
     "HistoPlusSegmenter",
     "CellViTPlusPlusSegmenter",
+    "WeaveSegmenter",
 ]

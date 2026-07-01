@@ -214,18 +214,66 @@ section) to render an attention heatmap on the slide.
 
 ## Cell segmenters (`--task patch_seg`)
 
-Cell/nuclei instance segmentation + classification over the tissue patches. Each model lives in
-a **separate package** (TRIDENT only wraps it — no model code is vendored). Both install **into the
-TRIDENT env** (a separate env is not required — verified). Loaded via
+Instance segmentation over the tissue patches — either fixed-taxonomy cell/nuclei models
+(HistoPlus, CellViT++) or a **promptable** model (weave). Each lives in a **separate package**
+(TRIDENT only wraps it — no model code is vendored) and installs **into the TRIDENT env** (a
+separate env is not required — verified). Loaded via
 `trident.patch_segmentation_models.patch_segmenter_factory(name)`.
 
-| Encoder (`--patch_segmenter`) | Cell types | Required args | Install (into the TRIDENT env) |
+| Encoder (`--patch_segmenter`) | Classes | Required args | Install (into the TRIDENT env) |
 |---|---|---|---|
-| `histoplus` | 14 (pan-cancer) | `--patch_size 784 --mag 20` (mpp 0.5) or `--mag 40` (mpp 0.25) | `pip install --no-deps git+https://github.com/owkin/histoplus.git` then `pip install "timm==1.0.8"` — **not on PyPI**; weights **gated** on [HF](https://huggingface.co/Owkin-Bioptimus/histoplus) (CC-BY-NC-ND, needs `HF_TOKEN`) |
-| `cellvit_plus_plus` | 5 (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` — Python 3.10/3.11; on 3.13 its pinned Shapely fails to build → `--no-deps` + `colorama colour geojson natsort opt-einsum pyaml`; checkpoint auto-downloads from Zenodo |
+| `histoplus` | 14 cell types (pan-cancer) | `--patch_size 784 --mag 20` (mpp 0.5) or `--mag 40` (mpp 0.25) | `pip install --no-deps git+https://github.com/owkin/histoplus.git` then `pip install "timm==1.0.8"` — **not on PyPI**; weights **gated** on [HF](https://huggingface.co/Owkin-Bioptimus/histoplus) (CC-BY-NC-ND, needs `HF_TOKEN`) |
+| `cellvit_plus_plus` | 5 cell types (PanNuke) | `--patch_size 1024 --mag 40` | `pip install cellvit` — Python 3.10/3.11; on 3.13 its pinned Shapely fails to build → `--no-deps` + `colorama colour geojson natsort opt-einsum pyaml`; checkpoint auto-downloads from Zenodo |
+| `weave` | promptable (1 class = the prompt) | **`--patch_seg_prompt "…"` required**; any `--mag` / `--patch_size` (SAM3 resizes internally); **single GPU only** | `pip install 'git+https://github.com/JaumeLab/sam3.git'` + `pip install pycocotools` — **not on PyPI**; weights **gated** on [HF](https://huggingface.co/JaumeLab/sam3-finetuned) (`huggingface-cli login`) |
 
 Attribution: HistoPlus — Adjadj/Bannier/Horent et al., arXiv:2508.09926 ([owkin/histoplus](https://github.com/owkin/histoplus)).
 CellViT++ — Hörst et al., arXiv:2501.05269 ([TIO-IKIM/CellViT-Plus-Plus](https://github.com/TIO-IKIM/CellViT-Plus-Plus), Apache-2.0 + Commons Clause).
+weave — JaumeLab, SAM3 (`facebook/sam3`) finetuned for histopathology ([JaumeLab/sam3](https://github.com/JaumeLab/sam3)).
+
+**weave (promptable SAM3).** Unlike the cell models' fixed taxonomies, weave segments whatever
+`--patch_seg_prompt` names (e.g. `"glomeruli"`, `"tumor"`), asked of every tissue patch. SAM3 emits
+per-instance masks per patch; **any** `--mag`/`--patch_size` works (SAM3 resizes internally, like a
+VLM) — pick the field of view you want, e.g. `--mag 20 --patch_size 1024`. `--patch_seg_conf_thresh`
+(default 0.5) sets the score threshold; `--patch_segmenter_ckpt_path` (or an `hf://` URI) overrides the
+default checkpoint `hf://JaumeLab/sam3-finetuned/model.pt`. Weights are bf16 (autocast). Only the
+**text-prompt, whole-slide** mode is wired to the CLI; the box-prompt mode from the card is not exposed.
+
+**Output is a semantic region map by default.** weave segments regions, not discrete cells, so by
+default TRIDENT dissolves the per-tile, per-instance polygons into contiguous same-class regions —
+unioning across patch seams (with a small morphological-close bridge so abutting tiles merge even at
+`--overlap 0`) and removing within-tile duplicate masks. The result: `class_name` = the prompt (single
+foreground class, `class`=1), `confidence` = area-weighted mean over the merged pieces. Pass
+`--patch_seg_no_dissolve` to instead keep the **raw per-instance** polygons (instance-level, each with
+its own SAM3 score) — matching HistoPlus/CellViT++ semantics. Verified on a TCGA breast slide: dissolve
+took 4921 raw instances → 2230 contiguous regions and removed the straight patch-edge seams.
+
+**Output is keyed per prompt**, not just per model: `<cdir>/seg_weave_<prompt>/` (e.g. `seg_weave_tumor/`,
+`seg_weave_necrosis/`), with matching `_config_seg_weave_<prompt>.json` / `_logs_seg_weave_<prompt>.txt`;
+the exact prompt is recorded in the config's `segmenter` block and in the h5 `class_names`. So multiple
+prompts on one `--job_dir`/coords coexist and resume independently instead of overwriting. (The prompt is
+slugified for the dir name — lowercased, non-alphanumerics → `_`, capped at 40 chars.)
+
+```bash
+python run_batch_of_slides.py --task patch_seg \
+  --wsi_dir ./wsis --job_dir ./trident_processed \
+  --patch_segmenter weave --patch_seg_prompt "tumor" \
+  --mag 20 --patch_size 1024 --seg_viz --gpus 0
+```
+
+**`--overlap` is optional for weave** (the default dissolve already removes patch-edge seams). Adding
+e.g. `--overlap 256` lets the model see edge-crossing structures whole, which can improve mask quality
+at boundaries, at the cost of more patches (slower); the extra overlap-band duplicates are merged by the
+dissolve. With `--patch_seg_no_dissolve`, overlap does **not** dedup, so seams/duplicates remain.
+(`--overlap` must be `< --patch_size`.)
+
+Install/run caveats (verified end-to-end on a TCGA breast slide):
+- The fork imports `pycocotools` but doesn't declare it → `pip install pycocotools` as well, or `import sam3` fails.
+- **Single GPU only.** SAM3 pins internal tensors to the default CUDA device, so weave runs only on
+  `cuda:0` (`--gpus 0`); multi-GPU sharding (`--gpus 0 1 …`) is unsupported and errors clearly. For a
+  different physical GPU, set `CUDA_VISIBLE_DEVICES=<n>` and still pass `--gpus 0`.
+- Installing `sam3` bumps `timm`→1.0.27, `numpy`→<2 and `transformers`→5.x, breaking TRIDENT's pins
+  (`timm==0.9.16`, `transformers<5`) and HistoPlus's (`timm==1.0.8`). seg/coords/weave still work, but
+  patch/slide **feature** encoders and HistoPlus may misbehave in that env — use a dedicated env if mixing.
 
 HistoPlus installs into the TRIDENT env — `--no-deps` keeps it from disturbing TRIDENT's/CellViT++'s
 pins, and `timm==1.0.8` (which HistoPlus needs and is verified bit-identical for all TRIDENT encoders)
@@ -238,7 +286,7 @@ Notes:
   you OOM (CellViT++ at 1024px is ~3.8 GB/patch — `8`≈31 GB, `16`≈59 GB, `32` OOMs a 95 GB GPU; HistoPlus
   is lighter, ~1.5 GB/patch).
 - `--mag 40` requires a 40×-native slide (mpp ≈ 0.25); a 20×-native slide cannot be upsampled to 40×.
-- Output goes to `<cdir>/seg_<model>/` (per model). See Output artifacts.
+- Output goes to `<cdir>/seg_<model>/` (per model; for weave `<model>` = `weave_<prompt>`, so prompts coexist). See Output artifacts.
 - `--task patch_seg` runs only this stage; it needs `seg` + `coords` already in `--job_dir`.
 
 ## Vision-language models (`--task vlm`)

@@ -197,12 +197,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--patch_segmenter', type=str, default='histoplus',
                         choices=patch_segmenter_registry.keys(),
                         help='Cell/object segmentation model to run over tissue patches (task=patch_seg). '
-                             'histoplus expects --patch_size 784 at --mag 20 (mpp 0.5) or 40 (mpp 0.25).')
+                             'histoplus expects --patch_size 784 at --mag 20 (mpp 0.5) or 40 (mpp 0.25). '
+                             'weave (promptable SAM3) segments whatever --patch_seg_prompt names, at any --mag/--patch_size.')
     parser.add_argument('--patch_seg_batch_size', type=int, default=4,
                         help='Patches per batch for cell/nuclei segmentation (task=patch_seg). '
                              'Defaults to 4; lower it if you run out of GPU memory.')
+    parser.add_argument('--patch_seg_prompt', type=str, default=None,
+                        help='Free-text prompt for a promptable patch segmenter (task=patch_seg, --patch_segmenter weave), '
+                             'e.g. "glomeruli". Segmented in every tissue patch. Required for weave; ignored by fixed-taxonomy models.')
+    parser.add_argument('--patch_seg_conf_thresh', type=float, default=0.5,
+                        help='Confidence threshold for a promptable patch segmenter (task=patch_seg, --patch_segmenter weave). '
+                             'Defaults to 0.5.')
+    parser.add_argument('--patch_seg_no_dissolve', action='store_true', default=False,
+                        help='For region segmenters (weave): keep raw per-tile polygons instead of '
+                             'dissolving patch-border seams into contiguous regions (dissolve is on by default).')
     parser.add_argument('--patch_segmenter_ckpt_path', type=str, default=None,
-                        help='Optional local path to patch-segmenter weights (offline environments).')
+                        help='Optional local path / hub URI to patch-segmenter weights (offline environments; '
+                             'for weave, overrides the default hf:// checkpoint).')
     parser.add_argument('--seg_viz', action='store_true', default=False,
                         help='For task=patch_seg, also save a debug overlay JPEG of the predicted cells per slide.')
 
@@ -378,10 +389,17 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             )
     elif args.task == 'patch_seg':
         from trident.patch_segmentation_models import patch_segmenter_factory
-        patch_segmenter = patch_segmenter_factory(
-            args.patch_segmenter,
-            weights_path=args.patch_segmenter_ckpt_path,
-        )
+        seg_kwargs = dict(weights_path=args.patch_segmenter_ckpt_path)
+        if args.patch_segmenter == 'weave':
+            # weave is promptable: it segments whatever the prompt names, so a prompt is required.
+            if not args.patch_seg_prompt:
+                raise ValueError(
+                    '--patch_segmenter weave requires --patch_seg_prompt (e.g. --patch_seg_prompt "glomeruli").'
+                )
+            seg_kwargs['prompt'] = args.patch_seg_prompt
+            seg_kwargs['confidence_threshold'] = args.patch_seg_conf_thresh
+            seg_kwargs['dissolve_seams'] = not args.patch_seg_no_dissolve
+        patch_segmenter = patch_segmenter_factory(args.patch_segmenter, **seg_kwargs)
         mag_str = f"{float(args.mag):g}"
         processor.run_patch_segmentation_job(
             coords_dir=args.coords_dir or f'{mag_str}x_{args.patch_size}px_{args.overlap}px_overlap',

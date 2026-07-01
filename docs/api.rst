@@ -249,32 +249,46 @@ Factory for loading patch-level encoder models.
 Cell Segmenters
 ---------------
 
-Factory for cell/nuclei segmentation models used by ``run_patch_segmentation_job`` (``--task patch_seg``).
-Each returns per-cell polygons + cell types; models ship in their own packages.
+Factory for cell/structure segmentation models used by ``run_patch_segmentation_job`` (``--task patch_seg``).
+HistoPlus and CellViT++ return per-cell polygons + cell types; **weave** (SAM3) returns polygons for a
+free-text prompt. Models ship in their own packages.
 
 .. list-table::
    :header-rows: 1
    :widths: 20 12 36 32
 
-   * - Cell Segmenter
-     - Cell types
+   * - Segmenter
+     - Classes
      - Args
      - Install / Link
    * - **HistoPlus**
-     - 14
+     - 14 cell types
      - ``--patch_segmenter histoplus --patch_size 784 --mag 20``
      - ``pip install git+https://github.com/owkin/histoplus.git`` · gated `Owkin-Bioptimus/histoplus <https://huggingface.co/Owkin-Bioptimus/histoplus>`__
    * - **CellViT++**
      - 5 (PanNuke)
      - ``--patch_segmenter cellvit_plus_plus --patch_size 1024 --mag 40``
      - ``pip install cellvit`` · `TIO-IKIM/CellViT-Plus-Plus <https://github.com/TIO-IKIM/CellViT-Plus-Plus>`__
+   * - **weave** (SAM3)
+     - promptable
+     - ``--patch_segmenter weave --patch_seg_prompt "tumor"`` (any ``--mag``/``--patch_size``)
+     - ``pip install git+https://github.com/JaumeLab/sam3.git pycocotools`` · gated `JaumeLab/sam3-finetuned <https://huggingface.co/JaumeLab/sam3-finetuned>`__
 
 .. note::
-   Install these in a **separate environment** (they pull conflicting deps, e.g. HistoPlus needs ``timm==1.0.8``).
+   Install these in a **separate environment** (they pull conflicting deps, e.g. HistoPlus needs ``timm==1.0.8``;
+   weave/SAM3 pulls ``timm`` 1.x, ``numpy`` 1.x, ``transformers`` 5.x).
    HistoPlus is **not on PyPI** (install from the git URL above) and its weights are gated on HuggingFace
    (accept the license, set ``HF_TOKEN``); on recent PyTorch run it with ``--feat_batch_size 1`` (batched attention
    can crash). CellViT++ is on PyPI — use Python 3.10/3.11; on 3.13 its pinned Shapely fails to build, so install
    ``--no-deps`` and add ``colorama colour geojson natsort opt-einsum pyaml``.
+
+.. note::
+   **weave** is a promptable SAM3 finetuned for histopathology: it segments whatever ``--patch_seg_prompt``
+   names (e.g. ``"tumor"``, ``"glomeruli"``), at any resolution. It outputs a **semantic region map** by
+   default — per-tile detections are dissolved into contiguous same-class regions (``--patch_seg_no_dissolve``
+   keeps raw per-instance masks). Output is keyed **per prompt** (``seg_weave_<prompt>/``), so prompts coexist
+   on one ``--job_dir``. Runs on a **single GPU** (``--gpus 0``; for another GPU use ``CUDA_VISIBLE_DEVICES=<n>``).
+   Also install ``pycocotools`` (imported by the fork but not declared).
 
 .. automodule:: trident.patch_segmentation_models
    :members:
