@@ -22,7 +22,6 @@ import torch.utils.checkpoint
 from torch.jit import Final
 
 from einops import rearrange, repeat
-from einops_exts import rearrange_many
 
 
 class Format(str, Enum):
@@ -624,7 +623,7 @@ class AttentionalPooler(nn.Module):
         q = self.to_q(q)
         kv_input = x
         k, v = self.to_kv(kv_input).chunk(2, dim=-1)
-        q, k, v = rearrange_many((q, k, v), 'b t n (h d) -> b h t n d', h=h)
+        q, k, v = (rearrange(t, 'b t n (h d) -> b h t n d', h=h) for t in (q, k, v))
         q = q * self.scale
         # attention
         sim = einsum('... i d, ... j d  -> ... i j', q, k)

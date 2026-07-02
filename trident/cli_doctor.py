@@ -292,9 +292,9 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         results.extend(
             [
                 _check_module(
-                    "aicsimageio",
-                    "AICSImageIO dependency",
-                    "Install with: pip install aicsimageio",
+                    "bioio",
+                    "BioIO dependency",
+                    "Install with: pip install bioio bioio-imageio",
                 ),
                 _check_libvips_runtime(),
             ]

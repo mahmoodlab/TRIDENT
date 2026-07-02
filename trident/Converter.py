@@ -124,12 +124,12 @@ class AnyToTiffConverter:
         if not file_path.lower().endswith(tuple(BIOFORMAT_EXTENSIONS)):
             return None
         try:
-            from aicsimageio import AICSImage
+            from bioio import BioImage
         except Exception:
             return None
 
         try:
-            img = AICSImage(file_path)
+            img = BioImage(file_path)
             px_sizes = img.physical_pixel_sizes
             if px_sizes and px_sizes.X is not None:
                 return float(px_sizes.X)
@@ -184,11 +184,11 @@ class AnyToTiffConverter:
                 return czidoc.read(zoom=zoom)
         if file_path.lower().endswith(tuple(BIOFORMAT_EXTENSIONS)):
             try:
-                from aicsimageio import AICSImage
+                from bioio import BioImage
             except ImportError:
-                raise ImportError("Install aicsimageio with `pip install aicsimageio` to read this format.")
+                raise ImportError("Install bioio with `pip install bioio bioio-imageio` to read this format.")
 
-            img_obj = AICSImage(file_path)
+            img_obj = BioImage(file_path)
             # Extract first timepoint and first z-plane with channel-aware handling.
             czyx = img_obj.get_image_data("CZYX", T=0)
             if czyx.ndim != 4:

@@ -11,7 +11,7 @@ license = "CC BY-NC-ND 4.0"
 repository = "https://github.com/mahmoodlab/TRIDENT"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"  # Support Python 3.10 and 3.11.
+python = ">=3.10,<3.13"  # Support Python 3.10, 3.11, and 3.12.
 ipywidgets = "*"
 torch = "*"
 torchvision = "*"
@@ -29,14 +29,15 @@ shapely = "*"
 requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
-aicsimageio = "*"
+bioio = "*"
+bioio-imageio = "*"
 pyvips = "*"
 
 # Core model dependencies (installed with `pip install -e .`)
 transformers = ">=4.40,<5"
 timm = "0.9.16"
 einops = "*"
-einops_exts = "*"
+
 scipy = "*"
 segmentation-models-pytorch = "*"
 safetensors = "*"
