@@ -140,6 +140,42 @@ def _check_chief_repo_root(repo_root: Path) -> CheckResult:
     )
 
 
+def _check_bioio_readers() -> CheckResult:
+    """
+    Verify that bioio is installed AND at least one TIFF/OME-TIFF reader plugin
+    is available.
+
+    bioio uses a plugin-per-format model: `bioio` alone (or with only
+    `bioio-imageio`) cannot read TIFF/OME-TIFF, which are the dominant bioformat
+    inputs for the converter. A `import bioio` check therefore passes while the
+    converter is still unable to read any TIFF-family file, so we explicitly
+    require a reader plugin.
+    """
+    if not _has_module("bioio"):
+        return CheckResult(
+            "FAIL",
+            "BioIO dependency",
+            "Module `bioio` is missing.",
+            "Install with: pip install bioio bioio-ome-tiff bioio-tifffile",
+        )
+
+    tiff_readers = [m for m in ("bioio_ome_tiff", "bioio_tifffile") if _has_module(m)]
+    if not tiff_readers:
+        return CheckResult(
+            "FAIL",
+            "BioIO reader plugin",
+            "`bioio` is installed but no TIFF/OME-TIFF reader plugin is available; "
+            "TIFF-family inputs cannot be read (`bioio-imageio` alone is insufficient).",
+            "Install with: pip install bioio-ome-tiff bioio-tifffile",
+        )
+
+    return CheckResult(
+        "PASS",
+        "BioIO dependency",
+        f"`bioio` and TIFF reader plugin(s) available ({', '.join(tiff_readers)}).",
+    )
+
+
 def _check_libvips_runtime() -> CheckResult:
     """
     Verify that pyvips can load system libvips.
@@ -291,11 +327,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
     if profile in {"convert", "full"}:
         results.extend(
             [
-                _check_module(
-                    "bioio",
-                    "BioIO dependency",
-                    "Install with: pip install bioio bioio-imageio",
-                ),
+                _check_bioio_readers(),
                 _check_libvips_runtime(),
             ]
         )

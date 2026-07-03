@@ -1531,6 +1531,7 @@ class GPFMInferenceEncoder(BasePatchEncoder):
 
     def _build(self, target_img_size=None):
         import timm
+        from timm.models.vision_transformer import checkpoint_filter_fn
         from huggingface_hub import hf_hub_download
         from torchvision.transforms import InterpolationMode
 
@@ -1557,6 +1558,10 @@ class GPFMInferenceEncoder(BasePatchEncoder):
             state_dict = torch.load(weights_path, map_location="cpu", weights_only=False)
             if isinstance(state_dict, dict) and "state_dict" in state_dict:
                 state_dict = state_dict["state_dict"]
+            # Resample positional embeddings to the (possibly resized) model grid.
+            # The checkpoint is trained at 224px; without this, a non-native
+            # target_img_size makes the strict load fail on pos_embed shape.
+            state_dict = checkpoint_filter_fn(state_dict, model)
             model.load_state_dict(state_dict, strict=True)
         except Exception:
             traceback.print_exc()

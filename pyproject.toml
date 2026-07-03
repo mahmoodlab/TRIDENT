@@ -30,13 +30,15 @@ requests = "*"
 huggingface_hub = "*"
 openslide-bin = "*"
 bioio = "*"
-bioio-imageio = "*"
+bioio-ome-tiff = "*"
+bioio-tifffile = "*"
 pyvips = "*"
 
 # Core model dependencies (installed with `pip install -e .`)
 transformers = ">=4.40,<5"
 timm = "0.9.16"
 einops = "*"
+einops_exts = "*"
 
 scipy = "*"
 segmentation-models-pytorch = "*"
@@ -52,6 +54,7 @@ musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
 gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
 madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
 pylibCZIrw = { version = "*", optional = true }
+bioio-bioformats = { version = "*", optional = true }
 cf-units = { version = ">=3.1", optional = true }
 ngff-zarr = { version = ">=0.12", optional = true }
 zarr = { version = ">=3.0.0a0", optional = true }
@@ -78,6 +81,9 @@ convert = [
 ]
 czi = [
     "pylibCZIrw",
+]
+bioformats = [
+    "bioio-bioformats",
 ]
 full = [
     "environs",
