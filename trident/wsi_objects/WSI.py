@@ -366,6 +366,7 @@ class WSI:
             dst_pixel_size = destination_mpp,
             mask=self.gdf_contours if hasattr(self, "gdf_contours") else None
         )
+        patcher.interpolation = getattr(segmentation_model, "interpolation", None)
         precision = segmentation_model.precision
         eval_transforms = segmentation_model.eval_transforms
         dataset = WSIPatcherDataset(patcher, eval_transforms)

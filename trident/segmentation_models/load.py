@@ -32,8 +32,12 @@ class SegmentationModel(torch.nn.Module):
                 The constructed model.
             eval_transforms (Callable):
                 Transformations to apply to input data during inference.
+            interpolation (int or None):
+                cv2.INTER_* flag the patcher uses to resize tiles to `input_size`. None (default)
+                keeps the patcher's default (cv2.INTER_LINEAR); a subclass may set it in `_build`.
         """
         super().__init__()
+        self.interpolation = None
         self.model, self.eval_transforms = self._build(**build_kwargs)
         self.confidence_thresh = confidence_thresh
 
@@ -234,6 +238,8 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         self.input_size = 512
         self.precision = torch.float32
         self.target_mag = 10
+        import cv2
+        self.interpolation = cv2.INTER_LANCZOS4
 
         # Evaluation transforms
         eval_transforms = transforms.Compose([

@@ -10,6 +10,14 @@ from PIL import Image
 
 from trident.IO import read_coords_legacy
 
+_CV2_TO_PIL_RESAMPLE = {
+    cv2.INTER_NEAREST: Image.Resampling.NEAREST,
+    cv2.INTER_LINEAR: Image.Resampling.BILINEAR,
+    cv2.INTER_CUBIC: Image.Resampling.BICUBIC,
+    cv2.INTER_AREA: Image.Resampling.BOX,
+    cv2.INTER_LANCZOS4: Image.Resampling.LANCZOS,
+}
+
 class WSIPatcher:
     """
     Iterator class for extracting patches from Whole Slide Images (WSIs).
@@ -78,6 +86,7 @@ class WSIPatcher:
         threshold: float = 0.,
         pil: bool = False,
         scan_order: Literal["row-major", "col-major"] = "row-major",
+        interpolation: Optional[int] = None,
     ):
         """ Initialize patcher, compute number of (masked) rows, columns.
 
@@ -115,6 +124,10 @@ class WSIPatcher:
                 Scan order used when generating the default coordinate grid (only when `custom_coords is None`).
                 - "row-major": iterate row by row (Y -> X). Typically best for disk locality on tiled WSI formats.
                 - "col-major": iterate column by column (X -> Y). Legacy behavior.
+            interpolation (int, optional):
+                cv2.INTER_* flag used to resize tiles to the target size. Defaults to None, which
+                keeps the prior default resampling: cv2.INTER_LINEAR (bilinear) on the numpy path,
+                PIL's default (bicubic) on the PIL path.
         """
         self.wsi = wsi
         self.overlap = overlap
@@ -127,6 +140,7 @@ class WSIPatcher:
         self.pil = pil
         self.dst_mag = dst_mag
         self.scan_order = scan_order
+        self.interpolation = interpolation
 
         # set src magnification and pixel size. 
         if src_pixel_size is not None:
@@ -388,10 +402,14 @@ class WSIPatcher:
         )
 
         if self.patch_size_target is not None:
+            target = (self.patch_size_target, self.patch_size_target)
+            resample = _CV2_TO_PIL_RESAMPLE.get(self.interpolation) if self.interpolation is not None else None
             if self.pil:
-                tile = tile.resize((self.patch_size_target, self.patch_size_target))
+                tile = tile.resize(target, resample) if resample is not None else tile.resize(target)
+            elif resample is not None:
+                tile = np.asarray(Image.fromarray(tile[:, :, :3]).resize(target, resample))
             else:
-                tile = cv2.resize(tile, (self.patch_size_target, self.patch_size_target))[:, :, :3]
+                tile = cv2.resize(tile, target)[:, :, :3]
 
         assert x < self.width and y < self.height
         return tile, x, y
