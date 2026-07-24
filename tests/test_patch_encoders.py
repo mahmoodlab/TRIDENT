@@ -144,6 +144,16 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    def test_plip_forward(self):
+        self._test_encoder_forward('plip', with_proj=True, normalize=True)
+        self._test_encoder_forward('plip', with_proj=False, normalize=True)
+        self._test_encoder_forward('plip', with_proj=False, normalize=False)
+
+    def test_quilt_b16_forward(self):
+        self._test_encoder_forward('quilt_b16', with_proj=True, normalize=True)
+        self._test_encoder_forward('quilt_b16', with_proj=False, normalize=True)
+        self._test_encoder_forward('quilt_b16', with_proj=False, normalize=False)
+
     def test_gemma4_forward(self):
         self._test_encoder_forward('gemma4-e4b')
         self._test_encoder_forward('gemma4-26b')

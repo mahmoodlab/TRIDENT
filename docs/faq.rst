@@ -348,7 +348,7 @@ Environment and advanced usage
           "conch_v1", "uni_v1", "uni_v2", "ctranspath", "phikon", "resnet50", "gigapath",
           "virchow", "virchow2", "hoptimus0", "hoptimus1", "phikon_v2", "conch_v15",
           "musk", "hibou_l", "kaiko-vits8", "kaiko-vits16", "kaiko-vitb8", "kaiko-vitb16",
-          "kaiko-vitl14", "lunit-vits8"
+          "kaiko-vitl14", "lunit-vits8", "plip", "quilt_b16"
       ]
       for model in patch_encoder_models:
           try:

@@ -93,6 +93,8 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "genbio-pathfm"
         - "gemma4-e4b"
         - "gemma4-26b"
+        - "plip"
+        - "quilt_b16"
 
         **kwargs (dict):
             Optional keyword arguments passed directly to the encoder constructor. These may include parameters such as:
@@ -1827,6 +1829,141 @@ class Gemma426BInferenceEncoder(Gemma4InferenceEncoder):
         super().__init__(**build_kwargs)
 
 
+
+class PLIPInferenceEncoder(BasePatchEncoder):
+    """Pathology Language-Image Pretraining (PLIP) vision encoder.
+
+    Downloads from Hugging Face (`vinid/plip`) via ``transformers.CLIPModel`` when no
+    local checkpoint is registered.
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        PLIP initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, with_proj=False, normalize=False):
+        from transformers import CLIPModel
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = "plip"
+        self.with_proj = with_proj
+        self.normalize = normalize
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_source = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = CLIPModel.from_pretrained(model_source, local_files_only=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create PLIP model from local checkpoint at '{weights_path}'. "
+                    "You can download the required model files from: https://huggingface.co/vinid/plip."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = CLIPModel.from_pretrained("vinid/plip")
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download PLIP model from https://huggingface.co/vinid/plip."
+                )
+
+        mean, std = get_constants("openai_clip")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BICUBIC,
+            center_crop=True,
+            max_size=None,
+            antialias=True,
+        )
+        precision = torch.float16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        outputs = self.model.vision_model(pixel_values=x)
+        embeddings = outputs.pooler_output
+        if self.with_proj:
+            embeddings = self.model.visual_projection(embeddings)
+        if self.normalize:
+            embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
+        return embeddings
+
+
+class QuiltNetInferenceEncoder(BasePatchEncoder):
+    """QuiltNet-B-16 vision encoder (CLIP ViT-B/16 fine-tuned on Quilt-1M).
+
+    Downloads from Hugging Face (`wisdomik/QuiltNet-B-16`) via ``transformers.CLIPModel``
+    when no local checkpoint is registered.
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        QuiltNet-B-16 initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, with_proj=False, normalize=False):
+        from transformers import CLIPModel
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = "quilt_b16"
+        self.with_proj = with_proj
+        self.normalize = normalize
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_source = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = CLIPModel.from_pretrained(model_source, local_files_only=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create QuiltNet model from local checkpoint at '{weights_path}'. "
+                    "You can download the required model files from: "
+                    "https://huggingface.co/wisdomik/QuiltNet-B-16."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = CLIPModel.from_pretrained("wisdomik/QuiltNet-B-16")
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download QuiltNet-B-16 model from "
+                    "https://huggingface.co/wisdomik/QuiltNet-B-16."
+                )
+
+        mean, std = get_constants("openai_clip")
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            interpolation=InterpolationMode.BICUBIC,
+            center_crop=True,
+            max_size=None,
+            antialias=True,
+        )
+        precision = torch.float32
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        outputs = self.model.vision_model(pixel_values=x)
+        embeddings = outputs.pooler_output
+        if self.with_proj:
+            embeddings = self.model.visual_projection(embeddings)
+        if self.normalize:
+            embeddings = embeddings / embeddings.norm(dim=-1, keepdim=True)
+        return embeddings
+
+
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
     "conch_v15": Conchv15InferenceEncoder,
@@ -1857,4 +1994,6 @@ encoder_registry = {
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
+    "plip": PLIPInferenceEncoder,
+    "quilt_b16": QuiltNetInferenceEncoder,
 }

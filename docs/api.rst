@@ -197,6 +197,14 @@ Factory for loading patch-level encoder models.
      - 768
      - ``--patch_encoder ctranspath --patch_size 256 --mag 10``
      - —
+   * - **PLIP**
+     - 768/512
+     - ``--patch_encoder plip --patch_size 224 --mag 20``
+     - `vinid/plip <https://huggingface.co/vinid/plip>`__
+   * - **QuiltNet-B-16**
+     - 768/512
+     - ``--patch_encoder quilt_b16 --patch_size 224 --mag 20``
+     - `wisdomik/QuiltNet-B-16 <https://huggingface.co/wisdomik/QuiltNet-B-16>`__
    * - **ResNet50**
      - 1024
      - ``--patch_encoder resnet50 --patch_size 256 --mag 20``

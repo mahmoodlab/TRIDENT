@@ -27,5 +27,7 @@
     "genbio-pathfm": "",
     "gemma4-e4b": "",
     "gemma4-26b": "",
-    "custom_encoder": ""
+    "custom_encoder": "",
+    "plip": "",
+    "quilt_b16": ""
 }
