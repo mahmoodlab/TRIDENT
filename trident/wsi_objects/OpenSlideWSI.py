@@ -248,6 +248,33 @@ class OpenSlideWSI(WSI):
         """
         return self.img.dimensions
 
+    def _get_single_level_tiff_thumbnail(self, size: tuple[int, int]) -> Optional[Image.Image]:
+        """Generate a TIFF thumbnail with libvips, returning None when unavailable."""
+        try:
+            import pyvips
+
+            thumbnail = pyvips.Image.thumbnail(
+                self.slide_path,
+                size[0],
+                height=size[1],
+                size="down",
+            ).cast("uchar")
+            if thumbnail.bands == 2:
+                thumbnail = thumbnail.extract_band(0)
+            elif thumbnail.bands > 3:
+                thumbnail = thumbnail.extract_band(0, n=3)
+            shape = (thumbnail.height, thumbnail.width)
+            if thumbnail.bands > 1:
+                shape += (thumbnail.bands,)
+            array = np.ndarray(
+                buffer=thumbnail.write_to_memory(),
+                dtype=np.uint8,
+                shape=shape,
+            )
+            return Image.fromarray(array).convert("RGB")
+        except Exception:
+            return None
+
     def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
         """
         Generate a thumbnail of the WSI.
@@ -259,5 +286,9 @@ class OpenSlideWSI(WSI):
         Returns:
             PIL.Image.Image: RGB thumbnail as a PIL Image.
         """
+        if self.level_count == 1 and self.slide_path.lower().endswith((".tif", ".tiff")):
+            thumbnail = self._get_single_level_tiff_thumbnail(size)
+            if thumbnail is not None:
+                return thumbnail
         return self.img.get_thumbnail(size).convert('RGB')
         
