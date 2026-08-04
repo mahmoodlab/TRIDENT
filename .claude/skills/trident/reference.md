@@ -324,14 +324,16 @@ Some models need manual setup (e.g. local CHIEF path in
 `trident/slide_encoder_models/local_ckpts.json`).
 
 Compatibility notes (observed):
-- Python 3.10/3.11 is recommended, but runs succeed on newer (e.g. 3.13) as long as `timm==0.9.16`.
+- Python 3.10/3.11 is recommended (`pyproject` declares `>=3.10,<3.13`); runs have also succeeded on 3.13.
 - Some **slide encoders load HF remote code that breaks on `transformers` 5.x** — e.g. TITAN fails
   with `AttributeError: 'Titan' object has no attribute 'all_tied_weights_keys'`. If a slide
   encoder errors on load (not a gating/timm error), pin an older `transformers` (4.x), or — in a
   read-only/shared env — monkeypatch before load:
   `from transformers.modeling_utils import PreTrainedModel; PreTrainedModel.all_tied_weights_keys = {}`
-  (the batch CLI spawns workers, so put it in a `sitecustomize.py` on `PYTHONPATH`). Note PRISM also
-  pulls a heavy, version-pinned dependency set (`transformers==4.42.4`, `environs`, `sacremoses`).
+  (the batch CLI spawns workers, so put it in a `sitecustomize.py` on `PYTHONPATH`). Note PRISM v1 also pulls
+  `environs==11.0.0` + `sacremoses==0.1.1` (both still exact pins, untested against other versions).
+  Its old error message demanded `transformers==4.42.4`; that was wrong — PRISM v1 is bit-identical
+  on 4.57.6 — and the message now asks for `>=4.51,<5`.
 - If the `trident-doctor` console script isn't on PATH (depends on the install), preflight with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`
   to confirm imports + gated-model access.

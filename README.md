@@ -222,7 +222,10 @@ Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutor
    - **A**: In `run_batch_of_slides`, this behavior is default. Set `--remove_holes` to exclude patches on top of holes.
 
 - **Q**: I see weird messages when building models using timm. What is happening?
-   - **A**: Make sure `timm==0.9.16` is installed. `timm==1.X.X` creates issues with most models. 
+   - **A**: Check that your `timm` is within `>=0.9.16,<2`. Both 0.9.16 and 1.x are supported and
+     produce bit-identical features (verified across 0.9.16 / 1.0.3 / 1.0.8 / 1.0.28 for every
+     timm-backed encoder and all three segmenters), so **don't** downgrade to `timm==0.9.16` as a
+     reflex — see [Library version support](#library-version-support).
 
 - **Q**: What’s the recommended way to run Trident from another project?
   - **A**: Use the **CLI** (recommended for reproducibility). Install Trident, then call:

@@ -36,19 +36,32 @@ pip install -e .                 # core; add ".[patch-encoders]" ".[slide-encode
 trident-doctor --profile base    # preflight; use --profile <profile> --check-gated for model access
 ```
 
-- **Library versions** (measured — see [reference.md](reference.md)): `timm>=0.9.16,<2` (every
-  timm-backed encoder and all three segmenters are bit-identical from 0.9.16 to 1.0.28, so timm 1.x
-  is fine — an older `timm==0.9.16` pin was over-constrained), `transformers>=4.51,<5`, and
-  `flash_attn>=2.7.3` for the LongNet slide encoders (GigaPath / GigaPath-Flash / PRISM2) —
-  earlier flash-attn has no Blackwell (sm_100/sm_120) kernels. Python 3.10/3.11 recommended.
+- **Library versions** — all three were measured by comparing outputs across versions, not guessed
+  (details in [reference.md](reference.md)). Python 3.10/3.11 recommended (`>=3.10,<3.13`).
+
+  | Library | Range | What was verified |
+  |---|---|---|
+  | `timm` | `>=0.9.16,<2` | 24 components (every timm-backed encoder + all 3 segmenters) bit-identical on 0.9.16 / 1.0.3 / 1.0.8 / 1.0.28. timm 1.x is fine. |
+  | `transformers` | `>=4.51,<5` | 4.46 / 4.51 / 4.57 bit-identical; 4.42 differs slightly (Dinov2 gained SDPA in 4.46). `<5` is load-bearing — see below. |
+  | `flash_attn` | `>=2.7.3` | Only the LongNet slide encoders need it (`gigapath`, `gigapath-flash`, `prism2`). API unchanged 2.5.8→2.8.3, but **<2.7.3 ships no Blackwell (sm_100/sm_120) kernels**; 2.7.3 and 2.8.3 give bit-identical features. |
+
+  TRIDENT enforces flash-attn per model (2.5.8 for GigaPath, 2.6.3 for PRISM2) *plus* `>=2.7.3` only
+  when it detects an sm_100+ GPU, so Ampere/Hopper installs on 2.5.8 keep working. On Blackwell with
+  an older flash-attn you get a clear error naming the arch and the build command — prebuilt wheels
+  stop at torch 2.8, so on newer torch build from source with
+  `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'` (needs nvcc >= 12.8).
 - If `trident-doctor` isn't on PATH (install-dependent), preflight instead with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`.
 - Most encoders download from HuggingFace; gated models (UNI, CONCH, Virchow, …) need an
   approved HF account and `huggingface-cli login`. A load failure usually means missing
   access or a missing optional install — read the error, it names the fix.
 - Stay on `transformers` 4.x (`>=4.51,<5`): v5 removes `transformers.onnx`, which Hibou-L's remote
-  code imports. The lone exception is `gemma4-e4b`/`gemma4-26b`, which *need* `transformers>=5` and
-  are therefore mutually exclusive with `hibou_l` — pick one per environment.
+  code imports. The one exception is `gemma4-e4b`/`gemma4-26b`: `Gemma4Config` exists in **no** 4.x
+  release, so they *require* `transformers>=5` and assert on it with an explanatory message. Do not
+  upgrade an existing env to satisfy them — v5 breaks `hibou_l` outright, `titan` needs the
+  `all_tied_weights_keys` workaround below, and v5 imports `torchaudio` whenever it is installed, so
+  a torchaudio that does not match your torch breaks *every* model load. Use a separate env for
+  Gemma 4.
 - A **slide encoder** that errors on load with something like `all_tied_weights_keys` (not a
   gating/timm error) is a `transformers` 5.x incompatibility (e.g. TITAN) — pin `transformers` 4.x,
   or if you can't change the env, set
@@ -80,6 +93,8 @@ Always copy the pair from the encoder table in [reference.md](reference.md). Com
 | `uni_v2` (1536-d) | `--patch_size 256 --mag 20` |
 | `conch_v15` (768-d, default) | `--patch_size 512 --mag 20` |
 | `virchow` / `virchow2` (2560-d) | `--patch_size 224 --mag 20` |
+| `virchow2-cls` (1280-d, CLS only — what PRISM2 consumes) | `--patch_size 224 --mag 20` |
+| `gigapath` (1536-d) / `gigapath-flash` (384-d) | `--patch_size 256 --mag 20` |
 | `ctranspath` (768-d) | `--patch_size 256 --mag 10` |
 
 **2. Patch vs slide embeddings.** `--patch_encoder X` → one embedding per patch
@@ -90,6 +105,13 @@ the slide encoder's required patch_size/mag (from the slide-encoder table). **St
 only segments and you get no embeddings. A slide-encoder run also writes the intermediate
 patch features (`features_<patch_encoder>/`) alongside `slide_features_<Y>/`.
 ("UNI" = `uni_v1`; "UNI2"/"UNI2-h" = `uni_v2`.)
+
+Each slide encoder is hard-wired to one patch encoder, so the intermediate folder name follows
+*that* encoder, not the slide encoder. Two pairs are easy to trip over: `prism` uses `virchow`
+(2560-d) while `prism2` uses `virchow2-cls` (1280-d, class token only — **not** `virchow2`, which is
+2560-d), and `gigapath-flash` uses its own 384-d `gigapath-flash` patch encoder. Features from the
+two Virchow2 flavours are therefore never interchangeable; they live in separate
+`features_virchow2/` vs `features_virchow2-cls/` folders by design.
 
 **3. Segmenter.** Default `--segmenter hest` (a model — runs on GPU). `grandqc` = fast H&E.
 `otsu` = classical, **CPU-only** — on a machine with no GPU you must pass `--segmenter otsu`
@@ -188,8 +210,13 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - `--task coords`/`feat` on a fresh `--job_dir` → silently skips (no prior stage); use `--task all`, or run the stages in order.
 - `--slide_encoder` without `--task all`/`feat` → only segmentation runs, no embeddings.
 - No-GPU machine without `--segmenter otsu` → default `hest` tries to use a GPU.
-- `timm` not pinned to `0.9.16` (Python 3.10/3.11) → cryptic model-build errors; a bad timm can also look like a model *load* failure.
+- `timm` outside `>=0.9.16,<2` → cryptic model-build errors that can look like a model *load* failure. Do **not** downgrade to `timm==0.9.16` "to be safe": 0.9.16 and 1.x give bit-identical features, and an old pin can conflict with other packages in the env.
 - Gated HF model without access → load failure (request access + `huggingface-cli login`).
+- `FlashAttention only supports Ampere GPUs or newer` from `gigapath`/`gigapath-flash`/`prism2` on a
+  Blackwell GPU → flash-attn <2.7.3 has no kernels for that arch; upgrade (see Setup). Confirm with
+  `trident-doctor --profile slide-encoders`, which checks flash-attn against the live GPU.
+- `gemma4-*` asserting on transformers → it needs v5, which is outside TRIDENT's range; do not
+  upgrade a shared env (see Setup).
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
