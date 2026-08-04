@@ -81,6 +81,8 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "hoptimus0"
         - "hoptimus1"
         - "h0-mini"
+        - "phaet"
+        - "mascaret"
         - "musk"
         - "openmidnight"
         - "gpfm"
@@ -1471,6 +1473,109 @@ class Midnight12kInferenceEncoder(BasePatchEncoder):
             )
 
 
+class WaivFinetunedInferenceEncoder(BasePatchEncoder):
+    """
+    Robustness-fine-tuned pathology encoder from Waiv (base class). Subclassed per variant below.
+
+    Both checkpoints ship as a custom `finetuned_encoder` HuggingFace architecture (hence
+    `trust_remote_code=True`) wrapping the DINOv2 backbone they fine-tune. Their parameter counts
+    match those base models exactly, so the architecture, hidden size and expected preprocessing
+    are unchanged -- only the weights differ. See https://arxiv.org/abs/2607.22861.
+    """
+    ENC_NAME = None            # TRIDENT encoder name
+    HF_REPO = None             # HuggingFace repo id (gated)
+    BASE_ENCODER = None        # TRIDENT name of the encoder this checkpoint fine-tunes
+    NORM = 'imagenet'          # normalization constants, inherited from the base model
+    PRECISION = torch.float32
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+        from transformers import AutoModel
+        from torchvision import transforms
+
+        self.enc_name = self.ENC_NAME
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = AutoModel.from_pretrained(model_dir, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create {self.ENC_NAME} model from local checkpoint at '{weights_path}'. "
+                    "You can download the required `model.safetensors`, `config.json` and "
+                    f"`modeling_finetuned_encoder.py` from: https://huggingface.co/{self.HF_REPO}."
+                )
+        else:
+            self.ensure_has_internet(self.ENC_NAME)
+            try:
+                model = AutoModel.from_pretrained(self.HF_REPO, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to download {self.ENC_NAME} model, make sure that you were granted access to "
+                    f"https://huggingface.co/{self.HF_REPO} and that you correctly registered your token"
+                )
+
+        # Neither repo ships a `preprocessor_config.json`, so preprocessing is inherited from the
+        # base model (same input size and normalization constants).
+        mean, std = get_constants(self.NORM)
+        eval_transform = transforms.Compose(
+            [
+                transforms.Resize(224),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std),
+            ]
+        )
+
+        self.return_type = return_type
+        return model, eval_transform, self.PRECISION
+
+    def forward(self, x):
+        out = self.model(x)
+        # The custom wrapper is expected to expose token embeddings as `last_hidden_state` (as both
+        # DINOv2 backbones do); fall back to a bare tensor if it returns one directly.
+        out = getattr(out, 'last_hidden_state', out)
+        cls_token = out[:, 0, :]
+        if self.return_type == "cls_token":
+            return cls_token
+        elif self.return_type == "cls+mean":
+            patch_embeddings = out[:, 1:, :]
+            return torch.cat([cls_token, patch_embeddings.mean(1)], dim=-1)
+        else:
+            raise ValueError(
+                f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{self.return_type}'"
+            )
+
+
+class PhaetInferenceEncoder(WaivFinetunedInferenceEncoder):
+    """Phaet: robustness-fine-tuned Phikon-v2 (DINOv2 ViT-L, 1024-dim)."""
+    ENC_NAME = 'phaet'
+    HF_REPO = 'wearewaiv/phaet'
+    BASE_ENCODER = 'phikon_v2'
+    NORM = 'imagenet'
+    PRECISION = torch.float32
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+
+class MascaretInferenceEncoder(WaivFinetunedInferenceEncoder):
+    """Mascaret: robustness-fine-tuned Midnight-12k (DINOv2 ViT-g, 1536-dim)."""
+    ENC_NAME = 'mascaret'
+    HF_REPO = 'wearewaiv/mascaret'
+    BASE_ENCODER = 'midnight12k'
+    NORM = 'kaiko'
+    PRECISION = torch.float16
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+
 class H0MiniInferenceEncoder(BasePatchEncoder):
 
     def __init__(self, **build_kwargs):
@@ -1939,6 +2044,8 @@ encoder_registry = {
     "kaiko-vitl14": KaikoL14InferenceEncoder,
     "lunit-vits8": LunitS8InferenceEncoder,
     "midnight12k": Midnight12kInferenceEncoder,
+    "phaet": PhaetInferenceEncoder,
+    "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,

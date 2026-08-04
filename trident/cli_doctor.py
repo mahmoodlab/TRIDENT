@@ -312,6 +312,8 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         ("Prov-GigaPath", "prov-gigapath/prov-gigapath", "model"),
         ("Prov-GigaPath-Flash", "prov-gigapath/prov-gigapath-flash", "model"),
         ("Midnight", "kaiko-ai/midnight", "model"),
+        ("Phaet", "wearewaiv/phaet", "model"),
+        ("Mascaret", "wearewaiv/mascaret", "model"),
         ("OpenMidnight", "SophontAI/OpenMidnight", "model"),
         ("GPFM", "majiabo/GPFM", "model"),
         ("Lunit vits8", "1aurent/vit_small_patch8_224.lunit_dino", "model"),

@@ -169,6 +169,14 @@ Factory for loading patch-level encoder models.
      - 3072
      - ``--patch_encoder midnight12k --patch_size 224 --mag 20``
      - `kaiko-ai/midnight <https://huggingface.co/kaiko-ai/midnight>`__
+   * - **Phaet**
+     - 1024
+     - ``--patch_encoder phaet --patch_size 224 --mag 20``
+     - `wearewaiv/phaet <https://huggingface.co/wearewaiv/phaet>`__
+   * - **Mascaret**
+     - 1536/3072
+     - ``--patch_encoder mascaret --patch_size 224 --mag 20``
+     - `wearewaiv/mascaret <https://huggingface.co/wearewaiv/mascaret>`__
    * - **OpenMidnight**
      - 1536
      - ``--patch_encoder openmidnight --patch_size 224 --mag 20``

@@ -654,6 +654,10 @@ class MeanSlideEncoder(BaseSlideEncoder):
             embedding_dim = 1536
         elif model_name == 'mean-phikon_v2':
             embedding_dim = 1024
+        elif model_name == 'mean-phaet':
+            embedding_dim = 1024
+        elif model_name == 'mean-mascaret':
+            embedding_dim = 1536
         elif model_name == 'mean-musk':
             embedding_dim = 1024
         elif model_name == 'mean-hibou_l':
@@ -709,6 +713,8 @@ encoder_registry = {
     'mean-virchow2': MeanSlideEncoder,
     'mean-hoptimus0': MeanSlideEncoder,
     'mean-phikon_v2': MeanSlideEncoder,
+    'mean-phaet': MeanSlideEncoder,
+    'mean-mascaret': MeanSlideEncoder,
     'mean-musk': MeanSlideEncoder,
     'mean-hibou_l': MeanSlideEncoder,
     'mean-kaiko-vit8s': MeanSlideEncoder,

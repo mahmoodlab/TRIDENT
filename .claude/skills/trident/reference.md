@@ -121,6 +121,8 @@ column is **required** for correct features — copy it verbatim.
 | `h0-mini` | 768/1536 | `--patch_size 224 --mag 20` |
 | `musk` | 1024 | `--patch_size 384 --mag 20` |
 | `midnight12k` | 3072 | `--patch_size 224 --mag 20` |
+| `phaet` | 1024 | `--patch_size 224 --mag 20` |
+| `mascaret` | 1536/3072 | `--patch_size 224 --mag 20` |
 | `openmidnight` | 1536 | `--patch_size 224 --mag 20` |
 | `gpfm` | 1024 | `--patch_size 224 --mag 20` |
 | `genbio-pathfm` | 4608 | `--patch_size 224 --mag 20` |

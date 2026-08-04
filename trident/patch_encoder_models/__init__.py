@@ -33,6 +33,9 @@ from trident.patch_encoder_models.load import (
     GenBioPathFMInferenceEncoder,
     Gemma4E4BInferenceEncoder,
     Gemma426BInferenceEncoder,
+    WaivFinetunedInferenceEncoder,
+    PhaetInferenceEncoder,
+    MascaretInferenceEncoder,
 )
 
 __all__ = [
@@ -70,4 +73,7 @@ __all__ = [
     "GenBioPathFMInferenceEncoder",
     "Gemma4E4BInferenceEncoder",
     "Gemma426BInferenceEncoder",
+    "WaivFinetunedInferenceEncoder",
+    "PhaetInferenceEncoder",
+    "MascaretInferenceEncoder",
 ]

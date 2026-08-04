@@ -144,6 +144,15 @@ class TestPatchEncoders(unittest.TestCase):
         self._test_encoder_forward('midnight12k')
         self._test_encoder_forward('midnight12k', return_type="cls+mean")
 
+    def test_phaet_forward(self):
+        # Robustness-fine-tuned Phikon-v2: same DINOv2 ViT-L geometry as the base encoder.
+        self.assertEqual(self._output_dim('phaet'), 1024)
+
+    def test_mascaret_forward(self):
+        # Robustness-fine-tuned Midnight-12k: same DINOv2 ViT-g geometry as the base encoder.
+        self.assertEqual(self._output_dim('mascaret'), 1536)
+        self.assertEqual(self._output_dim('mascaret', return_type="cls+mean"), 3072)
+
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
