@@ -145,6 +145,10 @@ Factory for loading patch-level encoder models.
      - 1536
      - ``--patch_encoder gigapath --patch_size 256 --mag 20``
      - `prov-gigapath <https://huggingface.co/prov-gigapath/prov-gigapath>`__
+   * - **Prov-Gigapath-Flash**
+     - 384
+     - ``--patch_encoder gigapath-flash --patch_size 256 --mag 20``
+     - `prov-gigapath-flash <https://huggingface.co/prov-gigapath/prov-gigapath-flash>`__
    * - **H-Optimus-0**
      - 1536
      - ``--patch_encoder hoptimus0 --patch_size 224 --mag 20``
@@ -240,6 +244,10 @@ Factory for slide-level encoder models.
      - gigapath
      - ``--slide_encoder gigapath --patch_size 256 --mag 20``
      - `prov-gigapath <https://huggingface.co/prov-gigapath/prov-gigapath>`__
+   * - **GigaPath-Flash**
+     - gigapath-flash
+     - ``--slide_encoder gigapath-flash --patch_size 256 --mag 20``
+     - `prov-gigapath-flash <https://huggingface.co/prov-gigapath/prov-gigapath-flash>`__
    * - **Madeleine**
      - conch_v1
      - ``--slide_encoder madeleine --patch_size 256 --mag 10``

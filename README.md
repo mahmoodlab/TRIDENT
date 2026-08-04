@@ -138,7 +138,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 25 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link |
 |-----------------------|---------------:|------------------------------------------------------------------|------|
@@ -152,6 +152,7 @@ Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Phikon-v2**         | 1024           | `--patch_encoder phikon_v2 --patch_size 224 --mag 20`            | [owkin/phikon-v2](https://huggingface.co/owkin/phikon-v2/) |
 | **KEEP**              | 768            | `--patch_encoder keep --patch_size 256 --mag 20`                 | [Astaxanthin/KEEP](https://huggingface.co/Astaxanthin/KEEP) |
 | **Prov-Gigapath**     | 1536           | `--patch_encoder gigapath --patch_size 256 --mag 20`             | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) |
+| **Prov-Gigapath-Flash** | 384          | `--patch_encoder gigapath-flash --patch_size 256 --mag 20`       | [prov-gigapath-flash](https://huggingface.co/prov-gigapath/prov-gigapath-flash) |
 | **H-Optimus-0**       | 1536           | `--patch_encoder hoptimus0 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0) |
 | **H-Optimus-1**       | 1536           | `--patch_encoder hoptimus1 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1) |
 | **H0-mini**           | 768/1536       | `--patch_encoder h0-mini --patch_size 224 --mag 20`              | [bioptimus/H0-mini](https://huggingface.co/bioptimus/H0-mini) |
@@ -181,7 +182,7 @@ Trident supports 24 patch encoders, loaded via a patch [`encoder_factory`](https
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_512px_0px_overlap/slide_features_titan`. (Shape: `(feature_dim)`)
 
-Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 10 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Slide Encoder | Patch Encoder | Args | Link |
 |---------------|----------------|------|------|
@@ -190,6 +191,7 @@ Trident supports 5 slide encoders, loaded via a slide-level [`encoder_factory`](
 | **PRISM** | virchow | `--slide_encoder prism --patch_size 224 --mag 20` | [paige-ai/Prism](https://huggingface.co/paige-ai/Prism) |
 | **CHIEF** | ctranspath | `--slide_encoder chief --patch_size 256 --mag 10` | [CHIEF](https://github.com/hms-dbmi/CHIEF) |
 | **GigaPath** | gigapath | `--slide_encoder gigapath --patch_size 256 --mag 20` | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) |
+| **GigaPath-Flash** | gigapath-flash | `--slide_encoder gigapath-flash --patch_size 256 --mag 20` | [prov-gigapath-flash](https://huggingface.co/prov-gigapath/prov-gigapath-flash) |
 | **Madeleine** | conch_v1 | `--slide_encoder madeleine --patch_size 256 --mag 10` | [MahmoodLab/madeleine](https://huggingface.co/MahmoodLab/madeleine) |
 | **Feather** | conch_v15 | `--slide_encoder feather --patch_size 512 --mag 20` | [MahmoodLab/FEATHER](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k) |
 | **Feather-UNI2** | uni_v2 | `--slide_encoder feather_uni_v2 --patch_size 256 --mag 20` | [MahmoodLab/FEATHER](https://huggingface.co/MahmoodLab/abmil.base.uni_v2.pc108-24k) |

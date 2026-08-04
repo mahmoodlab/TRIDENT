@@ -76,6 +76,14 @@ class TestSlideEncoders(unittest.TestCase):
         }
         self._test_encoder_forward(GigaPathSlideEncoder(), sample_batch, torch.float16)
 
+    def test_gigapath_flash_encoder_initialization(self):
+        sample_batch = {
+            'features': torch.randn(1, 100, 384),
+            'coords': torch.randn(1, 100, 2),
+            'attributes': {'patch_size_level0': 224}
+        }
+        self._test_encoder_forward(GigaPathFlashSlideEncoder(), sample_batch, torch.float16)
+
     def test_slide_encoder_factory_with_valid_names(self):
         print("\033[95m" + "Testing Slide Encoder Factory with valid names" + "\033[0m")
         # Keep this focused on dependency-light encoders.

@@ -97,6 +97,7 @@ slide_to_patch_encoder_name = {
     'prism': 'virchow',
     'chief': 'ctranspath',
     'gigapath': 'gigapath',
+    'gigapath-flash': 'gigapath-flash',
     'madeleine': 'conch_v1',
     'feather': 'conch_v15',
     'feather_uni_v2': 'uni_v2',
@@ -359,6 +360,12 @@ class CHIEFSlideEncoder(BaseSlideEncoder):
     
 
 class GigaPathSlideEncoder(BaseSlideEncoder):
+    """GigaPath LongNet slide encoder (base class). Subclassed per variant (see below)."""
+    ENC_NAME = 'gigapath'
+    SLIDE_ENC_ARCH = 'gigapath_slide_enc12l768d'
+    IN_CHANS = 1536       # dim of the paired tile encoder's embeddings
+    EMBED_DIM = 768       # dim of the slide embedding
+    HF_REPO = 'prov-gigapath/prov-gigapath'
 
     def __init__(self, **build_kwargs):
         """
@@ -368,7 +375,7 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
 
     def _build(self, pretrained=True):
 
-        self.enc_name = 'gigapath'
+        self.enc_name = self.ENC_NAME
 
         try:
             from gigapath.slide_encoder import create_model
@@ -376,28 +383,53 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
             traceback.print_exc()
             raise Exception("Please install fairscale and gigapath using `pip install fairscale git+https://github.com/prov-gigapath/prov-gigapath.git`.")
 
+        # Importing gigapath.slide_encoder registers the LongNet architectures with timm. Older
+        # gigapath releases predate the GigaPath-Flash variant, so check before building.
+        import timm
+        if not timm.is_model(self.SLIDE_ENC_ARCH):
+            raise Exception(
+                f"Slide encoder architecture '{self.SLIDE_ENC_ARCH}' is not registered by your gigapath "
+                "install. Upgrade it with `pip install --upgrade --force-reinstall --no-deps "
+                "git+https://github.com/prov-gigapath/prov-gigapath.git`."
+            )
+
         # LongNet only calls `flash_attn_func(..., return_attn_probs=True)`, whose signature and
         # 3-tuple return are unchanged from 2.5.8 through at least 2.8.3, so no upper bound applies.
         _require_flash_attn(self.enc_name, '2.5.8')
 
+        weights_path = ""
         if pretrained:
             weights_path = get_weights_path('slide', self.enc_name)
-            if weights_path:
-                model = create_model(weights_path, "gigapath_slide_enc12l768d", 1536, global_pool=True)
-            else:
-                model = create_model("hf_hub:prov-gigapath/prov-gigapath", "gigapath_slide_enc12l768d", 1536, global_pool=True)
-        else:
-            model = create_model("", "gigapath_slide_enc12l768d", 1536, global_pool=True)
-        
-        
+            if not weights_path:
+                # Download explicitly rather than passing `hf_hub:...` to `create_model`, which
+                # force-downloads every variant to the same `~/.cache/slide_encoder.pth`.
+                from huggingface_hub import hf_hub_download
+                weights_path = hf_hub_download(repo_id=self.HF_REPO, filename="slide_encoder.pth")
+
+        model = create_model(weights_path, self.SLIDE_ENC_ARCH, self.IN_CHANS, global_pool=True)
+
         precision = torch.float16
-        embedding_dim = 768
-        return model, precision, embedding_dim
+        return model, precision, self.EMBED_DIM
 
     def forward(self, batch, device='cuda'):
         self.model.tile_size = batch['attributes']['patch_size_level0']
         z = self.model(batch['features'].to(device), batch['coords'].to(device), all_layer_embed=True)[11]
         return z
+
+
+class GigaPathFlashSlideEncoder(GigaPathSlideEncoder):
+    """GigaPath-Flash LongNet slide encoder (12 layers, 384-dim), paired with the ViT-S/16 tile encoder."""
+    ENC_NAME = 'gigapath-flash'
+    SLIDE_ENC_ARCH = 'gigapath_slide_enc12l384d'
+    IN_CHANS = 384
+    EMBED_DIM = 384
+    HF_REPO = 'prov-gigapath/prov-gigapath-flash'
+
+    def __init__(self, **build_kwargs):
+        """
+        GigaPath-Flash initialization.
+        """
+        super().__init__(**build_kwargs)
 
 
 class MadeleineSlideEncoder(BaseSlideEncoder):
@@ -612,6 +644,8 @@ class MeanSlideEncoder(BaseSlideEncoder):
             embedding_dim = 1024
         elif model_name == 'mean-gigapath':
             embedding_dim = 1536
+        elif model_name == 'mean-gigapath-flash':
+            embedding_dim = 384
         elif model_name == 'mean-virchow':
             embedding_dim = 2560
         elif model_name == 'mean-virchow2':
@@ -654,6 +688,7 @@ encoder_registry = {
     'prism': PRISMSlideEncoder,
     'chief': CHIEFSlideEncoder,
     'gigapath': GigaPathSlideEncoder,
+    'gigapath-flash': GigaPathFlashSlideEncoder,
     'madeleine': MadeleineSlideEncoder,
     'feather': FeatherSlideEncoder,
     'feather_uni_v2': FeatherUni2SlideEncoder,
@@ -669,6 +704,7 @@ encoder_registry = {
     'mean-phikon': MeanSlideEncoder,
     'mean-resnet50': MeanSlideEncoder,
     'mean-gigapath': MeanSlideEncoder,
+    'mean-gigapath-flash': MeanSlideEncoder,
     'mean-virchow': MeanSlideEncoder,
     'mean-virchow2': MeanSlideEncoder,
     'mean-hoptimus0': MeanSlideEncoder,

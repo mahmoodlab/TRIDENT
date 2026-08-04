@@ -99,6 +99,9 @@ class TestPatchEncoders(unittest.TestCase):
     def test_gigapath_forward(self):
         self._test_encoder_forward('gigapath')
 
+    def test_gigapath_flash_forward(self):
+        self.assertEqual(self._output_dim('gigapath-flash'), 384)
+
     def test_virchow_forward(self):
         self._test_encoder_forward('virchow')
 
@@ -182,6 +185,11 @@ class TestPatchEncoders(unittest.TestCase):
     def test_gigapath_resize(self):
         # Exercises the branched eval-transform (target_img_size is not None).
         self._test_encoder_resize('gigapath', target_img_size=448)
+
+    def test_gigapath_flash_resize(self):
+        # patch_size 16; model is always built at its native 224 grid, so this
+        # exercises forward-time positional-embedding interpolation.
+        self._test_encoder_resize('gigapath-flash', target_img_size=448)
 
     def test_hoptimus0_resize(self):
         # Backbone default was dynamic_img_size=False; now flipped to True.

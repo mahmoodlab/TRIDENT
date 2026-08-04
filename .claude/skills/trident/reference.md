@@ -115,6 +115,7 @@ column is **required** for correct features — copy it verbatim.
 | `phikon_v2` | 1024 | `--patch_size 224 --mag 20` |
 | `keep` | 768 | `--patch_size 256 --mag 20` |
 | `gigapath` | 1536 | `--patch_size 256 --mag 20` |
+| `gigapath-flash` | 384 | `--patch_size 256 --mag 20` |
 | `hoptimus0` | 1536 | `--patch_size 224 --mag 20` |
 | `hoptimus1` | 1536 | `--patch_size 224 --mag 20` |
 | `h0-mini` | 768/1536 | `--patch_size 224 --mag 20` |
@@ -141,6 +142,7 @@ pass its required patch_size/mag.
 | `prism` | virchow | `--patch_size 224 --mag 20` |
 | `chief` | ctranspath | `--patch_size 256 --mag 10` |
 | `gigapath` | gigapath | `--patch_size 256 --mag 20` |
+| `gigapath-flash` | gigapath-flash | `--patch_size 256 --mag 20` |
 | `madeleine` | conch_v1 | `--patch_size 256 --mag 10` |
 | `feather` | conch_v15 | `--patch_size 512 --mag 20` |
 | `feather_uni_v2` | uni_v2 | `--patch_size 256 --mag 20` |

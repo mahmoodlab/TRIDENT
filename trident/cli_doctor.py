@@ -310,6 +310,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         ("Phikon-v2", "owkin/phikon-v2", "model"),
         ("Hibou-L", "histai/hibou-L", "model"),
         ("Prov-GigaPath", "prov-gigapath/prov-gigapath", "model"),
+        ("Prov-GigaPath-Flash", "prov-gigapath/prov-gigapath-flash", "model"),
         ("Midnight", "kaiko-ai/midnight", "model"),
         ("OpenMidnight", "SophontAI/OpenMidnight", "model"),
         ("GPFM", "majiabo/GPFM", "model"),

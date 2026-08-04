@@ -21,7 +21,7 @@ RESIZE_SUPPORTED_PATCH_ENCODERS = frozenset({
     "uni_v1", "uni_v2", "virchow", "virchow2",
     "kaiko-vitb8", "kaiko-vitb16", "kaiko-vits8", "kaiko-vits16", "kaiko-vitl14",
     # Category B: dynamic_img_size enabled as part of this feature.
-    "gigapath", "hoptimus0", "hoptimus1", "gpfm", "lunit-vits8", "h0-mini",
+    "gigapath", "gigapath-flash", "hoptimus0", "hoptimus1", "gpfm", "lunit-vits8", "h0-mini",
 })
 
 
@@ -75,6 +75,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "resnet50"
         - "keep"
         - "gigapath"
+        - "gigapath-flash"
         - "virchow"
         - "virchow2"
         - "hoptimus0"
@@ -970,6 +971,92 @@ class GigaPathInferenceEncoder(BasePatchEncoder):
         return model, eval_transform, precision
 
     
+class GigaPathFlashInferenceEncoder(BasePatchEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        GigaPath-Flash initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(
+        self,
+        target_img_size=None,
+    ):
+        import torch.nn as nn
+        from timm.layers import SwiGLUPacked
+        from timm.models.vision_transformer import VisionTransformer
+        from torchvision import transforms
+
+        self.enc_name = 'gigapath-flash'
+        weights_path = self._get_weights_path()
+        # GigaPath-Flash uses a DINOv2-small ViT-S/16 tile encoder.
+        img_size = _resolve_target_img_size(self.enc_name, target_img_size, 224, 16)
+
+        if not weights_path:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                from huggingface_hub import hf_hub_download
+                weights_path = hf_hub_download(
+                    repo_id="prov-gigapath/prov-gigapath-flash",
+                    filename="pytorch_model.bin",
+                )
+            except:
+                traceback.print_exc()
+                raise Exception("Failed to download GigaPath-Flash model, make sure that you were granted access and that you correctly registered your token")
+
+        try:
+            # Built directly instead of via `timm.create_model`: the released architecture name
+            # (`gigapath_tile_enc_dinov2s`) is only registered once the prov-gigapath package is
+            # imported, which TRIDENT does not need for tile-level inference. These kwargs mirror
+            # `gigapath/tile_encoder.py` exactly and reproduce its outputs bit-for-bit.
+            model = VisionTransformer(
+                img_size=224,  # native grid; other resolutions are handled by dynamic_img_size
+                patch_size=16,
+                embed_dim=384,
+                depth=12,
+                num_heads=6,
+                mlp_ratio=2048 / 384.0,  # SwiGLU: fc1 -> 2048, fc2 <- 1024
+                mlp_layer=SwiGLUPacked,
+                act_layer=nn.SiLU,
+                init_values=1e-5,  # LayerScale
+                num_classes=0,
+                global_pool="token",
+                class_token=True,
+                reg_tokens=0,
+                dynamic_img_size=True,
+            )
+            model.load_state_dict(torch.load(weights_path, map_location="cpu"), strict=True)
+        except:
+            traceback.print_exc()
+            raise Exception(
+                f"Failed to create GigaPath-Flash model from checkpoint at '{weights_path}'. "
+                "You can download the required `pytorch_model.bin` from: https://huggingface.co/prov-gigapath/prov-gigapath-flash."
+            )
+
+        mean, std = get_constants('imagenet')
+        if target_img_size is None:
+            eval_transform = transforms.Compose(
+                [
+                    transforms.Resize(256, interpolation=transforms.InterpolationMode.BICUBIC),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean, std),
+                ]
+            )
+        else:
+            eval_transform = transforms.Compose(
+                [
+                    transforms.Resize(img_size, interpolation=transforms.InterpolationMode.BICUBIC),
+                    transforms.CenterCrop(img_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean, std),
+                ]
+            )
+        precision = torch.float16
+        return model, eval_transform, precision
+
+
 class VirchowInferenceEncoder(BasePatchEncoder):
     import timm
     
@@ -1835,6 +1922,7 @@ encoder_registry = {
     "resnet50": ResNet50InferenceEncoder,
     "keep": KeepInferenceEncoder,
     "gigapath": GigaPathInferenceEncoder,
+    "gigapath-flash": GigaPathFlashInferenceEncoder,
     "virchow": VirchowInferenceEncoder,
     "virchow2": Virchow2InferenceEncoder,
     "hoptimus0": HOptimus0InferenceEncoder,
