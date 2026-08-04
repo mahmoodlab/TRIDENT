@@ -43,6 +43,9 @@ trident-doctor --profile base    # preflight; use --profile <profile> --check-ga
 - Most encoders download from HuggingFace; gated models (UNI, CONCH, Virchow, …) need an
   approved HF account and `huggingface-cli login`. A load failure usually means missing
   access or a missing optional install — read the error, it names the fix.
+- Stay on `transformers` 4.x (`>=4.51,<5`): v5 removes `transformers.onnx`, which Hibou-L's remote
+  code imports. The lone exception is `gemma4-e4b`/`gemma4-26b`, which *need* `transformers>=5` and
+  are therefore mutually exclusive with `hibou_l` — pick one per environment.
 - A **slide encoder** that errors on load with something like `all_tied_weights_keys` (not a
   gating/timm error) is a `transformers` 5.x incompatibility (e.g. TITAN) — pin `transformers` 4.x,
   or if you can't change the env, set

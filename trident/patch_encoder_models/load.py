@@ -1869,8 +1869,11 @@ class Gemma4InferenceEncoder(BasePatchEncoder):
             )
         except ImportError:
             raise ImportError(
-                "Gemma 4 requires transformers>=5.0. "
-                "Install with: pip install 'transformers>=5.0'"
+                "Gemma 4 requires transformers>=5.0, which is outside TRIDENT's declared range "
+                "(>=4.51,<5). Install it explicitly with `pip install 'transformers>=5.0'`, but note "
+                "the trade-off: transformers v5 removes the `transformers.onnx` module that Hibou-L's "
+                "remote code imports, so `hibou_l` stops working. The two encoders cannot currently "
+                "share an environment."
             )
 
         self.enc_name = f"gemma4-{self.VARIANT}"

@@ -15,6 +15,20 @@ from tests._test_gating import RUN_INTEGRATION_TESTS
 Test forward pass of patch encoders
 """
 
+
+def _has_gemma4() -> bool:
+    """Gemma 4 lives in transformers >= 5, which TRIDENT does not require (and cannot, while
+    Hibou-L's remote code imports the `transformers.onnx` module that v5 removed). Skip rather
+    than fail when the installed transformers predates it -- see the README support matrix."""
+    try:
+        from transformers import Gemma4Config  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+GEMMA4_AVAILABLE = _has_gemma4()
+
 @unittest.skipUnless(
     RUN_INTEGRATION_TESTS,
     "Set TRIDENT_RUN_INTEGRATION_TESTS=1 to run heavy integration tests.",
@@ -161,10 +175,14 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    @unittest.skipUnless(GEMMA4_AVAILABLE,
+                         "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_forward(self):
         self._test_encoder_forward('gemma4-e4b')
         self._test_encoder_forward('gemma4-26b')
 
+    @unittest.skipUnless(GEMMA4_AVAILABLE,
+                         "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_shape_and_batch(self):
         # Regression guard: pooling must reduce over tokens (not features) and
         # the encoder must accept batched input (TRIDENT extracts patches in batches).

@@ -127,7 +127,7 @@ column is **required** for correct features — copy it verbatim.
 | `openmidnight` | 1536 | `--patch_size 224 --mag 20` |
 | `gpfm` | 1024 | `--patch_size 224 --mag 20` |
 | `genbio-pathfm` | 4608 | `--patch_size 224 --mag 20` |
-| `gemma4-e4b` / `gemma4-26b` | 768/1152 | `--patch_size 224 --mag 20` |
+| `gemma4-e4b` / `gemma4-26b` | 768/1152 | `--patch_size 224 --mag 20` — needs `transformers>=5`, excludes `hibou_l` |
 | `kaiko-vits8/vits16/vitb8/vitb16/vitl14` | 384/768/1024 | `--patch_size 256 --mag 20` |
 | `lunit-vits8` | 384 | `--patch_size 224 --mag 20` |
 | `hibou_l` | 1024 | `--patch_size 224 --mag 20` |
@@ -312,6 +312,8 @@ Library version support (measured, not guessed):
 - `timm>=0.9.16,<2` — all timm-backed patch encoders AND all three segmenters are bit-identical
   from 0.9.16 to 1.0.28. Nothing needs `timm<1`; the floor is just the oldest version verified.
 - `transformers>=4.51,<5` — 4.46+ bit-identical; `<5` required (v5 drops `transformers.onnx`, used by Hibou-L).
+  Exception: `gemma4-e4b`/`gemma4-26b` need `transformers>=5` (no 4.x has `Gemma4Config`), so they are
+  mutually exclusive with `hibou_l` — one per environment. Everything else works on either.
 - `flash_attn>=2.7.3` — GigaPath/GigaPath-Flash/PRISM2 slide encoders only. Versions <2.7.3 have no
   Blackwell (sm_100/sm_120) kernels and fail at runtime there; 2.7.3 and 2.8.3 are bit-identical.
   Prebuilt wheels stop at torch 2.8; on newer torch build with
