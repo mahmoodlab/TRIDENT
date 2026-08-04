@@ -35,8 +35,8 @@ bioio-tifffile = "*"
 pyvips = "*"
 
 # Core model dependencies (installed with `pip install -e .`)
-transformers = ">=4.40,<5"
-timm = "0.9.16"
+transformers = ">=4.51,<5"
+timm = ">=0.9.16,<2"
 einops = "*"
 einops_exts = "*"
 

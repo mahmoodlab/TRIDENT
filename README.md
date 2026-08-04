@@ -45,6 +45,25 @@ Run checks before launching jobs:
 - `trident-doctor --profile convert`
 - `trident-doctor --profile full --check-gated`
 
+#### Library version support
+
+Verified by comparing encoder outputs across versions (see `trident-doctor` for a live check):
+
+| Library | Supported | Notes |
+|---|---|---|
+| `timm` | `>=0.9.16,<2` | 24 components — every timm-backed patch encoder plus all three segmenters (incl. smp's `timm-efficientnet-b0`) — produce **bit-identical** output on 0.9.16, 1.0.3, 1.0.8 and 1.0.28. GigaPath / H-Optimus previously pinned `==0.9.16`; that pin was unnecessary and has been removed. The floor is the oldest version measured, not a requirement: nothing in the dependency graph needs `timm<1` (smp asks `>=0.9`, CONCH `>=0.9.8`, neither has an upper bound), so a fresh install resolves to the newest 1.x while existing 0.9.16 environments keep working unchanged. |
+| `transformers` | `>=4.51,<5` | 4.46–4.57 are bit-identical. 4.42 differs slightly (Dinov2 had no SDPA before 4.46; cosine 0.9997 on Midnight-12k), so `>=4.51` is the floor for reproducible features and for PRISM2. `<5` is required: v5 removes `transformers.onnx`, which Hibou-L's remote code imports. |
+| `flash_attn` | `>=2.7.3` recommended (`>=2.5.8` suffices up to `sm_90`) | Only needed by the GigaPath / GigaPath-Flash / PRISM2 slide encoders; the API they use is unchanged from 2.5.8 through 2.8.3. **Releases before 2.7.3 only compile up to `sm_90`**, so they cannot run on Blackwell (`sm_100` / `sm_120`) at all. TRIDENT therefore enforces each model's API floor (2.5.8 GigaPath, 2.6.3 PRISM2) *plus* `>=2.7.3` when it detects an `sm_100+` GPU — so existing Ampere/Hopper setups on 2.5.8 keep working. 2.7.3 and 2.8.3 give bit-identical GigaPath features. Note 2.7.3+ drops Turing (`sm_75`). |
+
+Prebuilt `flash_attn` wheels only go up to torch 2.8, so on torch 2.9+ build it from source (much faster if you target just your own arch):
+
+```bash
+export CUDA_HOME=$CONDA_PREFIX                                   # needs nvcc >= 12.8 for Blackwell
+export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH       # conda keeps CUDA headers here
+FLASH_ATTN_CUDA_ARCHS=120 MAX_JOBS=48 pip install --no-build-isolation 'flash-attn>=2.7.3'
+```
+Use `FLASH_ATTN_CUDA_ARCHS=90` for H100/H200, `100` for B200, `120` for RTX PRO / RTX 50-series.
+
 > [!NOTE]
 > Some models still require manual setup (e.g., local CHIEF repository path in `trident/slide_encoder_models/local_ckpts.json`) or HuggingFace gated access approvals.
 

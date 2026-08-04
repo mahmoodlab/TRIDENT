@@ -38,6 +38,56 @@ def encoder_factory(model_name: str, pretrained: bool = True, freeze: bool = Tru
             raise ValueError(f"Unknown encoder name {model_name}")
 
 
+# flash-attn only ships kernels for the SM architectures it was compiled for. Releases before 2.7.3
+# stop at sm_90, so Blackwell (sm_100 / sm_120) fails at the first attention call with
+# "FlashAttention only supports Ampere GPUs or newer" no matter what a given model's API floor is.
+BLACKWELL_MIN_FLASH_ATTN = '2.7.3'
+
+
+def _require_flash_attn(model_name: str, minimum: str) -> None:
+    """
+    Check the installed flash-attn against a model's API floor and against the current GPU.
+
+    Parameters:
+        model_name (str):
+            Encoder name, used in error messages.
+        minimum (str):
+            Lowest flash-attn version whose Python API this model is known to work with.
+
+    Raises:
+        Exception: If flash-attn is missing, older than `minimum`, or too old for this GPU.
+    """
+    from packaging.version import Version
+
+    try:
+        import flash_attn
+    except:
+        traceback.print_exc()
+        raise Exception(
+            f"{model_name} requires flash_attn >= {minimum}. Install it with "
+            f"`pip install 'flash_attn>={minimum}'`."
+        )
+
+    installed = Version(flash_attn.__version__)
+    if installed < Version(minimum):
+        raise Exception(
+            f"{model_name} requires flash_attn >= {minimum}, but found {flash_attn.__version__}. "
+            f"Upgrade with `pip install 'flash_attn>={minimum}'`."
+        )
+
+    if torch.cuda.is_available():
+        major, minor = torch.cuda.get_device_capability()
+        if major >= 10 and installed < Version(BLACKWELL_MIN_FLASH_ATTN):
+            raise Exception(
+                f"flash_attn {flash_attn.__version__} has no kernels for this GPU "
+                f"(sm_{major}{minor}); releases before {BLACKWELL_MIN_FLASH_ATTN} only compile up to "
+                f"sm_90. Install flash_attn >= {BLACKWELL_MIN_FLASH_ATTN}, which is API-compatible "
+                f"with {model_name}. Prebuilt wheels exist only up to torch 2.8, so on newer torch "
+                f"build it from source: `FLASH_ATTN_CUDA_ARCHS={major}{minor} pip install "
+                f"--no-build-isolation flash-attn>={BLACKWELL_MIN_FLASH_ATTN}` (needs nvcc >= 12.8)."
+            )
+
+
 # Map from slide encoder to required patch encoder
 # Used in Processor.py to load the correct patch encoder for a given slide encoder
 slide_to_patch_encoder_name = {
@@ -208,7 +258,7 @@ class PRISMSlideEncoder(BaseSlideEncoder):
         except:
             traceback.print_exc()
             raise Exception(
-                "Please run `pip install environs==11.0.0 transformers==4.42.4 sacremoses==0.1.1` "
+                "Please run `pip install environs==11.0.0 'transformers>=4.51,<5' sacremoses==0.1.1` "
                 "and ensure Python version is 3.10 or above."
             )
 
@@ -325,14 +375,11 @@ class GigaPathSlideEncoder(BaseSlideEncoder):
         except:
             traceback.print_exc()
             raise Exception("Please install fairscale and gigapath using `pip install fairscale git+https://github.com/prov-gigapath/prov-gigapath.git`.")
-        
-        # Make sure flash_attn is correct version
-        try:
-            import flash_attn; assert flash_attn.__version__ == '2.5.8'
-        except:
-            traceback.print_exc()
-            raise Exception("Please install flash_attn version 2.5.8 using `pip install flash_attn==2.5.8`.")
-        
+
+        # LongNet only calls `flash_attn_func(..., return_attn_probs=True)`, whose signature and
+        # 3-tuple return are unchanged from 2.5.8 through at least 2.8.3, so no upper bound applies.
+        _require_flash_attn(self.enc_name, '2.5.8')
+
         if pretrained:
             weights_path = get_weights_path('slide', self.enc_name)
             if weights_path:

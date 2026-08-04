@@ -113,6 +113,46 @@ def _check_hf_repo_access(model_name: str, repo_id: str, repo_type: Optional[str
         )
 
 
+def _check_flash_attn_gpu() -> CheckResult:
+    """
+    flash-attn is only usable if it was compiled for the current GPU's SM architecture.
+    Releases before 2.7.3 stop at sm_90, so on Blackwell (sm_100/sm_120) the LongNet-based slide
+    encoders fail at their first attention call rather than at import time.
+    """
+    name = "flash-attn / GPU compatibility"
+    try:
+        from packaging.version import Version
+        import flash_attn
+    except Exception:
+        return CheckResult(
+            "WARN",
+            name,
+            "flash_attn is not installed; the GigaPath and PRISM2 slide encoders need it.",
+            "Install with: pip install 'flash_attn>=2.7.3'",
+        )
+
+    version = flash_attn.__version__
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return CheckResult("PASS", name, f"flash_attn {version} installed (no GPU to check against).")
+        major, minor = torch.cuda.get_device_capability()
+    except Exception:
+        return CheckResult("PASS", name, f"flash_attn {version} installed (GPU capability unknown).")
+
+    if major >= 10 and Version(version) < Version("2.7.3"):
+        return CheckResult(
+            "FAIL",
+            name,
+            f"flash_attn {version} has no kernels for this GPU (sm_{major}{minor}); "
+            "GigaPath/PRISM2 slide encoders will fail at runtime.",
+            f"Install flash_attn >= 2.7.3, e.g. FLASH_ATTN_CUDA_ARCHS={major}{minor} "
+            "pip install --no-build-isolation 'flash-attn>=2.7.3'",
+        )
+    return CheckResult("PASS", name, f"flash_attn {version} supports this GPU (sm_{major}{minor}).")
+
+
 def _check_chief_repo_root(repo_root: Path) -> CheckResult:
     slide_ckpts = repo_root / "trident" / "slide_encoder_models" / "local_ckpts.json"
     if not slide_ckpts.exists():
@@ -319,7 +359,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
                 _check_module(
                     "environs",
                     "PRISM dependency",
-                    "Install with: pip install environs==11.0.0 transformers==4.42.4 sacremoses==0.1.1",
+                    "Install with: pip install environs==11.0.0 sacremoses==0.1.1 'transformers>=4.51,<5'",
                 ),
                 _check_module(
                     "gigapath",
@@ -332,6 +372,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
                     "Install with: pip install git+https://github.com/mahmoodlab/MADELEINE.git",
                 ),
                 _check_chief_repo_root(repo_root),
+                _check_flash_attn_gpu(),
             ]
         )
         if check_gated:

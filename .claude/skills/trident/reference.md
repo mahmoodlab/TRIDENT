@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (24) — embedding dim + required patch_size/mag
+- Patch encoders (28) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -301,7 +301,16 @@ trident-doctor --profile base
 trident-doctor --profile patch-encoders --check-gated
 ```
 
-Pin `timm==0.9.16`. Gated HF encoders need access approval + `huggingface-cli login`.
+Gated HF encoders need access approval + `huggingface-cli login`.
+Library version support (measured, not guessed):
+- `timm>=0.9.16,<2` — all timm-backed patch encoders AND all three segmenters are bit-identical
+  from 0.9.16 to 1.0.28. Nothing needs `timm<1`; the floor is just the oldest version verified.
+- `transformers>=4.51,<5` — 4.46+ bit-identical; `<5` required (v5 drops `transformers.onnx`, used by Hibou-L).
+- `flash_attn>=2.7.3` — GigaPath/GigaPath-Flash/PRISM2 slide encoders only. Versions <2.7.3 have no
+  Blackwell (sm_100/sm_120) kernels and fail at runtime there; 2.7.3 and 2.8.3 are bit-identical.
+  Prebuilt wheels stop at torch 2.8; on newer torch build with
+  `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'`.
+
 Some models need manual setup (e.g. local CHIEF path in
 `trident/slide_encoder_models/local_ckpts.json`).
 
