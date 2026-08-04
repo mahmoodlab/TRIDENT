@@ -1860,6 +1860,25 @@ class Gemma4InferenceEncoder(BasePatchEncoder):
 
     def _build(self):
         from PIL import Image
+        from packaging.version import Version
+        import transformers
+
+        # The Gemma 4 classes only exist in transformers >= 5 (4.x stops at Gemma 3n). Check the
+        # version up front so the message can spell out the cost of upgrading, rather than letting a
+        # bare ImportError surface.
+        assert Version(transformers.__version__) >= Version("5.0"), (
+            f"Gemma 4 requires transformers>=5.0, but found {transformers.__version__}. "
+            "No 4.x release provides `Gemma4Config`. Install it with "
+            "`pip install 'transformers>=5.0'`.\n"
+            "WARNING: transformers 5 is outside the range TRIDENT declares (>=4.51,<5) and will "
+            "break other encoders in the same environment:\n"
+            "  - `hibou_l`: its Hub-side remote code imports `transformers.onnx`, removed in v5.\n"
+            "  - `titan`: known to need an `all_tied_weights_keys` workaround on v5.\n"
+            "  - any environment whose `torchaudio` does not match its `torch`: v5 imports "
+            "torchaudio whenever it is installed, so a mismatched build breaks *every* model load "
+            "(repair or uninstall torchaudio).\n"
+            "Prefer a separate environment for Gemma 4."
+        )
 
         try:
             from transformers import (
@@ -1869,11 +1888,9 @@ class Gemma4InferenceEncoder(BasePatchEncoder):
             )
         except ImportError:
             raise ImportError(
-                "Gemma 4 requires transformers>=5.0, which is outside TRIDENT's declared range "
-                "(>=4.51,<5). Install it explicitly with `pip install 'transformers>=5.0'`, but note "
-                "the trade-off: transformers v5 removes the `transformers.onnx` module that Hibou-L's "
-                "remote code imports, so `hibou_l` stops working. The two encoders cannot currently "
-                "share an environment."
+                f"transformers {transformers.__version__} does not expose the Gemma 4 classes "
+                "(`Gemma4Config`, `Gemma4VisionModel`, `Gemma4ImageProcessor`). Install a release "
+                "that provides them, e.g. `pip install 'transformers>=5.0'`."
             )
 
         self.enc_name = f"gemma4-{self.VARIANT}"
