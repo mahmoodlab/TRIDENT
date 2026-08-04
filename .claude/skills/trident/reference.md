@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (28) — embedding dim + required patch_size/mag
+- Patch encoders (33) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -152,6 +152,7 @@ pass its required patch_size/mag.
 | `feather_uni_v2` | uni_v2 | `--patch_size 256 --mag 20` |
 | `care` | conch_v15 | `--patch_size 512 --mag 20` |
 | `threads` | conch_v15 | `--patch_size 512 --mag 20` *(coming soon)* |
+| `abmil` | any | **Python API only** — untrained aggregator; needs `pretrained=False` + `input_feature_dim`/`n_heads`/`head_dim`/`dropout`/`gated`. `--slide_encoder abmil` raises TypeError. |
 
 ## Segmenters & artifact removal
 

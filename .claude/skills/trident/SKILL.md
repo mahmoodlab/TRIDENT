@@ -36,8 +36,11 @@ pip install -e .                 # core; add ".[patch-encoders]" ".[slide-encode
 trident-doctor --profile base    # preflight; use --profile <profile> --check-gated for model access
 ```
 
-- **`timm==0.9.16`** is required (timm 1.x breaks most encoders). Python 3.10/3.11 is
-  recommended but newer (3.13) works with timm pinned.
+- **Library versions** (measured — see [reference.md](reference.md)): `timm>=0.9.16,<2` (every
+  timm-backed encoder and all three segmenters are bit-identical from 0.9.16 to 1.0.28, so timm 1.x
+  is fine — an older `timm==0.9.16` pin was over-constrained), `transformers>=4.51,<5`, and
+  `flash_attn>=2.7.3` for the LongNet slide encoders (GigaPath / GigaPath-Flash / PRISM2) —
+  earlier flash-attn has no Blackwell (sm_100/sm_120) kernels. Python 3.10/3.11 recommended.
 - If `trident-doctor` isn't on PATH (install-dependent), preflight instead with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`.
 - Most encoders download from HuggingFace; gated models (UNI, CONCH, Virchow, …) need an
