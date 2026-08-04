@@ -79,10 +79,23 @@ def _check_hf_repo_access(model_name: str, repo_id: str, repo_type: Optional[str
         )
 
     try:
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url
+
         if repo_type == "dataset":
-            HfApi().dataset_info(repo_id=repo_id)
+            info = HfApi().dataset_info(repo_id=repo_id)
         else:
-            HfApi().model_info(repo_id=repo_id)
+            info = HfApi().model_info(repo_id=repo_id)
+
+        # `*_info` returns metadata for gated repos even without access, so it only proves the repo
+        # exists. Confirm the files are actually readable with a HEAD request on one of them.
+        if getattr(info, "gated", False):
+            siblings = [s.rfilename for s in (info.siblings or [])]
+            probe = next(
+                (f for f in ("config.json", ".gitattributes", "README.md") if f in siblings),
+                siblings[0] if siblings else None,
+            )
+            if probe is not None:
+                get_hf_file_metadata(hf_hub_url(repo_id, probe, repo_type=repo_type))
         return CheckResult("PASS", f"{model_name} gated access", f"Access check succeeded for `{repo_id}`.")
     except GatedRepoError:
         return CheckResult(
