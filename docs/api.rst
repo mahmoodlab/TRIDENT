@@ -129,6 +129,10 @@ Factory for loading patch-level encoder models.
      - 2560
      - ``--patch_encoder virchow2 --patch_size 224 --mag 20``
      - `paige-ai/Virchow2 <https://huggingface.co/paige-ai/Virchow2>`__
+   * - **Virchow2 (CLS only)**
+     - 1280
+     - ``--patch_encoder virchow2-cls --patch_size 224 --mag 20``
+     - `paige-ai/Virchow2 <https://huggingface.co/paige-ai/Virchow2>`__
    * - **Phikon**
      - 768
      - ``--patch_encoder phikon --patch_size 224 --mag 20``
@@ -244,6 +248,10 @@ Factory for slide-level encoder models.
      - virchow
      - ``--slide_encoder prism --patch_size 224 --mag 20``
      - `paige-ai/Prism <https://huggingface.co/paige-ai/Prism>`__
+   * - **PRISM2**
+     - virchow2-cls
+     - ``--slide_encoder prism2 --patch_size 224 --mag 20``
+     - `paige-ai/Prism2 <https://huggingface.co/paige-ai/Prism2>`__
    * - **CHIEF**
      - ctranspath
      - ``--slide_encoder chief --patch_size 256 --mag 10``

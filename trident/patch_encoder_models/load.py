@@ -18,7 +18,7 @@ This file contains 20+ pretrained patch encoders, all loadable via the encoder_f
 # `_resolve_target_img_size` for the validation rules.
 RESIZE_SUPPORTED_PATCH_ENCODERS = frozenset({
     # Category A: dynamic_img_size already enabled on the timm backbone.
-    "uni_v1", "uni_v2", "virchow", "virchow2",
+    "uni_v1", "uni_v2", "virchow", "virchow2", "virchow2-cls",
     "kaiko-vitb8", "kaiko-vitb16", "kaiko-vits8", "kaiko-vits16", "kaiko-vitl14",
     # Category B: dynamic_img_size enabled as part of this feature.
     "gigapath", "gigapath-flash", "hoptimus0", "hoptimus1", "gpfm", "lunit-vits8", "h0-mini",
@@ -78,6 +78,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "gigapath-flash"
         - "virchow"
         - "virchow2"
+        - "virchow2-cls"
         - "hoptimus0"
         - "hoptimus1"
         - "h0-mini"
@@ -1210,6 +1211,25 @@ class Virchow2InferenceEncoder(BasePatchEncoder):
         return embedding
 
 
+class Virchow2ClsInferenceEncoder(Virchow2InferenceEncoder):
+    """
+    Virchow2 returning the class token only (1280-dim) instead of the default class+mean
+    concatenation (2560-dim). Registered under its own name because PRISM2 consumes class-token-only
+    Virchow2 features, and `slide_to_patch_encoder_name` pairs a slide encoder with a patch encoder
+    by name alone -- the two feature flavors must therefore land in separate `features_*` folders.
+    """
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self, target_img_size=None):
+        # `super()._build` resolves weights under the 'virchow2' name, so a local checkpoint set for
+        # Virchow2 is reused here -- the weights are identical, only the pooling differs.
+        model, eval_transform, precision = super()._build(return_cls=True, target_img_size=target_img_size)
+        self.enc_name = 'virchow2-cls'
+        return model, eval_transform, precision
+
+
 class HOptimus0InferenceEncoder(BasePatchEncoder):
 
     def __init__(self, **build_kwargs):
@@ -2030,6 +2050,7 @@ encoder_registry = {
     "gigapath-flash": GigaPathFlashInferenceEncoder,
     "virchow": VirchowInferenceEncoder,
     "virchow2": Virchow2InferenceEncoder,
+    "virchow2-cls": Virchow2ClsInferenceEncoder,
     "hoptimus0": HOptimus0InferenceEncoder,
     "hoptimus1": HOptimus1InferenceEncoder,
     "h0-mini": H0MiniInferenceEncoder,

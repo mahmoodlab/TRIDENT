@@ -138,7 +138,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 27 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 28 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link |
 |-----------------------|---------------:|------------------------------------------------------------------|------|
@@ -148,6 +148,7 @@ Trident supports 27 patch encoders, loaded via a patch [`encoder_factory`](https
 | **CONCHv1.5**         | 768            | `--patch_encoder conch_v15 --patch_size 512 --mag 20`            | [MahmoodLab/conchv1_5](https://huggingface.co/MahmoodLab/conchv1_5) |
 | **Virchow**           | 2560           | `--patch_encoder virchow --patch_size 224 --mag 20`              | [paige-ai/Virchow](https://huggingface.co/paige-ai/Virchow) |
 | **Virchow2**          | 2560           | `--patch_encoder virchow2 --patch_size 224 --mag 20`             | [paige-ai/Virchow2](https://huggingface.co/paige-ai/Virchow2) |
+| **Virchow2 (CLS)**    | 1280           | `--patch_encoder virchow2-cls --patch_size 224 --mag 20`         | [paige-ai/Virchow2](https://huggingface.co/paige-ai/Virchow2) |
 | **Phikon**            | 768            | `--patch_encoder phikon --patch_size 224 --mag 20`               | [owkin/phikon](https://huggingface.co/owkin/phikon) |
 | **Phikon-v2**         | 1024           | `--patch_encoder phikon_v2 --patch_size 224 --mag 20`            | [owkin/phikon-v2](https://huggingface.co/owkin/phikon-v2/) |
 | **KEEP**              | 768            | `--patch_encoder keep --patch_size 256 --mag 20`                 | [Astaxanthin/KEEP](https://huggingface.co/Astaxanthin/KEEP) |
@@ -184,13 +185,14 @@ Trident supports 27 patch encoders, loaded via a patch [`encoder_factory`](https
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_512px_0px_overlap/slide_features_titan`. (Shape: `(feature_dim)`)
 
-Trident supports 10 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 11 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Slide Encoder | Patch Encoder | Args | Link |
 |---------------|----------------|------|------|
 | **Threads** | conch_v15 | `--slide_encoder threads --patch_size 512 --mag 20` | *(Coming Soon!)* |
 | **Titan** | conch_v15 | `--slide_encoder titan --patch_size 512 --mag 20` | [MahmoodLab/TITAN](https://huggingface.co/MahmoodLab/TITAN) |
 | **PRISM** | virchow | `--slide_encoder prism --patch_size 224 --mag 20` | [paige-ai/Prism](https://huggingface.co/paige-ai/Prism) |
+| **PRISM2** | virchow2-cls | `--slide_encoder prism2 --patch_size 224 --mag 20` | [paige-ai/Prism2](https://huggingface.co/paige-ai/Prism2) |
 | **CHIEF** | ctranspath | `--slide_encoder chief --patch_size 256 --mag 10` | [CHIEF](https://github.com/hms-dbmi/CHIEF) |
 | **GigaPath** | gigapath | `--slide_encoder gigapath --patch_size 256 --mag 20` | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) |
 | **GigaPath-Flash** | gigapath-flash | `--slide_encoder gigapath-flash --patch_size 256 --mag 20` | [prov-gigapath-flash](https://huggingface.co/prov-gigapath/prov-gigapath-flash) |

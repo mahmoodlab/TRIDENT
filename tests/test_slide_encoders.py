@@ -45,6 +45,14 @@ class TestSlideEncoders(unittest.TestCase):
         }
         self._test_encoder_forward(PRISMSlideEncoder(), sample_batch, torch.float16)
 
+    def test_prism2_encoder_initialization(self):
+        # PRISM2 consumes class-token-only Virchow2 features (1280-dim).
+        sample_batch = {
+            'features': torch.randn(1, 100, 1280),
+            'coords': torch.randn(1, 100, 2),
+        }
+        self._test_encoder_forward(PRISM2SlideEncoder(), sample_batch, torch.bfloat16)
+
     def test_chief_encoder_initialization(self):
         sample_batch = {
             'features': torch.randn(1, 100, 768),

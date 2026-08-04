@@ -108,6 +108,11 @@ class TestPatchEncoders(unittest.TestCase):
     def test_virchow2_forward(self):
         self._test_encoder_forward('virchow2')
 
+    def test_virchow2_cls_forward(self):
+        # Class-token-only Virchow2 (what PRISM2 consumes), vs. 2560 for the default cls+mean.
+        self.assertEqual(self._output_dim('virchow2-cls'), 1280)
+        self.assertEqual(self._output_dim('virchow2'), 2560)
+
     def test_hoptimus0_forward(self):
         self._test_encoder_forward('hoptimus0')
 

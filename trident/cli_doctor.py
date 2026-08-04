@@ -328,6 +328,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
 
     slide_gated_repos = [
         ("PRISM", "paige-ai/Prism", "model"),
+        ("PRISM2", "paige-ai/Prism2", "model"),
         ("Titan", "MahmoodLab/TITAN", "model"),
         ("Feather", "MahmoodLab/abmil.base.conch_v15.pc108-24k", "model"),
     ]

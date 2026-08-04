@@ -95,6 +95,7 @@ slide_to_patch_encoder_name = {
     'titan': 'conch_v15',
     'tcga': 'conch_v15',
     'prism': 'virchow',
+    'prism2': 'virchow2-cls',
     'chief': 'ctranspath',
     'gigapath': 'gigapath',
     'gigapath-flash': 'gigapath-flash',
@@ -279,6 +280,71 @@ class PRISMSlideEncoder(BaseSlideEncoder):
         z = z['image_embedding'] 
         return z
     
+
+class PRISM2SlideEncoder(BaseSlideEncoder):
+
+    def __init__(self, **build_kwargs):
+        """
+        PRISM2 initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, pretrained=True, embedding_type: str = 'base'):
+
+        self.enc_name = 'prism2'
+
+        if embedding_type not in ('base', 'diagnostic'):
+            raise ValueError(
+                f"expected embedding_type to be one of 'base' or 'diagnostic', but got '{embedding_type}'"
+            )
+
+        from packaging.version import Version
+
+        try:
+            import einops  # noqa: F401  (required by the remote modeling code)
+            import transformers
+            from transformers import AutoModel, AutoConfig, AutoProcessor
+            assert Version(transformers.__version__) >= Version('4.51')
+        except:
+            traceback.print_exc()
+            raise Exception(
+                "PRISM2 requires einops and transformers >= 4.51. Install with "
+                "`pip install einops 'transformers>=4.51,<5'`."
+            )
+
+        # PRISM2's Phi-3 decoder is loaded with FlashAttention-2; the model card asks for >= 2.6.3.
+        _require_flash_attn('PRISM2', '2.6.3')
+
+        if pretrained:
+            model = AutoModel.from_pretrained('paige-ai/Prism2', trust_remote_code=True, torch_dtype='auto')
+        else:
+            model = AutoModel.from_config(
+                AutoConfig.from_pretrained('paige-ai/Prism2', trust_remote_code=True),
+                trust_remote_code=True,
+            )
+        # Packs the variable-length per-slide tile sequences into a padded batch + attention mask.
+        self.processor = AutoProcessor.from_pretrained('paige-ai/Prism2', trust_remote_code=True)
+
+        self.embedding_type = embedding_type
+        precision = torch.bfloat16
+        embedding_dim = 2560 if embedding_type == 'base' else 3072
+        return model, precision, embedding_dim
+
+    def forward(self, batch, device='cuda'):
+        # PRISM2 consumes class-token-only Virchow2 features: (batch_size, tile_seq_len, 1280).
+        features = batch['features'].to(device)
+        inputs = self.processor(tile_embeddings=list(features)).to(device)
+
+        # Autocast explicitly rather than relying on the caller: PRISM2 is documented to run under
+        # bfloat16, and TRIDENT's slide-feature path opens an autocast context without a dtype
+        # (which defaults to float16 on CUDA). A nested context takes precedence.
+        with torch.autocast(device_type=torch.device(device).type, dtype=torch.bfloat16):
+            if self.embedding_type == 'base':
+                z = self.model.get_base_embedding(**inputs)   # (B, 2560)
+            else:
+                z = self.model.get_diagnostic_embedding(**inputs)   # (B, 3072)
+        return z
+
 
 class CHIEFSlideEncoder(BaseSlideEncoder):
 
@@ -650,6 +716,8 @@ class MeanSlideEncoder(BaseSlideEncoder):
             embedding_dim = 2560
         elif model_name == 'mean-virchow2':
             embedding_dim = 2560
+        elif model_name == 'mean-virchow2-cls':
+            embedding_dim = 1280
         elif model_name == 'mean-hoptimus0':
             embedding_dim = 1536
         elif model_name == 'mean-phikon_v2':
@@ -690,6 +758,7 @@ encoder_registry = {
     'threads': ThreadsSlideEncoder,
     'titan': TitanSlideEncoder,
     'prism': PRISMSlideEncoder,
+    'prism2': PRISM2SlideEncoder,
     'chief': CHIEFSlideEncoder,
     'gigapath': GigaPathSlideEncoder,
     'gigapath-flash': GigaPathFlashSlideEncoder,
@@ -711,6 +780,7 @@ encoder_registry = {
     'mean-gigapath-flash': MeanSlideEncoder,
     'mean-virchow': MeanSlideEncoder,
     'mean-virchow2': MeanSlideEncoder,
+    'mean-virchow2-cls': MeanSlideEncoder,
     'mean-hoptimus0': MeanSlideEncoder,
     'mean-phikon_v2': MeanSlideEncoder,
     'mean-phaet': MeanSlideEncoder,
