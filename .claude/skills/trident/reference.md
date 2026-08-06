@@ -143,7 +143,7 @@ pass its required patch_size/mag.
 |---|---|---|
 | `titan` | conch_v15 | `--patch_size 512 --mag 20` |
 | `prism` | virchow | `--patch_size 224 --mag 20` |
-| `prism2` | virchow2-cls | `--patch_size 224 --mag 20` — 2560-d `base` by default; `embedding_type='diagnostic'` gives 3072-d but needs `transformers>=4.51,<4.52` |
+| `prism2` | virchow2-cls | `--patch_size 224 --mag 20` — 2560-d base (perceiver) embedding |
 | `chief` | ctranspath | `--patch_size 256 --mag 10` |
 | `gigapath` | gigapath | `--patch_size 256 --mag 20` |
 | `gigapath-flash` | gigapath-flash | `--patch_size 256 --mag 20` |
@@ -315,9 +315,6 @@ Library version support (measured, not guessed):
 - `transformers>=4.51,<5` — 4.46+ bit-identical; `<5` required (v5 drops `transformers.onnx`, used by Hibou-L).
   Exception: `gemma4-e4b`/`gemma4-26b` need `transformers>=5` (no 4.x has `Gemma4Config`), so they are
   mutually exclusive with `hibou_l` — one per environment. Everything else works on either.
-  Second exception: PRISM2's `embedding_type='diagnostic'` needs `>=4.51,<4.52` (its Phi-3 decoder
-  relies on 4.51-only transformers internals); `_build` raises an explanatory error otherwise. The
-  default `base` embedding is unaffected and bit-identical across the range.
 - `flash_attn>=2.7.3` — GigaPath/GigaPath-Flash/PRISM2 slide encoders only. Versions <2.7.3 have no
   Blackwell (sm_100/sm_120) kernels and fail at runtime there; 2.7.3 and 2.8.3 are bit-identical.
   PyPI has only an sdist (long compile) — prefer a prebuilt wheel matching torch/CUDA/Python/ABI

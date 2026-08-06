@@ -291,14 +291,9 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
         """
         super().__init__(**build_kwargs)
 
-    def _build(self, pretrained=True, embedding_type: str = 'base'):
+    def _build(self, pretrained=True):
 
         self.enc_name = 'prism2'
-
-        if embedding_type not in ('base', 'diagnostic'):
-            raise ValueError(
-                f"expected embedding_type to be one of 'base' or 'diagnostic', but got '{embedding_type}'"
-            )
 
         from packaging.version import Version
 
@@ -314,17 +309,6 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
                 "`pip install einops 'transformers>=4.51,<5'`."
             )
 
-        # Only the 'diagnostic' embedding runs the Phi-3 decoder, whose remote code relies on
-        # transformers internals that exist in 4.51 only. 'base' works on the whole declared range.
-        if embedding_type == 'diagnostic' and not (
-            Version('4.51') <= Version(transformers.__version__) < Version('4.52')
-        ):
-            raise Exception(
-                f"PRISM2's 'diagnostic' embedding requires transformers 4.51.x, but found "
-                f"{transformers.__version__}. Install `pip install 'transformers>=4.51,<4.52'`, or "
-                "use the default `embedding_type='base'`, which works on all supported versions."
-            )
-
         # PRISM2's Phi-3 decoder is loaded with FlashAttention-2; the model card asks for >= 2.6.3.
         _require_flash_attn('PRISM2', '2.6.3')
 
@@ -335,12 +319,14 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
                 AutoConfig.from_pretrained('paige-ai/Prism2', trust_remote_code=True),
                 trust_remote_code=True,
             )
+        # We only expose the base embedding, which is pure perceiver pooling. Drop the text decoder
+        # rather than carry 85% of the parameters unused, as done for PRISM v1.
+        model.text_decoder = None
         # Packs the variable-length per-slide tile sequences into a padded batch + attention mask.
         self.processor = AutoProcessor.from_pretrained('paige-ai/Prism2', trust_remote_code=True)
 
-        self.embedding_type = embedding_type
         precision = torch.bfloat16
-        embedding_dim = 2560 if embedding_type == 'base' else 3072
+        embedding_dim = 2560
         return model, precision, embedding_dim
 
     def forward(self, batch, device='cuda'):
@@ -352,10 +338,7 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
         # bfloat16, and TRIDENT's slide-feature path opens an autocast context without a dtype
         # (which defaults to float16 on CUDA). A nested context takes precedence.
         with torch.autocast(device_type=torch.device(device).type, dtype=torch.bfloat16):
-            if self.embedding_type == 'base':
-                z = self.model.get_base_embedding(**inputs)   # (B, 2560)
-            else:
-                z = self.model.get_diagnostic_embedding(**inputs)   # (B, 3072)
+            z = self.model.get_base_embedding(**inputs)   # (B, 2560)
         return z
 
 
