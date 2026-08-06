@@ -82,8 +82,10 @@ def _require_flash_attn(model_name: str, minimum: str) -> None:
                 f"flash_attn {flash_attn.__version__} has no kernels for this GPU "
                 f"(sm_{major}{minor}); releases before {BLACKWELL_MIN_FLASH_ATTN} only compile up to "
                 f"sm_90. Install flash_attn >= {BLACKWELL_MIN_FLASH_ATTN}, which is API-compatible "
-                f"with {model_name}. Prebuilt wheels exist only up to torch 2.8, so on newer torch "
-                f"build it from source: `FLASH_ATTN_CUDA_ARCHS={major}{minor} pip install "
+                f"with {model_name}. PyPI ships only an sdist, so prefer a prebuilt wheel matching "
+                "your torch/CUDA/Python from "
+                "https://github.com/Dao-AILab/flash-attention/releases, or build from source: "
+                f"`FLASH_ATTN_CUDA_ARCHS={major}{minor} pip install "
                 f"--no-build-isolation flash-attn>={BLACKWELL_MIN_FLASH_ATTN}` (needs nvcc >= 12.8)."
             )
 
@@ -310,6 +312,17 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
             raise Exception(
                 "PRISM2 requires einops and transformers >= 4.51. Install with "
                 "`pip install einops 'transformers>=4.51,<5'`."
+            )
+
+        # Only the 'diagnostic' embedding runs the Phi-3 decoder, whose remote code relies on
+        # transformers internals that exist in 4.51 only. 'base' works on the whole declared range.
+        if embedding_type == 'diagnostic' and not (
+            Version('4.51') <= Version(transformers.__version__) < Version('4.52')
+        ):
+            raise Exception(
+                f"PRISM2's 'diagnostic' embedding requires transformers 4.51.x, but found "
+                f"{transformers.__version__}. Install `pip install 'transformers>=4.51,<4.52'`, or "
+                "use the default `embedding_type='base'`, which works on all supported versions."
             )
 
         # PRISM2's Phi-3 decoder is loaded with FlashAttention-2; the model card asks for >= 2.6.3.

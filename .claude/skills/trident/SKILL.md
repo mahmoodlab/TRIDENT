@@ -42,13 +42,14 @@ trident-doctor --profile base    # preflight; use --profile <profile> --check-ga
   | Library | Range | What was verified |
   |---|---|---|
   | `timm` | `>=0.9.16,<2` | 24 components (every timm-backed encoder + all 3 segmenters) bit-identical on 0.9.16 / 1.0.3 / 1.0.8 / 1.0.28. timm 1.x is fine. |
-  | `transformers` | `>=4.51,<5` | 4.46 / 4.51 / 4.57 bit-identical; 4.42 differs slightly (Dinov2 gained SDPA in 4.46). `<5` is load-bearing — see below. |
+  | `transformers` | `>=4.51,<5` | 4.46 / 4.51 / 4.57 bit-identical; 4.42 differs slightly (Dinov2 gained SDPA in 4.46). `<5` is load-bearing — see below. PRISM2's optional `diagnostic` embedding is narrower still: `>=4.51,<4.52`. |
   | `flash_attn` | `>=2.7.3` | Only the LongNet slide encoders need it (`gigapath`, `gigapath-flash`, `prism2`). API unchanged 2.5.8→2.8.3, but **<2.7.3 ships no Blackwell (sm_100/sm_120) kernels**; 2.7.3 and 2.8.3 give bit-identical features. |
 
   TRIDENT enforces flash-attn per model (2.5.8 for GigaPath, 2.6.3 for PRISM2) *plus* `>=2.7.3` only
   when it detects an sm_100+ GPU, so Ampere/Hopper installs on 2.5.8 keep working. On Blackwell with
-  an older flash-attn you get a clear error naming the arch and the build command — prebuilt wheels
-  stop at torch 2.8, so on newer torch build from source with
+  an older flash-attn you get a clear error naming the arch and the fix. PyPI has only an sdist
+  (long compile), so prefer a prebuilt wheel matching your torch/CUDA/Python/ABI from
+  [the release page](https://github.com/Dao-AILab/flash-attention/releases), else build with
   `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'` (needs nvcc >= 12.8).
 - If `trident-doctor` isn't on PATH (install-dependent), preflight instead with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`.
