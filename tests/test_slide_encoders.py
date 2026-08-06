@@ -9,6 +9,17 @@ from tests._test_gating import RUN_INTEGRATION_TESTS
 Test the forward pass of the slide encoders.
 """
 
+
+def _has_prism2_decoder() -> bool:
+    """PRISM2's 'diagnostic' embedding runs the Phi-3 decoder, whose remote code only works on
+    transformers 4.51.x (see PRISM2SlideEncoder._build). The 'base' embedding is unaffected."""
+    import transformers
+    from packaging.version import Version
+    return Version('4.51') <= Version(transformers.__version__) < Version('4.52')
+
+
+PRISM2_DECODER_AVAILABLE = _has_prism2_decoder()
+
 @unittest.skipUnless(
     RUN_INTEGRATION_TESTS,
     "Set TRIDENT_RUN_INTEGRATION_TESTS=1 to run heavy integration tests.",
@@ -52,6 +63,27 @@ class TestSlideEncoders(unittest.TestCase):
             'coords': torch.randn(1, 100, 2),
         }
         self._test_encoder_forward(PRISM2SlideEncoder(), sample_batch, torch.bfloat16)
+
+    @unittest.skipUnless(PRISM2_DECODER_AVAILABLE,
+                         "PRISM2's diagnostic embedding needs transformers 4.51.x (see README).")
+    def test_prism2_diagnostic_embedding(self):
+        # The diagnostic embedding is the Phi-3 hidden state at the <|assistant|> position (3072-d).
+        sample_batch = {
+            'features': torch.randn(1, 100, 1280),
+            'coords': torch.randn(1, 100, 2),
+        }
+        encoder = PRISM2SlideEncoder(embedding_type='diagnostic')
+        self.assertEqual(encoder.embedding_dim, 3072)
+        self._test_encoder_forward(encoder, sample_batch, torch.bfloat16)
+
+    def test_prism2_diagnostic_rejects_unsupported_transformers(self):
+        # Outside 4.51.x the decoder cannot run, and it must fail at build time with an
+        # actionable message rather than deep inside the remote code's forward pass.
+        if PRISM2_DECODER_AVAILABLE:
+            self.skipTest("transformers 4.51.x supports the decoder; nothing to reject.")
+        with self.assertRaises(Exception) as ctx:
+            PRISM2SlideEncoder(embedding_type='diagnostic')
+        self.assertIn('4.51', str(ctx.exception))
 
     def test_chief_encoder_initialization(self):
         sample_batch = {

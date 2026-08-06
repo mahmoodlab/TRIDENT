@@ -1560,6 +1560,10 @@ class WaivFinetunedInferenceEncoder(BasePatchEncoder):
         # The custom wrapper is expected to expose token embeddings as `last_hidden_state` (as both
         # DINOv2 backbones do); fall back to a bare tensor if it returns one directly.
         out = getattr(out, 'last_hidden_state', out)
+        # Both model cards recommend `pooler_output`, i.e. the L2-normalised CLS. We return the raw
+        # CLS instead, matching every other TRIDENT encoder (and the base models these fine-tune):
+        # normalisation is a per-patch rescaling that downstream code can apply, but it cannot be
+        # undone once baked into the saved features.
         cls_token = out[:, 0, :]
         if self.return_type == "cls_token":
             return cls_token

@@ -143,7 +143,7 @@ pass its required patch_size/mag.
 |---|---|---|
 | `titan` | conch_v15 | `--patch_size 512 --mag 20` |
 | `prism` | virchow | `--patch_size 224 --mag 20` |
-| `prism2` | virchow2-cls | `--patch_size 224 --mag 20` |
+| `prism2` | virchow2-cls | `--patch_size 224 --mag 20` — 2560-d `base` embedding by default; `encoder_factory('prism2', embedding_type='diagnostic')` gives 3072-d but needs `transformers>=4.51,<4.52` |
 | `chief` | ctranspath | `--patch_size 256 --mag 10` |
 | `gigapath` | gigapath | `--patch_size 256 --mag 20` |
 | `gigapath-flash` | gigapath-flash | `--patch_size 256 --mag 20` |
@@ -315,9 +315,15 @@ Library version support (measured, not guessed):
 - `transformers>=4.51,<5` — 4.46+ bit-identical; `<5` required (v5 drops `transformers.onnx`, used by Hibou-L).
   Exception: `gemma4-e4b`/`gemma4-26b` need `transformers>=5` (no 4.x has `Gemma4Config`), so they are
   mutually exclusive with `hibou_l` — one per environment. Everything else works on either.
+  Second exception: PRISM2's `embedding_type='diagnostic'` needs `>=4.51,<4.52` — its Phi-3 decoder
+  calls `Phi3Model._prepare_4d_causal_attention_mask_with_cache_position`, whose signature changed in
+  4.52 (dropped `device`) and which was removed in 4.53. The default `base` embedding is unaffected
+  and is bit-identical on 4.51.3 / 4.52.4 / 4.57.6; `_build` raises an explanatory error otherwise.
 - `flash_attn>=2.7.3` — GigaPath/GigaPath-Flash/PRISM2 slide encoders only. Versions <2.7.3 have no
   Blackwell (sm_100/sm_120) kernels and fail at runtime there; 2.7.3 and 2.8.3 are bit-identical.
-  Prebuilt wheels stop at torch 2.8; on newer torch build with
+  PyPI has only an sdist (~1h compile) — prefer a prebuilt wheel from
+  https://github.com/Dao-AILab/flash-attention/releases matching torch/CUDA/Python/ABI (2.8.1 and
+  2.8.3 cover torch 2.4–2.10). If none matches, build with
   `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'`.
 
 Some models need manual setup (e.g. local CHIEF path in

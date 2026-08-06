@@ -82,8 +82,11 @@ def _require_flash_attn(model_name: str, minimum: str) -> None:
                 f"flash_attn {flash_attn.__version__} has no kernels for this GPU "
                 f"(sm_{major}{minor}); releases before {BLACKWELL_MIN_FLASH_ATTN} only compile up to "
                 f"sm_90. Install flash_attn >= {BLACKWELL_MIN_FLASH_ATTN}, which is API-compatible "
-                f"with {model_name}. Prebuilt wheels exist only up to torch 2.8, so on newer torch "
-                f"build it from source: `FLASH_ATTN_CUDA_ARCHS={major}{minor} pip install "
+                f"with {model_name}. PyPI ships only an sdist (a ~1h compile), so prefer a prebuilt "
+                "wheel matching your torch/CUDA/Python from "
+                "https://github.com/Dao-AILab/flash-attention/releases (2.8.1 and 2.8.3 cover torch "
+                "2.4-2.10). If none matches, build from source: "
+                f"`FLASH_ATTN_CUDA_ARCHS={major}{minor} pip install "
                 f"--no-build-isolation flash-attn>={BLACKWELL_MIN_FLASH_ATTN}` (needs nvcc >= 12.8)."
             )
 
@@ -310,6 +313,24 @@ class PRISM2SlideEncoder(BaseSlideEncoder):
             raise Exception(
                 "PRISM2 requires einops and transformers >= 4.51. Install with "
                 "`pip install einops 'transformers>=4.51,<5'`."
+            )
+
+        # The 'diagnostic' embedding runs the Phi-3 decoder, whose remote code calls
+        # `Phi3Model._prepare_4d_causal_attention_mask_with_cache_position` (the model ships with
+        # `text_attn_impl: sdpa` + `attn_bidi: true`, which is the branch that needs it). That
+        # helper's signature dropped `device` in 4.52 and the helper itself was removed in 4.53, so
+        # the decoder only runs on 4.51.x -- the version the checkpoint was published against. The
+        # 'base' embedding never touches the decoder and is bit-identical across 4.51/4.52/4.57.
+        if embedding_type == 'diagnostic' and not (
+            Version('4.51') <= Version(transformers.__version__) < Version('4.52')
+        ):
+            raise Exception(
+                f"PRISM2's 'diagnostic' embedding requires transformers 4.51.x, but found "
+                f"{transformers.__version__}: its remote code calls "
+                "`Phi3Model._prepare_4d_causal_attention_mask_with_cache_position`, which changed "
+                "signature in 4.52 and was removed in 4.53. Install "
+                "`pip install 'transformers>=4.51,<4.52'`, or use the default "
+                "`embedding_type='base'`, which works on all supported versions."
             )
 
         # PRISM2's Phi-3 decoder is loaded with FlashAttention-2; the model card asks for >= 2.6.3.
