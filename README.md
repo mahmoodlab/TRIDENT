@@ -14,7 +14,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
-- **22+ patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
+- **33 patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), Prov-GigaPath, [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), PRISM, CHIEF, Madeleine, Feather.
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
@@ -28,7 +28,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 - Create an environment (Python 3.10 or 3.11): `conda create -n "trident" python=3.10`, and activate it `conda activate trident`.
 - Cloning: `git clone https://github.com/mahmoodlab/trident.git && cd trident`.
 - Local installation: `pip install -e .`.
-  - This installs the shared model stack (`transformers`, `timm`, `safetensors`, etc.).
+  - This installs the shared model stack (`timm>=0.9.16,<2`, `transformers>=4.51,<5`, `safetensors`, etc.).
 
 Optional install profiles:
 - `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF)).
@@ -44,29 +44,6 @@ Run checks before launching jobs:
 - `trident-doctor --profile slide-encoders`
 - `trident-doctor --profile convert`
 - `trident-doctor --profile full --check-gated`
-
-#### Library version support
-
-Verified by comparing encoder outputs across versions (see `trident-doctor` for a live check):
-
-| Library | Supported | Notes |
-|---|---|---|
-| `timm` | `>=0.9.16,<2` | 24 components — every timm-backed patch encoder plus all three segmenters (incl. smp's `timm-efficientnet-b0`) — produce **bit-identical** output on 0.9.16, 1.0.3, 1.0.8 and 1.0.28. GigaPath / H-Optimus previously pinned `==0.9.16`; that pin was unnecessary and has been removed. The floor is the oldest version measured, not a requirement: nothing in the dependency graph needs `timm<1` (smp asks `>=0.9`, CONCH `>=0.9.8`, neither has an upper bound), so a fresh install resolves to the newest 1.x while existing 0.9.16 environments keep working unchanged. |
-| `transformers` | `>=4.51,<5` | 4.46–4.57 are bit-identical. 4.42 differs slightly (Dinov2 had no SDPA before 4.46; cosine 0.9997 on Midnight-12k), so `>=4.51` is the floor for reproducible features and for PRISM2. `<5` is required: v5 removes `transformers.onnx`, which Hibou-L's remote code imports. **Exception — Gemma 4:** the `gemma4-e4b` / `gemma4-26b` encoders need `transformers>=5` (`Gemma4Config` does not exist in any 4.x). They and `hibou_l` are therefore mutually exclusive; pick one per environment. Their tests skip automatically when transformers predates v5. |
-| `flash_attn` | `>=2.7.3` recommended (`>=2.5.8` suffices up to `sm_90`) | Only needed by the GigaPath / GigaPath-Flash / PRISM2 slide encoders; the API they use is unchanged from 2.5.8 through 2.8.3. **Releases before 2.7.3 only compile up to `sm_90`**, so they cannot run on Blackwell (`sm_100` / `sm_120`) at all. TRIDENT therefore enforces each model's API floor (2.5.8 GigaPath, 2.6.3 PRISM2) *plus* `>=2.7.3` when it detects an `sm_100+` GPU — so existing Ampere/Hopper setups on 2.5.8 keep working. 2.7.3 and 2.8.3 give bit-identical GigaPath features. Note 2.7.3+ drops Turing (`sm_75`). |
-
-PyPI serves only an sdist for `flash_attn`, so `pip install flash-attn` triggers a long compile.
-Prefer a prebuilt wheel from the
-[release page](https://github.com/Dao-AILab/flash-attention/releases) matching your
-torch / CUDA / Python / C++ ABI. If none matches, build from source — much faster if you target
-only your own arch:
-
-```bash
-export CUDA_HOME=$CONDA_PREFIX                                   # needs nvcc >= 12.8 for Blackwell
-export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH       # conda keeps CUDA headers here
-FLASH_ATTN_CUDA_ARCHS=120 MAX_JOBS=48 pip install --no-build-isolation 'flash-attn>=2.7.3'
-```
-Use `FLASH_ATTN_CUDA_ARCHS=90` for H100/H200, `100` for B200, `120` for RTX PRO / RTX 50-series.
 
 > [!NOTE]
 > Some models still require manual setup (e.g., local CHIEF repository path in `trident/slide_encoder_models/local_ckpts.json`) or HuggingFace gated access approvals.
@@ -175,6 +152,8 @@ Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https
 | **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — |
 | **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | — |
 
+¹ Gemma 4 requires `transformers>=5`, which is incompatible with `hibou_l`. Use a separate environment.
+
 **Step 3b: Slide Feature Extraction:** Extracts slide embeddings using a slide encoder. Will also automatically extract the right patch embeddings. 
  - **Command**:
    ```bash
@@ -188,8 +167,6 @@ Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https
    - `--patch_size 512`: Patches are 512x512 pixels in size.
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_512px_0px_overlap/slide_features_titan`. (Shape: `(feature_dim)`)
-
-¹ Gemma 4 requires `transformers>=5`, which is incompatible with `hibou_l` — see [Library version support](#library-version-support).
 
 Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
@@ -226,10 +203,11 @@ Please see our [tutorials](https://github.com/mahmoodlab/trident/tree/main/tutor
    - **A**: In `run_batch_of_slides`, this behavior is default. Set `--remove_holes` to exclude patches on top of holes.
 
 - **Q**: I see weird messages when building models using timm. What is happening?
-   - **A**: Check that your `timm` is within `>=0.9.16,<2`. Both 0.9.16 and 1.x are supported and
-     produce bit-identical features (verified across 0.9.16 / 1.0.3 / 1.0.8 / 1.0.28 for every
-     timm-backed encoder and all three segmenters), so **don't** downgrade to `timm==0.9.16` as a
-     reflex — see [Library version support](#library-version-support).
+   - **A**: Check your version. Trident needs `timm>=0.9.16,<2`.
+
+- **Q**: `gigapath`, `gigapath-flash` or `prism2` fails with a FlashAttention error. What do I do?
+   - **A**: On Blackwell GPUs you need `flash-attn>=2.7.3`. Grab a prebuilt wheel from its
+     [releases](https://github.com/Dao-AILab/flash-attention/releases) — PyPI ships only an sdist.
 
 - **Q**: What’s the recommended way to run Trident from another project?
   - **A**: Use the **CLI** (recommended for reproducibility). Install Trident, then call:
