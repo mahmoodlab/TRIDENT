@@ -36,33 +36,19 @@ pip install -e .                 # core; add ".[patch-encoders]" ".[slide-encode
 trident-doctor --profile base    # preflight; use --profile <profile> --check-gated for model access
 ```
 
-- **Library versions** — all three were measured by comparing outputs across versions, not guessed
-  (details in [reference.md](reference.md)). Python 3.10/3.11 recommended (`>=3.10,<3.13`).
-
-  | Library | Range | What was verified |
-  |---|---|---|
-  | `timm` | `>=0.9.16,<2` | 24 components (every timm-backed encoder + all 3 segmenters) bit-identical on 0.9.16 / 1.0.3 / 1.0.8 / 1.0.28. timm 1.x is fine. |
-  | `transformers` | `>=4.51,<5` | 4.46 / 4.51 / 4.57 bit-identical; 4.42 differs slightly (Dinov2 gained SDPA in 4.46). `<5` is load-bearing — see below. |
-  | `flash_attn` | `>=2.7.3` | Only the LongNet slide encoders need it (`gigapath`, `gigapath-flash`, `prism2`). API unchanged 2.5.8→2.8.3, but **<2.7.3 ships no Blackwell (sm_100/sm_120) kernels**; 2.7.3 and 2.8.3 give bit-identical features. |
-
-  TRIDENT enforces flash-attn per model (2.5.8 for GigaPath, 2.6.3 for PRISM2) *plus* `>=2.7.3` only
-  when it detects an sm_100+ GPU, so Ampere/Hopper installs on 2.5.8 keep working. On Blackwell with
-  an older flash-attn you get a clear error naming the arch and the fix. PyPI has only an sdist
-  (long compile), so prefer a prebuilt wheel matching your torch/CUDA/Python/ABI from
-  [the release page](https://github.com/Dao-AILab/flash-attention/releases), else build with
-  `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'` (needs nvcc >= 12.8).
+- **Versions** — Python 3.10/3.11 (`>=3.10,<3.13`), `timm>=0.9.16,<2`, `transformers>=4.51,<5`.
+  Stay on transformers 4.x: v5 removes `transformers.onnx`, which Hibou-L's remote code imports.
+- **flash-attn** — needed only by `gigapath`, `gigapath-flash` and `prism2`. Blackwell GPUs
+  (sm_100/sm_120) require `>=2.7.3`; earlier releases ship no kernels for those cards. PyPI has only
+  an sdist, so install a prebuilt wheel from
+  [releases](https://github.com/Dao-AILab/flash-attention/releases).
 - If `trident-doctor` isn't on PATH (install-dependent), preflight instead with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`.
 - Most encoders download from HuggingFace; gated models (UNI, CONCH, Virchow, …) need an
   approved HF account and `huggingface-cli login`. A load failure usually means missing
   access or a missing optional install — read the error, it names the fix.
-- Stay on `transformers` 4.x (`>=4.51,<5`): v5 removes `transformers.onnx`, which Hibou-L's remote
-  code imports. The one exception is `gemma4-e4b`/`gemma4-26b`: `Gemma4Config` exists in **no** 4.x
-  release, so they *require* `transformers>=5` and assert on it with an explanatory message. Do not
-  upgrade an existing env to satisfy them — v5 breaks `hibou_l` outright, `titan` needs the
-  `all_tied_weights_keys` workaround below, and v5 imports `torchaudio` whenever it is installed, so
-  a torchaudio that does not match your torch breaks *every* model load. Use a separate env for
-  Gemma 4.
+- `gemma4-e4b`/`gemma4-26b` are the one exception to the transformers range: they need `>=5`, which
+  breaks `hibou_l` and `titan`. Use a separate env; don't upgrade a shared one.
 - A **slide encoder** that errors on load with something like `all_tied_weights_keys` (not a
   gating/timm error) is a `transformers` 5.x incompatibility (e.g. TITAN) — pin `transformers` 4.x,
   or if you can't change the env, set
@@ -211,13 +197,12 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - `--task coords`/`feat` on a fresh `--job_dir` → silently skips (no prior stage); use `--task all`, or run the stages in order.
 - `--slide_encoder` without `--task all`/`feat` → only segmentation runs, no embeddings.
 - No-GPU machine without `--segmenter otsu` → default `hest` tries to use a GPU.
-- `timm` outside `>=0.9.16,<2` → cryptic model-build errors that can look like a model *load* failure. Do **not** downgrade to `timm==0.9.16` "to be safe": 0.9.16 and 1.x give bit-identical features, and an old pin can conflict with other packages in the env.
+- `timm` outside `>=0.9.16,<2` → cryptic model-build errors that can look like a model *load* failure.
 - Gated HF model without access → load failure (request access + `huggingface-cli login`).
 - `FlashAttention only supports Ampere GPUs or newer` from `gigapath`/`gigapath-flash`/`prism2` on a
-  Blackwell GPU → flash-attn <2.7.3 has no kernels for that arch; upgrade (see Setup). Confirm with
+  Blackwell GPU → flash-attn <2.7.3 has no kernels for that arch (see Setup). Confirm with
   `trident-doctor --profile slide-encoders`, which checks flash-attn against the live GPU.
-- `gemma4-*` asserting on transformers → it needs v5, which is outside TRIDENT's range; do not
-  upgrade a shared env (see Setup).
+- `gemma4-*` asserting on transformers → it needs v5 (see Setup).
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
 - Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.

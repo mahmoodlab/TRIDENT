@@ -309,32 +309,25 @@ trident-doctor --profile patch-encoders --check-gated
 ```
 
 Gated HF encoders need access approval + `huggingface-cli login`.
-Library version support (measured, not guessed):
-- `timm>=0.9.16,<2` — all timm-backed patch encoders AND all three segmenters are bit-identical
-  from 0.9.16 to 1.0.28. Nothing needs `timm<1`; the floor is just the oldest version verified.
-- `transformers>=4.51,<5` — 4.46+ bit-identical; `<5` required (v5 drops `transformers.onnx`, used by Hibou-L).
-  Exception: `gemma4-e4b`/`gemma4-26b` need `transformers>=5` (no 4.x has `Gemma4Config`), so they are
-  mutually exclusive with `hibou_l` — one per environment. Everything else works on either.
+Library versions:
+- Python `>=3.10,<3.13`, `timm>=0.9.16,<2`, `transformers>=4.51,<5` (v5 drops `transformers.onnx`,
+  used by Hibou-L). Exception: `gemma4-e4b`/`gemma4-26b` need `transformers>=5`, so they are
+  mutually exclusive with `hibou_l` and `titan` — one per environment.
 - `flash_attn>=2.7.3` — GigaPath/GigaPath-Flash/PRISM2 slide encoders only. Versions <2.7.3 have no
-  Blackwell (sm_100/sm_120) kernels and fail at runtime there; 2.7.3 and 2.8.3 are bit-identical.
-  PyPI has only an sdist (long compile) — prefer a prebuilt wheel matching torch/CUDA/Python/ABI
-  from https://github.com/Dao-AILab/flash-attention/releases, else build with
-  `FLASH_ATTN_CUDA_ARCHS=<arch> pip install --no-build-isolation 'flash-attn>=2.7.3'`.
+  Blackwell (sm_100/sm_120) kernels. PyPI has only an sdist — prefer a prebuilt wheel matching
+  torch/CUDA/Python/ABI from https://github.com/Dao-AILab/flash-attention/releases.
 
 Some models need manual setup (e.g. local CHIEF path in
 `trident/slide_encoder_models/local_ckpts.json`).
 
-Compatibility notes (observed):
-- Python 3.10/3.11 is recommended (`pyproject` declares `>=3.10,<3.13`); runs have also succeeded on 3.13.
+Compatibility notes:
 - Some **slide encoders load HF remote code that breaks on `transformers` 5.x** — e.g. TITAN fails
   with `AttributeError: 'Titan' object has no attribute 'all_tied_weights_keys'`. If a slide
   encoder errors on load (not a gating/timm error), pin an older `transformers` (4.x), or — in a
   read-only/shared env — monkeypatch before load:
   `from transformers.modeling_utils import PreTrainedModel; PreTrainedModel.all_tied_weights_keys = {}`
-  (the batch CLI spawns workers, so put it in a `sitecustomize.py` on `PYTHONPATH`). Note PRISM v1 also pulls
-  `environs==11.0.0` + `sacremoses==0.1.1` (both still exact pins, untested against other versions).
-  Its old error message demanded `transformers==4.42.4`; that was wrong — PRISM v1 is bit-identical
-  on 4.57.6 — and the message now asks for `>=4.51,<5`.
+  (the batch CLI spawns workers, so put it in a `sitecustomize.py` on `PYTHONPATH`).
+- PRISM v1 additionally needs `environs==11.0.0` and `sacremoses==0.1.1`.
 - If the `trident-doctor` console script isn't on PATH (depends on the install), preflight with
   `python -c "import trident; from trident.patch_encoder_models import encoder_factory; encoder_factory('uni_v1')"`
   to confirm imports + gated-model access.
