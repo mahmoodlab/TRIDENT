@@ -350,7 +350,7 @@ Factory for slide-level encoder models.
      - any
      - Python API only — untrained aggregator
      - —
-     - 🔓 `CC-BY-NC-ND-4.0 <https://creativecommons.org/licenses/by-nc-nd/4.0/>`__
+     - —
 
 .. automodule:: trident.slide_encoder_models
    :members:

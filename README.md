@@ -193,7 +193,7 @@ Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`]
 | **Feather** | conch_v15 | `--slide_encoder feather --patch_size 512 --mag 20` | [MahmoodLab/FEATHER](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **Feather-UNI2** | uni_v2 | `--slide_encoder feather_uni_v2 --patch_size 256 --mag 20` | [MahmoodLab/FEATHER](https://huggingface.co/MahmoodLab/abmil.base.uni_v2.pc108-24k) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **CARE** | conch_v15 | `--slide_encoder care --patch_size 512 --mag 20` | [Zipper-1/CARE](https://huggingface.co/Zipper-1/CARE) | 🔒 [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) |
-| **ABMIL** | any | Python API only — untrained aggregator, see note below | — | 🔓 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
+| **ABMIL** | any | Python API only — untrained aggregator, see note below | — | — |
 
 > [!NOTE]
 > **ABMIL** is an untrained attention-pooling aggregator, not a pretrained encoder. It is only usable from the Python API with explicit hyperparameters (`encoder_factory('abmil', pretrained=False, input_feature_dim=768, n_heads=1, head_dim=64, dropout=0.1, gated=True)`); `--slide_encoder abmil` raises a `TypeError`.
