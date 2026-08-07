@@ -87,9 +87,9 @@ Segmentation Models
 
 Semantic segmentation models for tissue vs. background detection and filtering.
 
-In the tables on this page, 🔒 marks models gated on HuggingFace — you must accept their terms
-while logged in (some also need manual approval) — and 🔓 marks models you can download straight
-away. Licenses are those declared by the model host; check them before any commercial use.
+In the model tables on this page: 🔒 gated on HuggingFace (accept the terms while logged in; some
+need manual approval) · 🌐 open download. Licenses are those declared by the model host — check
+them before any commercial use.
 
 .. list-table::
    :header-rows: 1
@@ -102,11 +102,11 @@ away. Licenses are those declared by the model host; check them before any comme
    * - **HEST** (default)
      - ``--segmenter hest``
      - `MahmoodLab/hest-tissue-seg <https://huggingface.co/MahmoodLab/hest-tissue-seg>`__
-     - 🔓 `CC-BY-NC-SA-4.0 <https://creativecommons.org/licenses/by-nc-sa/4.0/>`__
+     - 🌐 `CC-BY-NC-SA-4.0 <https://creativecommons.org/licenses/by-nc-sa/4.0/>`__
    * - **GrandQC**
      - ``--segmenter grandqc``
      - `cpath-ukk/grandqc <https://github.com/cpath-ukk/grandqc>`__
-     - 🔓 `CC-BY-NC-SA-4.0 <https://creativecommons.org/licenses/by-nc-sa/4.0/>`__
+     - 🌐 `CC-BY-NC-SA-4.0 <https://creativecommons.org/licenses/by-nc-sa/4.0/>`__
    * - **Otsu**
      - ``--segmenter otsu``
      - —
@@ -170,17 +170,17 @@ Factory for loading patch-level encoder models.
      - 768
      - ``--patch_encoder phikon --patch_size 224 --mag 20``
      - `owkin/phikon <https://huggingface.co/owkin/phikon>`__
-     - 🔓 `Owkin non-commercial <https://github.com/owkin/HistoSSLscaling/blob/main/LICENSE.txt>`__
+     - 🌐 `Owkin non-commercial <https://github.com/owkin/HistoSSLscaling/blob/main/LICENSE.txt>`__
    * - **Phikon-v2**
      - 1024
      - ``--patch_encoder phikon_v2 --patch_size 224 --mag 20``
      - `owkin/phikon-v2 <https://huggingface.co/owkin/phikon-v2/>`__
-     - 🔓 `Owkin non-commercial <https://huggingface.co/owkin/phikon-v2/blob/main/LICENSE.pdf>`__
+     - 🌐 `Owkin non-commercial <https://huggingface.co/owkin/phikon-v2/blob/main/LICENSE.pdf>`__
    * - **KEEP**
      - 768
      - ``--patch_encoder keep --patch_size 256 --mag 20``
      - `Astaxanthin/KEEP <https://huggingface.co/Astaxanthin/KEEP>`__
-     - 🔓 `MIT <https://opensource.org/license/mit>`__
+     - 🌐 `MIT <https://opensource.org/license/mit>`__
    * - **Prov-Gigapath**
      - 1536
      - ``--patch_encoder gigapath --patch_size 256 --mag 20``
@@ -215,7 +215,7 @@ Factory for loading patch-level encoder models.
      - 3072
      - ``--patch_encoder midnight12k --patch_size 224 --mag 20``
      - `kaiko-ai/midnight <https://huggingface.co/kaiko-ai/midnight>`__
-     - 🔓 `MIT <https://opensource.org/license/mit>`__
+     - 🌐 `MIT <https://opensource.org/license/mit>`__
    * - **Phaet**
      - 1024
      - ``--patch_encoder phaet --patch_size 224 --mag 20``
@@ -235,27 +235,27 @@ Factory for loading patch-level encoder models.
      - 1024
      - ``--patch_encoder gpfm --patch_size 224 --mag 20``
      - `majiabo/GPFM <https://huggingface.co/majiabo/GPFM>`__
-     - 🔓 `MIT <https://opensource.org/license/mit>`__
+     - 🌐 `MIT <https://opensource.org/license/mit>`__
    * - **GenBio-PathFM**
      - 4608
      - ``--patch_encoder genbio-pathfm --patch_size 224 --mag 20``
      - `genbio-ai/genbio-pathfm <https://huggingface.co/genbio-ai/genbio-pathfm>`__
-     - 🔓 `GenBio AI Community <https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt>`__
+     - 🌐 `GenBio AI Community <https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt>`__
    * - **Gemma 4**
      - 768/1152
      - ``--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20``
      - `google/gemma-4-E4B <https://huggingface.co/google/gemma-4-E4B>`__ / `google/gemma-4-26B-A4B <https://huggingface.co/google/gemma-4-26B-A4B>`__
-     - 🔓 `Gemma Terms <https://ai.google.dev/gemma/docs/gemma_4_license>`__
+     - 🌐 `Gemma Terms <https://ai.google.dev/gemma/docs/gemma_4_license>`__
    * - **Kaiko**
      - 384/768/1024
      - ``--patch_encoder kaiko-vit* --patch_size 256 --mag 20``
      - `Kaiko Collection <https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795>`__
-     - 🔓 `Kaiko non-commercial <https://github.com/kaiko-ai/towards_large_pathology_fms/blob/main/LICENSE>`__
+     - 🌐 `Kaiko non-commercial <https://github.com/kaiko-ai/towards_large_pathology_fms/blob/main/LICENSE>`__
    * - **Lunit**
      - 384
      - ``--patch_encoder lunit-vits8 --patch_size 224 --mag 20``
      - `1aurent/lunit <https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino>`__
-     - 🔓 `Lunit non-commercial <https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino>`__
+     - 🌐 `Lunit non-commercial <https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino>`__
    * - **Hibou**
      - 1024
      - ``--patch_encoder hibou_l --patch_size 224 --mag 20``
@@ -265,12 +265,12 @@ Factory for loading patch-level encoder models.
      - 768
      - ``--patch_encoder ctranspath --patch_size 256 --mag 10``
      - —
-     - 🔓 `GPL-3.0 <https://www.gnu.org/licenses/gpl-3.0.html>`__
+     - 🌐 `GPL-3.0 <https://www.gnu.org/licenses/gpl-3.0.html>`__
    * - **ResNet50**
      - 1024
      - ``--patch_encoder resnet50 --patch_size 256 --mag 20``
      - —
-     - 🔓 `BSD-3-Clause <https://opensource.org/license/bsd-3-clause>`__
+     - 🌐 `BSD-3-Clause <https://opensource.org/license/bsd-3-clause>`__
 
 .. automodule:: trident.patch_encoder_models
    :members:
@@ -315,7 +315,7 @@ Factory for slide-level encoder models.
      - ctranspath
      - ``--slide_encoder chief --patch_size 256 --mag 10``
      - `CHIEF <https://github.com/hms-dbmi/CHIEF>`__
-     - 🔓 `AGPL-3.0 <https://www.gnu.org/licenses/agpl-3.0.html>`__
+     - 🌐 `AGPL-3.0 <https://www.gnu.org/licenses/agpl-3.0.html>`__
    * - **GigaPath**
      - gigapath
      - ``--slide_encoder gigapath --patch_size 256 --mag 20``

@@ -90,10 +90,12 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - WSI thumbnails with tissue contours in `./trident_processed/contours`.
    - GeoJSON files containing tissue contours in `./trident_processed/contours_geojson`. These can be opened in [QuPath](https://qupath.github.io/) for editing/quality control, if necessary.
 
+🔒 gated on HuggingFace (accept the terms while logged in; some need manual approval) · 🌐 open download. Licenses are those declared by the model host — check them before any commercial use.
+
 | Segmenter | Args | Link | License |
 |-----------|------|------|---------|
-| **HEST** (default) | `--segmenter hest` | [MahmoodLab/hest-tissue-seg](https://huggingface.co/MahmoodLab/hest-tissue-seg) | 🔓 [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) |
-| **GrandQC** | `--segmenter grandqc` | [cpath-ukk/grandqc](https://github.com/cpath-ukk/grandqc) | 🔓 [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) |
+| **HEST** (default) | `--segmenter hest` | [MahmoodLab/hest-tissue-seg](https://huggingface.co/MahmoodLab/hest-tissue-seg) | 🌐 [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) |
+| **GrandQC** | `--segmenter grandqc` | [cpath-ukk/grandqc](https://github.com/cpath-ukk/grandqc) | 🌐 [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) |
 | **Otsu** | `--segmenter otsu` | — | — (classical, no model) |
 
  **Step 2: Tissue Patching:** Extracts patches from segmented tissue regions at a specific magnification.
@@ -127,9 +129,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
 
 Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
-In the tables below, 🔒 marks models gated on HuggingFace — you must accept their terms while
-logged in (some also need manual approval) — and 🔓 marks models you can download straight away.
-Licenses are those declared by the model host; check them before any commercial use.
+🔒 gated on HuggingFace (accept the terms while logged in; some need manual approval) · 🌐 open download. Licenses are those declared by the model host — check them before any commercial use.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
@@ -140,27 +140,27 @@ Licenses are those declared by the model host; check them before any commercial 
 | **Virchow**           | 2560           | `--patch_encoder virchow --patch_size 224 --mag 20`              | [paige-ai/Virchow](https://huggingface.co/paige-ai/Virchow) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **Virchow2**          | 2560           | `--patch_encoder virchow2 --patch_size 224 --mag 20`             | [paige-ai/Virchow2](https://huggingface.co/paige-ai/Virchow2) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **Virchow2 (CLS)**    | 1280           | `--patch_encoder virchow2-cls --patch_size 224 --mag 20`         | [paige-ai/Virchow2](https://huggingface.co/paige-ai/Virchow2) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
-| **Phikon**            | 768            | `--patch_encoder phikon --patch_size 224 --mag 20`               | [owkin/phikon](https://huggingface.co/owkin/phikon) | 🔓 [Owkin non-commercial](https://github.com/owkin/HistoSSLscaling/blob/main/LICENSE.txt) |
-| **Phikon-v2**         | 1024           | `--patch_encoder phikon_v2 --patch_size 224 --mag 20`            | [owkin/phikon-v2](https://huggingface.co/owkin/phikon-v2/) | 🔓 [Owkin non-commercial](https://huggingface.co/owkin/phikon-v2/blob/main/LICENSE.pdf) |
-| **KEEP**              | 768            | `--patch_encoder keep --patch_size 256 --mag 20`                 | [Astaxanthin/KEEP](https://huggingface.co/Astaxanthin/KEEP) | 🔓 [MIT](https://opensource.org/license/mit) |
+| **Phikon**            | 768            | `--patch_encoder phikon --patch_size 224 --mag 20`               | [owkin/phikon](https://huggingface.co/owkin/phikon) | 🌐 [Owkin non-commercial](https://github.com/owkin/HistoSSLscaling/blob/main/LICENSE.txt) |
+| **Phikon-v2**         | 1024           | `--patch_encoder phikon_v2 --patch_size 224 --mag 20`            | [owkin/phikon-v2](https://huggingface.co/owkin/phikon-v2/) | 🌐 [Owkin non-commercial](https://huggingface.co/owkin/phikon-v2/blob/main/LICENSE.pdf) |
+| **KEEP**              | 768            | `--patch_encoder keep --patch_size 256 --mag 20`                 | [Astaxanthin/KEEP](https://huggingface.co/Astaxanthin/KEEP) | 🌐 [MIT](https://opensource.org/license/mit) |
 | **Prov-Gigapath**     | 1536           | `--patch_encoder gigapath --patch_size 256 --mag 20`             | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **Prov-Gigapath-Flash** | 384          | `--patch_encoder gigapath-flash --patch_size 256 --mag 20`       | [prov-gigapath-flash](https://huggingface.co/prov-gigapath/prov-gigapath-flash) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **H-Optimus-0**       | 1536           | `--patch_encoder hoptimus0 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-0](https://huggingface.co/bioptimus/H-optimus-0) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **H-Optimus-1**       | 1536           | `--patch_encoder hoptimus1 --patch_size 224 --mag 20`            | [bioptimus/H-optimus-1](https://huggingface.co/bioptimus/H-optimus-1) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **H0-mini**           | 768/1536       | `--patch_encoder h0-mini --patch_size 224 --mag 20`              | [bioptimus/H0-mini](https://huggingface.co/bioptimus/H0-mini) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **MUSK**              | 1024           | `--patch_encoder musk --patch_size 384 --mag 20`                 | [xiangjx/musk](https://huggingface.co/xiangjx/musk) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
-| **Midnight-12k**      | 3072           | `--patch_encoder midnight12k --patch_size 224 --mag 20`          | [kaiko-ai/midnight](https://huggingface.co/kaiko-ai/midnight) | 🔓 [MIT](https://opensource.org/license/mit) |
+| **Midnight-12k**      | 3072           | `--patch_encoder midnight12k --patch_size 224 --mag 20`          | [kaiko-ai/midnight](https://huggingface.co/kaiko-ai/midnight) | 🌐 [MIT](https://opensource.org/license/mit) |
 | **Phaet**             | 1024           | `--patch_encoder phaet --patch_size 224 --mag 20`                | [wearewaiv/phaet](https://huggingface.co/wearewaiv/phaet) | 🔒 [Waiv non-commercial](https://huggingface.co/wearewaiv/phaet/blob/main/LICENSE.pdf) |
 | **Mascaret**          | 1536/3072      | `--patch_encoder mascaret --patch_size 224 --mag 20`             | [wearewaiv/mascaret](https://huggingface.co/wearewaiv/mascaret) | 🔒 [Waiv non-commercial](https://huggingface.co/wearewaiv/mascaret/blob/main/LICENSE.pdf) |
 | **OpenMidnight**      | 1536           | `--patch_encoder openmidnight --patch_size 224 --mag 20`         | [SophontAI/OpenMidnight](https://huggingface.co/SophontAI/OpenMidnight) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
-| **GPFM**              | 1024           | `--patch_encoder gpfm --patch_size 224 --mag 20`                 | [majiabo/GPFM](https://huggingface.co/majiabo/GPFM) | 🔓 [MIT](https://opensource.org/license/mit) |
-| **GenBio-PathFM**     | 4608           | `--patch_encoder genbio-pathfm --patch_size 224 --mag 20`        | [genbio-ai/genbio-pathfm](https://huggingface.co/genbio-ai/genbio-pathfm) | 🔓 [GenBio AI Community](https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt) |
-| **Gemma 4** ¹         | 768/1152       | `--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20` | [google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) / [google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B) | 🔓 [Gemma Terms](https://ai.google.dev/gemma/docs/gemma_4_license) |
-| **Kaiko**             | 384/768/1024   | `--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20` | [1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795](https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795) | 🔓 [Kaiko non-commercial](https://github.com/kaiko-ai/towards_large_pathology_fms/blob/main/LICENSE) |
-| **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) | 🔓 [Lunit non-commercial](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
+| **GPFM**              | 1024           | `--patch_encoder gpfm --patch_size 224 --mag 20`                 | [majiabo/GPFM](https://huggingface.co/majiabo/GPFM) | 🌐 [MIT](https://opensource.org/license/mit) |
+| **GenBio-PathFM**     | 4608           | `--patch_encoder genbio-pathfm --patch_size 224 --mag 20`        | [genbio-ai/genbio-pathfm](https://huggingface.co/genbio-ai/genbio-pathfm) | 🌐 [GenBio AI Community](https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt) |
+| **Gemma 4** ¹         | 768/1152       | `--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20` | [google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) / [google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B) | 🌐 [Gemma Terms](https://ai.google.dev/gemma/docs/gemma_4_license) |
+| **Kaiko**             | 384/768/1024   | `--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20` | [1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795](https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795) | 🌐 [Kaiko non-commercial](https://github.com/kaiko-ai/towards_large_pathology_fms/blob/main/LICENSE) |
+| **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) | 🌐 [Lunit non-commercial](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
 | **Hibou**             | 1024           | `--patch_encoder hibou_l --patch_size 224 --mag 20`              | [histai/hibou-L](https://huggingface.co/histai/hibou-L) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
-| **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — | 🔓 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) |
-| **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | — | 🔓 [BSD-3-Clause](https://opensource.org/license/bsd-3-clause) |
+| **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — | 🌐 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) |
+| **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | — | 🌐 [BSD-3-Clause](https://opensource.org/license/bsd-3-clause) |
 
 ¹ Gemma 4 requires `transformers>=5`, which is incompatible with `hibou_l`. Use a separate environment.
 
@@ -186,7 +186,7 @@ Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`]
 | **Titan** | conch_v15 | `--slide_encoder titan --patch_size 512 --mag 20` | [MahmoodLab/TITAN](https://huggingface.co/MahmoodLab/TITAN) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **PRISM** | virchow | `--slide_encoder prism --patch_size 224 --mag 20` | [paige-ai/Prism](https://huggingface.co/paige-ai/Prism) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **PRISM2** | virchow2-cls | `--slide_encoder prism2 --patch_size 224 --mag 20` | [paige-ai/Prism2](https://huggingface.co/paige-ai/Prism2) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
-| **CHIEF** | ctranspath | `--slide_encoder chief --patch_size 256 --mag 10` | [CHIEF](https://github.com/hms-dbmi/CHIEF) | 🔓 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) |
+| **CHIEF** | ctranspath | `--slide_encoder chief --patch_size 256 --mag 10` | [CHIEF](https://github.com/hms-dbmi/CHIEF) | 🌐 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) |
 | **GigaPath** | gigapath | `--slide_encoder gigapath --patch_size 256 --mag 20` | [prov-gigapath](https://huggingface.co/prov-gigapath/prov-gigapath) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **GigaPath-Flash** | gigapath-flash | `--slide_encoder gigapath-flash --patch_size 256 --mag 20` | [prov-gigapath-flash](https://huggingface.co/prov-gigapath/prov-gigapath-flash) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **Madeleine** | conch_v1 | `--slide_encoder madeleine --patch_size 256 --mag 10` | [MahmoodLab/madeleine](https://huggingface.co/MahmoodLab/madeleine) | 🔒 [MIT](https://opensource.org/license/mit) |
