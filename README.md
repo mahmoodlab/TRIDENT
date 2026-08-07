@@ -90,8 +90,6 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - WSI thumbnails with tissue contours in `./trident_processed/contours`.
    - GeoJSON files containing tissue contours in `./trident_processed/contours_geojson`. These can be opened in [QuPath](https://qupath.github.io/) for editing/quality control, if necessary.
 
-🔒 gated on HuggingFace (accept the terms while logged in; some need manual approval) · 🌐 open download. Licenses are those declared by the model host — check them before any commercial use.
-
 | Segmenter | Args | Link | License |
 |-----------|------|------|---------|
 | **HEST** (default) | `--segmenter hest` | [MahmoodLab/hest-tissue-seg](https://huggingface.co/MahmoodLab/hest-tissue-seg) | 🌐 [CC-BY-NC-SA-4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) |
@@ -128,8 +126,6 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
 Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
-
-🔒 gated on HuggingFace (accept the terms while logged in; some need manual approval) · 🌐 open download. Licenses are those declared by the model host — check them before any commercial use.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
