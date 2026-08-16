@@ -2099,6 +2099,23 @@ class CLIPRN50InferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class _HFImageProcessorTransform:
+    """
+    Adapt a HuggingFace image processor to TRIDENT's `PIL.Image -> Tensor[C,H,W]` transform.
+
+    Defined at module level rather than as a closure so it can be pickled: TRIDENT hands the
+    patch dataset (which holds the transform) to dataloader workers, and on start methods
+    without `fork` (macOS, Windows) an unpicklable transform silently drops the run back to
+    single-process loading.
+    """
+
+    def __init__(self, image_processor):
+        self.image_processor = image_processor
+
+    def __call__(self, image):
+        return self.image_processor(images=image, return_tensors="pt")["pixel_values"].squeeze(0)
+
+
 class CRADIOv2InferenceEncoder(BasePatchEncoder):
     """
     Base TRIDENT patch encoder wrapper for NVIDIA C-RADIOv2 models.
@@ -2110,6 +2127,14 @@ class CRADIOv2InferenceEncoder(BasePatchEncoder):
         Ranzinger et al., "RADIOv2.5: Improved Baselines for
         Agglomerative Vision Foundation Models", CVPR 2025.
         https://arxiv.org/abs/2412.07679
+
+    Notes:
+        Preprocessing comes from the checkpoint's own `CLIPImageProcessor`, which resizes the
+        shorter edge without center-cropping. TRIDENT always emits square patches, so the result
+        is square and valid; a *non-square* image would yield sides that are not both multiples of
+        the model's `min_resolution_step` (16) and raise a resolution error. Note also that B/L/H
+        upsample a 256px patch to 432x432 (~2.9x the pixels) while -g keeps 256x256, so the four
+        variants do not share preprocessing and cost more than `--patch_size` suggests.
     """
 
     HF_REPO = None
@@ -2173,11 +2198,7 @@ class CRADIOv2InferenceEncoder(BasePatchEncoder):
                     "Install it with `pip install open_clip_torch`, or via the patch-encoders extra."
                 )
 
-        def eval_transform(image):
-            return image_processor(
-                images=image,
-                return_tensors="pt",
-            )["pixel_values"].squeeze(0)
+        eval_transform = _HFImageProcessorTransform(image_processor)
 
         precision = torch.float32
 
