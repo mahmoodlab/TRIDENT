@@ -3,6 +3,7 @@ from abc import abstractmethod
 from typing import Literal, Optional, Any, Dict, Tuple, Callable
 import torch
 import os 
+from timm.models.vision_transformer import VisionTransformer
 
 from trident.patch_encoder_models.utils.constants import get_constants
 from trident.patch_encoder_models.utils.transform_utils import get_eval_transforms
@@ -95,6 +96,8 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "pathoduet-he"
+        - "pathoduet-ihc"
         - "gemma4-e4b"
         - "gemma4-26b"
 
@@ -1852,6 +1855,221 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class _PathoDuetViT(VisionTransformer):
+    """
+    ViT-B/16 architecture used by PathoDuet.
+
+    PathoDuet extends the standard Vision Transformer with an additional
+    learnable pretext token. The token sequence is:
+
+        [pretext] [CLS] [patch tokens...]
+
+    For a 224 x 224 input with 16 x 16 patches, this produces 198 tokens:
+    1 pretext token, 1 CLS token, and 196 patch tokens.
+
+    The downstream representation excludes both prefix tokens, mean-pools
+    the patch tokens, and applies ``fc_norm`` to produce a 768-dimensional
+    embedding.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        # Standard ViT already has one CLS prefix token.
+        # PathoDuet adds one pretext token.
+        self.num_prefix_tokens += 1
+
+        self.pretext_token = torch.nn.Parameter(
+            torch.ones(1, 1, self.embed_dim)
+        )
+
+        # 196 patch tokens + CLS + pretext = 198.
+        self.pos_embed = torch.nn.Parameter(
+            torch.zeros(
+                1,
+                self.patch_embed.num_patches + 2,
+                self.embed_dim,
+            ),
+            requires_grad=False,
+        )
+
+    def _pos_embed(self, x):
+        cls_token = self.cls_token.expand(
+            x.shape[0], -1, -1
+        )
+
+        # [CLS] [patches]
+        x = torch.cat((cls_token, x), dim=1)
+
+        pretext_token = self.pretext_token.expand(
+            x.shape[0], -1, -1
+        )
+
+        # [pretext] [CLS] [patches]
+        x = torch.cat((pretext_token, x), dim=1)
+
+        x = x + self.pos_embed
+
+        return self.pos_drop(x)
+
+    def forward_features(self, x):
+        x = self.patch_embed(x)
+        x = self._pos_embed(x)
+        x = self.blocks(x)
+        x = self.norm(x)
+
+        return x
+
+    def forward(self, x):
+        x = self.forward_features(x)
+
+        # Remove [pretext] and [CLS], then average patch tokens.
+        x = x[:, self.num_prefix_tokens:].mean(dim=1)
+
+        return self.fc_norm(x)
+
+class PathoDuetInferenceEncoder(BasePatchEncoder):
+    """
+    Base TRIDENT wrapper for PathoDuet patch encoders.
+
+    PathoDuet is a ViT-B/16 pathology foundation model designed for
+    representations across H&E and immunohistochemistry (IHC) stains.
+
+    Two official pretrained variants are supported:
+
+        - ``pathoduet-he``:
+          H&E model pretrained with the cross-scale positioning task.
+
+        - ``pathoduet-ihc``:
+          IHC model transferred from the H&E encoder through the
+          cross-stain learning task.
+
+    Architecture
+    ------------
+    - Backbone: ViT-B/16
+    - Input resolution: 224 x 224
+    - Patch size: 16 x 16
+    - Transformer depth: 12
+    - Hidden dimension: 768
+    - Attention heads: 12
+    - Output dimension: 768
+
+    PathoDuet augments the standard ViT architecture with an additional
+    learnable pretext token. ``_PathoDuetViT`` reproduces this architecture
+    and returns the official downstream representation by excluding the
+    pretext and CLS tokens, averaging the remaining patch tokens, and
+    applying ``fc_norm``.
+
+    Checkpoints
+    -----------
+    PathoDuet distributes its official H&E and IHC checkpoints separately.
+    The checkpoint path must therefore be supplied through ``weights_path``
+    or TRIDENT's ``local_ckpts.json``.
+
+    The IHC checkpoint additionally contains a ``bridge_token`` used during
+    the cross-stain training procedure. This parameter is not part of the
+    standard downstream image encoder and is removed before strict loading.
+
+    Preprocessing
+    -------------
+    PathoDuet explicitly avoids image normalization because of the domain
+    difference between pathology and natural images. Evaluation preprocessing
+    therefore resizes/crops the input to 224 x 224 and converts it to a tensor
+    without applying ImageNet or CLIP normalization.
+
+    Reference
+    ---------
+    Hua et al.,
+    "PathoDuet: Foundation Models for Pathological Slide Analysis of
+    H&E and IHC Stains", 2023.
+
+    Official implementation:
+        https://github.com/openmedlab/PathoDuet
+    """
+
+    ENC_NAME = None
+    DROP_BRIDGE_TOKEN = False
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from functools import partial
+        from torchvision import transforms
+
+        self.enc_name = self.ENC_NAME
+
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            raise FileNotFoundError(
+                f"{self.enc_name} requires the official PathoDuet checkpoint. "
+                "Download it from the official PathoDuet repository and "
+                "provide its path through weights_path or local_ckpts.json."
+            )
+
+        model = _PathoDuetViT(
+            img_size=224,
+            patch_size=16,
+            embed_dim=768,
+            depth=12,
+            num_heads=12,
+            mlp_ratio=4,
+            qkv_bias=True,
+            num_classes=0,
+            global_pool="avg",
+            norm_layer=partial(
+                torch.nn.LayerNorm,
+                eps=1e-6,
+            ),
+        )
+
+        checkpoint = torch.load(
+            weights_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+
+        state_dict = dict(checkpoint)
+
+        if self.DROP_BRIDGE_TOKEN:
+            state_dict.pop("bridge_token", None)
+
+        model.load_state_dict(
+            state_dict,
+            strict=True,
+        )
+
+        # PathoDuet explicitly does not use image normalization.
+        eval_transform = transforms.Compose(
+            [
+                transforms.Resize(
+                    224,
+                    interpolation=transforms.InterpolationMode.BICUBIC,
+                ),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+            ]
+        )
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+
+class PathoDuetHEInferenceEncoder(PathoDuetInferenceEncoder):
+    """PathoDuet H&E patch encoder."""
+
+    ENC_NAME = "pathoduet-he"
+
+
+class PathoDuetIHCInferenceEncoder(PathoDuetInferenceEncoder):
+    """PathoDuet IHC patch encoder."""
+
+    ENC_NAME = "pathoduet-ihc"
+    DROP_BRIDGE_TOKEN = True
+
+
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
     VARIANT = None    # "e4b" or "26b", set in subclasses
@@ -2092,4 +2310,6 @@ encoder_registry = {
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
+    "pathoduet-he": PathoDuetHEInferenceEncoder,
+    "pathoduet-ihc": PathoDuetIHCInferenceEncoder,
 }
