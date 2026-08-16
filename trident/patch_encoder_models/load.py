@@ -1852,6 +1852,137 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class PLIPInferenceEncoder(BasePatchEncoder):
+    """
+    TRIDENT patch encoder wrapper for PLIP.
+
+    PLIP is a pathology-specific vision-language model based on CLIP,
+    trained using the OpenPath pathology image-text dataset.
+
+    Paper:
+        Huang et al., "A visual-language foundation model for pathology
+        image analysis using medical Twitter", Nature Medicine, 2023.
+        https://www.nature.com/articles/s41591-023-02504-3
+
+    Model:
+        https://huggingface.co/vinid/plip
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        Initialize the PLIP patch encoder.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, normalize=False):
+        """
+        Build the PLIP model and evaluation preprocessing pipeline.
+
+        The model is loaded either from a user-provided/local checkpoint
+        or directly from the Hugging Face Hub.
+
+        Parameters
+        ----------
+        normalize : bool, default=False
+            Whether to L2-normalize the output image embeddings.
+
+        Returns
+        -------
+        model : torch.nn.Module
+            Loaded PLIP CLIP model.
+
+        eval_transform : Callable
+            Image preprocessing pipeline used before inference.
+
+        precision : torch.dtype
+            Floating-point precision used during inference.
+        """
+        from transformers import CLIPModel
+        from torchvision import transforms
+
+        self.enc_name = "plip"
+        self.normalize = normalize
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = (
+                    weights_path
+                    if os.path.isdir(weights_path)
+                    else os.path.dirname(weights_path)
+                )
+
+                model = CLIPModel.from_pretrained(
+                    model_dir,
+                    local_files_only=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create PLIP model from local checkpoint "
+                    f"at '{weights_path}'. "
+                    "You can download the model from: "
+                    "https://huggingface.co/vinid/plip."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = CLIPModel.from_pretrained("vinid/plip")
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download PLIP model from Hugging Face."
+                )
+
+        eval_transform = transforms.Compose([
+            transforms.Resize(
+                224,
+                interpolation=transforms.InterpolationMode.BICUBIC,
+            ),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ])
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract PLIP image embeddings.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Batch of preprocessed images with shape
+            `(batch_size, 3, 224, 224)`.
+
+        Returns
+        -------
+        torch.Tensor
+            PLIP image embeddings with shape `(batch_size, 512)`.
+        """
+        features = self.model.get_image_features(
+            pixel_values=x
+        )
+
+        if self.normalize:
+            features = torch.nn.functional.normalize(
+                features,
+                dim=-1,
+            )
+
+        return features
+
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
     VARIANT = None    # "e4b" or "26b", set in subclasses
@@ -2090,6 +2221,7 @@ encoder_registry = {
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "plip": PLIPInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }
