@@ -351,6 +351,11 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
                     "CTransPath dependency",
                     "Install with: pip install timm_ctp",
                 ),
+                _check_module(
+                    "open_clip",
+                    "C-RADIOv2 dependency",
+                    "Install with: pip install open_clip_torch",
+                ),
             ]
         )
         if check_gated:

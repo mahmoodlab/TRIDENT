@@ -49,6 +49,7 @@ environs = { version = "11.0.0", optional = true }
 sacremoses = { version = "0.1.1", optional = true }
 fairscale = { version = "*", optional = true }
 timm_ctp = { version = "*", optional = true }
+open_clip_torch = { version = "*", optional = true }
 conch = { git = "https://github.com/Mahmoodlab/CONCH.git", optional = true }
 musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
 gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
@@ -66,6 +67,7 @@ patch-encoders = [
     "timm_ctp",
     "conch",
     "musk",
+    "open_clip_torch",
 ]
 slide-encoders = [
     "environs",
@@ -92,6 +94,7 @@ full = [
     "timm_ctp",
     "conch",
     "musk",
+    "open_clip_torch",
     "gigapath",
     "madeleine",
     "pylibCZIrw",

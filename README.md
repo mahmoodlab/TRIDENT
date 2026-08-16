@@ -31,7 +31,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
   - This installs the shared model stack (`timm>=0.9.16,<2`, `transformers>=4.51,<5`, `safetensors`, etc.).
 
 Optional install profiles:
-- `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF)).
+- `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF), [C-RADIOv2](https://huggingface.co/nvidia/C-RADIOv2-B) via `open_clip_torch`).
 - `pip install -e ".[slide-encoders]"` for slide embedding-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine)).
 - `pip install -e ".[omezarr]"` for OME Zarr WSI reader support ([OME-NGFF / OME-Zarr](https://ngff.openmicroscopy.org/latest/)).
 - `pip install -e ".[czi]"` for Zeiss CZI WSI reader support ([pylibCZIrw](https://pypi.org/project/pylibCZIrw/)).
@@ -156,8 +156,8 @@ Trident supports 39 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) | 🌐 [Lunit non-commercial](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
 | **Hibou**             | 1024           | `--patch_encoder hibou_l --patch_size 224 --mag 20`              | [histai/hibou-L](https://huggingface.co/histai/hibou-L) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — | 🌐 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) |
-| **PLIP**                 | 512            | `--patch_encoder plip --patch_size 224 --mag 20`              | [plip](https://huggingface.co/vinid/plip) |
-| **CLIP-RN50**            | 1024           | `--patch_encoder clip-rn50 --patch_size 224 --mag 20`         | [clip-rn50](https://huggingface.co/timm/resnet50_clip.openai) |
+| **PLIP**                 | 512            | `--patch_encoder plip --patch_size 256 --mag 20`              | [plip](https://huggingface.co/vinid/plip) |
+| **CLIP-RN50**            | 1024           | `--patch_encoder clip-rn50 --patch_size 256 --mag 20`         | [clip-rn50](https://huggingface.co/timm/resnet50_clip.openai) |
 | **C-RADIOv2-B**          | 2304           | `--patch_encoder c-radio-v2-b --patch_size 256 --mag 20`      | [c-radio-v2-b](https://huggingface.co/nvidia/C-RADIOv2-B) |
 | **C-RADIOv2-L**          | 3072           | `--patch_encoder c-radio-v2-l --patch_size 256 --mag 20`      | [c-radio-v2-l](https://huggingface.co/nvidia/C-RADIOv2-L) |
 | **C-RADIOv2-H**          | 3840           | `--patch_encoder c-radio-v2-h --patch_size 256 --mag 20`      | [c-radio-v2-h](https://huggingface.co/nvidia/C-RADIOv2-H) |

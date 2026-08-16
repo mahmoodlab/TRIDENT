@@ -268,11 +268,11 @@ Factory for loading patch-level encoder models.
      - 🌐 `GPL-3.0 <https://www.gnu.org/licenses/gpl-3.0.html>`__
    * - **PLIP**
      - 512
-     - ``--patch_encoder plip --patch_size 224 --mag 20``
+     - ``--patch_encoder plip --patch_size 256 --mag 20``
      - `plip <https://huggingface.co/vinid/plip>`__
    * - **CLIP-RN50**
      - 1024
-     - ``--patch_encoder clip-rn50 --patch_size 224 --mag 20``
+     - ``--patch_encoder clip-rn50 --patch_size 256 --mag 20``
      - `clip-rn50 <https://huggingface.co/timm/resnet50_clip.openai>`__
    * - **C-RADIOv2-B**
      - 2304

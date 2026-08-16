@@ -132,8 +132,8 @@ column is **required** for correct features — copy it verbatim.
 | `lunit-vits8` | 384 | `--patch_size 224 --mag 20` |
 | `hibou_l` | 1024 | `--patch_size 224 --mag 20` |
 | `ctranspath` | 768 | `--patch_size 256 --mag 10` |
-| `plip` | 512 | `--patch_size 224 --mag 20` |
-| `clip-rn50` | 1024 | `--patch_size 224 --mag 20` |
+| `plip` | 512 | `--patch_size 256 --mag 20` |
+| `clip-rn50` | 1024 | `--patch_size 256 --mag 20` |
 | `c-radio-v2-b` | 2304 | `--patch_size 256 --mag 20` |
 | `c-radio-v2-l` | 3072 | `--patch_size 256 --mag 20` |
 | `c-radio-v2-h` | 3840 | `--patch_size 256 --mag 20` |

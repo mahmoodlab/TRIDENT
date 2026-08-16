@@ -2147,7 +2147,9 @@ class CRADIOv2InferenceEncoder(BasePatchEncoder):
                 traceback.print_exc()
                 raise Exception(
                     f"Failed to create {self.enc_name} model from "
-                    f"local checkpoint at '{weights_path}'."
+                    f"local checkpoint at '{weights_path}'. "
+                    "C-RADIOv2 remote code imports `open_clip`, which is not in the base install. "
+                    "Install it with `pip install open_clip_torch`, or via the patch-encoders extra."
                 )
 
         else:
@@ -2166,7 +2168,9 @@ class CRADIOv2InferenceEncoder(BasePatchEncoder):
             except Exception:
                 traceback.print_exc()
                 raise Exception(
-                    f"Failed to download {self.enc_name} from Hugging Face."
+                    f"Failed to load {self.enc_name} from Hugging Face. "
+                    "C-RADIOv2 remote code imports `open_clip`, which is not in the base install. "
+                    "Install it with `pip install open_clip_torch`, or via the patch-encoders extra."
                 )
 
         def eval_transform(image):
