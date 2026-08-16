@@ -1852,6 +1852,114 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class CLIPRN50InferenceEncoder(BasePatchEncoder):
+    """
+    TRIDENT patch encoder wrapper for OpenAI CLIP-RN50.
+
+    CLIP-RN50 uses a modified ResNet-50 visual backbone trained with
+    CLIP's image-text contrastive objective.
+
+    Paper:
+        Radford et al., "Learning Transferable Visual Models From
+        Natural Language Supervision", ICML, 2021.
+        https://arxiv.org/abs/2103.00020
+
+    Model:
+        https://huggingface.co/timm/resnet50_clip.openai
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        Initialize the CLIP-RN50 patch encoder.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        """
+        Build the OpenAI CLIP-RN50 visual encoder and its evaluation
+        preprocessing pipeline.
+
+        The model is loaded either from a local checkpoint or from the
+        pretrained OpenAI CLIP-RN50 weights exposed through timm.
+
+        Returns
+        -------
+        model : torch.nn.Module
+            CLIP-RN50 visual encoder.
+
+        eval_transform : Callable
+            Evaluation preprocessing associated with the pretrained model.
+
+        precision : torch.dtype
+            Floating-point precision used for inference.
+        """
+        import timm
+        from timm.data import resolve_model_data_config
+        from timm.data.transforms_factory import create_transform
+
+        self.enc_name = "clip-rn50"
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model = timm.create_model(
+                    "resnet50_clip",
+                    pretrained=False,
+                    checkpoint_path=weights_path,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create CLIP-RN50 model from local "
+                    f"checkpoint at '{weights_path}'. "
+                    "You can download the pretrained model from: "
+                    "https://huggingface.co/timm/resnet50_clip.openai."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = timm.create_model(
+                    "resnet50_clip.openai",
+                    pretrained=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download OpenAI CLIP-RN50 model."
+                )
+
+        data_config = resolve_model_data_config(model)
+
+        eval_transform = create_transform(
+            **data_config,
+            is_training=False,
+        )
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract CLIP-RN50 image embeddings.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Batch of preprocessed images.
+
+        Returns
+        -------
+        torch.Tensor
+            CLIP-RN50 image embeddings.
+        """
+        return self.model(x)
+
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
     VARIANT = None    # "e4b" or "26b", set in subclasses
@@ -2090,6 +2198,7 @@ encoder_registry = {
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "clip-rn50": CLIPRN50InferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }
