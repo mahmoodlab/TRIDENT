@@ -175,6 +175,11 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    def test_beph_forward(self):
+        output = self._test_encoder_forward("beph")
+        self.assertEqual(output.shape[-1], 768)
+
+
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_forward(self):
