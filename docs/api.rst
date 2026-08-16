@@ -266,6 +266,30 @@ Factory for loading patch-level encoder models.
      - ``--patch_encoder ctranspath --patch_size 256 --mag 10``
      - —
      - 🌐 `GPL-3.0 <https://www.gnu.org/licenses/gpl-3.0.html>`__
+   * - **PLIP**
+     - 512
+     - ``--patch_encoder plip --patch_size 224 --mag 20``
+     - `plip <https://huggingface.co/vinid/plip>`__
+   * - **CLIP-RN50**
+     - 1024
+     - ``--patch_encoder clip-rn50 --patch_size 224 --mag 20``
+     - `clip-rn50 <https://huggingface.co/timm/resnet50_clip.openai>`__
+   * - **C-RADIOv2-B**
+     - 2304
+     - ``--patch_encoder c-radio-v2-b --patch_size 256 --mag 20``
+     - `c-radio-v2-b <https://huggingface.co/nvidia/C-RADIOv2-B>`__
+   * - **C-RADIOv2-L**
+     - 3072
+     - ``--patch_encoder c-radio-v2-l --patch_size 256 --mag 20``
+     - `c-radio-v2-l <https://huggingface.co/nvidia/C-RADIOv2-L>`__
+   * - **C-RADIOv2-H**
+     - 3840
+     - ``--patch_encoder c-radio-v2-h --patch_size 256 --mag 20``
+     - `c-radio-v2-h <https://huggingface.co/nvidia/C-RADIOv2-H>`__
+   * - **C-RADIOv2-G**
+     - 3072
+     - ``--patch_encoder c-radio-v2-g --patch_size 256 --mag 20``
+     - `c-radio-v2-g <https://huggingface.co/nvidia/C-RADIOv2-g>`__
    * - **ResNet50**
      - 1024
      - ``--patch_encoder resnet50 --patch_size 256 --mag 20``

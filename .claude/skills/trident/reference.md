@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (33) — embedding dim + required patch_size/mag
+- Patch encoders (39) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -132,6 +132,12 @@ column is **required** for correct features — copy it verbatim.
 | `lunit-vits8` | 384 | `--patch_size 224 --mag 20` |
 | `hibou_l` | 1024 | `--patch_size 224 --mag 20` |
 | `ctranspath` | 768 | `--patch_size 256 --mag 10` |
+| `plip` | 512 | `--patch_size 224 --mag 20` |
+| `clip-rn50` | 1024 | `--patch_size 224 --mag 20` |
+| `c-radio-v2-b` | 2304 | `--patch_size 256 --mag 20` |
+| `c-radio-v2-l` | 3072 | `--patch_size 256 --mag 20` |
+| `c-radio-v2-h` | 3840 | `--patch_size 256 --mag 20` |
+| `c-radio-v2-g` | 3072 | `--patch_size 256 --mag 20` |
 | `resnet50` | 1024 | `--patch_size 256 --mag 20` |
 
 ## Slide encoders
