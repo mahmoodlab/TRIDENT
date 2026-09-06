@@ -136,6 +136,11 @@ Factory for loading patch-level encoder models.
      - ``--patch_encoder uni_v1 --patch_size 256 --mag 20``
      - `MahmoodLab/UNI <https://huggingface.co/MahmoodLab/UNI>`__
      - 🔒 `CC-BY-NC-ND-4.0 <https://creativecommons.org/licenses/by-nc-nd/4.0/>`__
+   * - **Digepath**
+     - 1024
+     - ``--patch_encoder digepath --patch_size 256 --mag 20``
+     - `xtxx/Digepath <https://huggingface.co/xtxx/Digepath>`__
+     - 🔒 `CC-BY-NC-4.0 <https://creativecommons.org/licenses/by-nc/4.0/>`__
    * - **UNI2-h**
      - 1536
      - ``--patch_encoder uni_v2 --patch_size 256 --mag 20``

@@ -290,6 +290,7 @@ Environment and advanced usage
         "conch_v1": "./ckpts/conch_patch_encoder/pytorch_model.bin",
         "uni_v1": "./ckpts/uni_patch_encoder/pytorch_model.bin",
         "uni_v2": "./ckpts/uni2_patch_encoder/pytorch_model.bin",
+        "digepath": "./ckpts/digepath_patch_encoder/model.safetensors",
         "ctranspath": "./ckpts/ctranspath_patch_encoder/CHIEF_CTransPath.pth",
         "phikon": "./ckpts/phikon_patch_encoder/pytorch_model.bin",
         "resnet50": "./ckpts/resnet_patch_encoder/pytorch_model.bin",
