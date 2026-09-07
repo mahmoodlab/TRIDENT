@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import os 
+import sys
 import warnings
 import multiprocessing as mp
 import torch 
@@ -34,13 +35,15 @@ def _warn_ctx_fallback_once(key: str, message: str) -> None:
         _WARNED_CTX_FALLBACKS.add(key)
 
 
-def _dataloader_context_candidates(num_workers: int):
-    if not num_workers or num_workers <= 0:
+def _dataloader_context_candidates(num_workers: int, device: str = 'cpu'):
+    if not num_workers or num_workers <= 0 or device == 'mps':
         return [None]
 
     candidates = []
-    # Prefer fork on POSIX to avoid spawn pickling issues with complex objects.
-    for method in ('fork', 'spawn'):
+    # macOS native libraries are not fork-safe. MPS stays in the main process;
+    # CPU readers that cannot be pickled fall back from spawn to serial loading.
+    methods = ('spawn',) if sys.platform == 'darwin' else ('fork', 'spawn')
+    for method in methods:
         try:
             if method in mp.get_all_start_methods():
                 ctx = mp.get_context(method)
@@ -53,14 +56,14 @@ def _dataloader_context_candidates(num_workers: int):
     return candidates
 
 
-def _run_with_dataloader_ctx_fallback(run_fn, num_workers: int, warn_key: str, warn_msg: str, fail_label: str):
+def _run_with_dataloader_ctx_fallback(run_fn, num_workers: int, warn_key: str, warn_msg: str, fail_label: str, device: str = 'cpu'):
     """
     Try `run_fn(ctx)` for each candidate multiprocessing context. Only
     pickling-related errors are swallowed (so we can fall back to the next
     candidate, e.g. 'fork' or single-process). Any other error propagates.
     """
     last_err = None
-    for ctx in _dataloader_context_candidates(num_workers):
+    for ctx in _dataloader_context_candidates(num_workers, device=device):
         try:
             return run_fn(ctx)
         except Exception as err:
@@ -388,6 +391,8 @@ class WSI:
             dl_kwargs = dict(dataloader_kwargs)
             if ctx is not None:
                 dl_kwargs['multiprocessing_context'] = ctx
+            else:
+                dl_kwargs['num_workers'] = 0
             dataloader = DataLoader(**dl_kwargs)
             iterator = tqdm(dataloader) if verbose else dataloader
             local_mask = np.zeros((height, width), dtype=np.uint8)
@@ -430,8 +435,9 @@ class WSI:
             _process_batches,
             inferred_workers,
             'segmentation_spawn_fallback',
-            "[WSI] Falling back to a fork-based DataLoader context for segmentation due to pickling limits.",
+            "[WSI] Retrying segmentation with another DataLoader context or single-process loading due to pickling limits.",
             'segmentation dataloader',
+            device=device,
         )
         return predicted_mask, mpp_reduction_factor
 
@@ -995,6 +1001,8 @@ class WSI:
             dl_kwargs = dict(dataloader_kwargs)
             if ctx is not None:
                 dl_kwargs['multiprocessing_context'] = ctx
+            else:
+                dl_kwargs['num_workers'] = 0
             dataloader = DataLoader(**dl_kwargs)
             iterator = tqdm(dataloader) if verbose else dataloader
             collected = []
@@ -1013,8 +1021,9 @@ class WSI:
             _collect_features,
             inferred_workers,
             'feature_spawn_fallback',
-            "[WSI] Falling back to fork-based DataLoader workers for feature extraction due to pickling limits.",
+            "[WSI] Retrying feature extraction with another DataLoader context or single-process loading due to pickling limits.",
             'feature extraction dataloader',
+            device=device,
         )
 
         # Concatenate features
