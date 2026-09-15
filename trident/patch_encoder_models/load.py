@@ -95,6 +95,9 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "quiltnet-b32"
+        - "quiltnet-b16"
+        - "quiltnet-b16-pmb"
         - "gemma4-e4b"
         - "gemma4-26b"
 
@@ -1851,6 +1854,112 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
     def forward(self, x):
         return self.model(x)
 
+class QuiltNetInferenceEncoder(BasePatchEncoder):
+    """
+    Base wrapper for QuiltNet pathology vision-language foundation models.
+
+    QuiltNet is a CLIP-style vision-language model trained on Quilt-1M,
+    a large-scale histopathology image-text dataset. This wrapper exposes
+    only the visual encoder for patch-level feature extraction in TRIDENT.
+
+    The official QuiltNet checkpoints are distributed in OpenCLIP format
+    through the Hugging Face Hub.
+
+    All supported variants:
+        - QuiltNet-B-32
+        - QuiltNet-B-16
+        - QuiltNet-B-16-PMB
+
+    use 224 x 224 image inputs and produce 512-dimensional image embeddings.
+
+    Only ``model.visual`` is retained because TRIDENT requires image features
+    only. This produces exactly the same unnormalized representation as
+    ``model.encode_image(..., normalize=False)`` while avoiding retention of
+    the unused text tower.
+
+    Preprocessing is taken directly from the checkpoint's OpenCLIP
+    configuration. For the currently released checkpoints this consists of
+    bicubic resize to 224 x 224, center cropping, tensor conversion, and CLIP
+    image normalization.
+
+    Local loading
+    -------------
+    A locally downloaded OpenCLIP/Hugging Face model directory may be supplied
+    through ``weights_path`` or ``local_ckpts.json``. The directory must
+    contain the OpenCLIP configuration and checkpoint files required by
+    OpenCLIP's ``local-dir:`` loader.
+
+    References
+    ----------
+    QuiltNet:
+        Ikezogwo et al., "Quilt-1M: One Million Image-Text Pairs for
+        Histopathology", NeurIPS 2023.
+
+    Model collection:
+        https://huggingface.co/wisdomik
+    """
+
+    HF_REPO = None
+    ENC_NAME = None
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        import os
+        import open_clip
+
+        self.enc_name = self.ENC_NAME
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            if not os.path.isdir(weights_path):
+                raise ValueError(
+                    f"{self.enc_name} local weights must point to a complete "
+                    "OpenCLIP model directory containing the model config and "
+                    f"checkpoint files, got: {weights_path}"
+                )
+
+            model_source = f"local-dir:{weights_path}"
+        else:
+            self.ensure_has_internet(self.enc_name)
+            model_source = f"hf-hub:{self.HF_REPO}"
+
+        model, _, eval_transform = open_clip.create_model_and_transforms(
+            model_source
+        )
+
+        # TRIDENT only needs the visual tower.
+        model = model.visual
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class QuiltNetB32InferenceEncoder(QuiltNetInferenceEncoder):
+    """QuiltNet ViT-B/32 patch encoder."""
+
+    ENC_NAME = "quiltnet-b32"
+    HF_REPO = "wisdomik/QuiltNet-B-32"
+
+
+class QuiltNetB16InferenceEncoder(QuiltNetInferenceEncoder):
+    """QuiltNet ViT-B/16 patch encoder."""
+
+    ENC_NAME = "quiltnet-b16"
+    HF_REPO = "wisdomik/QuiltNet-B-16"
+
+
+class QuiltNetB16PMBInferenceEncoder(QuiltNetInferenceEncoder):
+    """QuiltNet ViT-B/16 + PubMedBERT variant, using its visual tower."""
+
+    ENC_NAME = "quiltnet-b16-pmb"
+    HF_REPO = "wisdomik/QuiltNet-B-16-PMB"
 
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
@@ -2090,6 +2199,9 @@ encoder_registry = {
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "quiltnet-b32": QuiltNetB32InferenceEncoder,
+    "quiltnet-b16": QuiltNetB16InferenceEncoder,
+    "quiltnet-b16-pmb": QuiltNetB16PMBInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }

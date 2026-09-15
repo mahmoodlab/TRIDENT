@@ -175,6 +175,15 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    def test_quiltnet_forward(self):
+        for name in [
+            "quiltnet-b32",
+            "quiltnet-b16",
+            "quiltnet-b16-pmb",
+        ]:
+            output = self._test_encoder_forward(name)
+            self.assertEqual(output.shape[-1], 512)
+
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_forward(self):

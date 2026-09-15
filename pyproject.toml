@@ -59,6 +59,7 @@ cf-units = { version = ">=3.1", optional = true }
 ngff-zarr = { version = ">=0.12", optional = true }
 zarr = { version = ">=3.0.0a0", optional = true }
 dask = { version = ">=2024.10", optional = true }
+open_clip_torch = { version = ">=3.3,<4", optional = true }
 
 [tool.poetry.extras]
 patch-encoders = [
@@ -66,6 +67,7 @@ patch-encoders = [
     "timm_ctp",
     "conch",
     "musk",
+    "open_clip_torch",
 ]
 slide-encoders = [
     "environs",
@@ -92,6 +94,7 @@ full = [
     "timm_ctp",
     "conch",
     "musk",
+    "open_clip_torch",
     "gigapath",
     "madeleine",
     "pylibCZIrw",
