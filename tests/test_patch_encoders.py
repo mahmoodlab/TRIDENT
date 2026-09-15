@@ -175,6 +175,17 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    def test_plip_forward(self):
+        self.assertEqual(self._output_dim('plip'), 512)
+
+    def test_clip_rn50_forward(self):
+        self.assertEqual(self._output_dim('clip-rn50'), 1024)
+
+    def test_c_radio_v2_forward(self):
+        for name, dim in [('c-radio-v2-b', 2304), ('c-radio-v2-l', 3072),
+                          ('c-radio-v2-h', 3840), ('c-radio-v2-g', 3072)]:
+            self.assertEqual(self._output_dim(name), dim)
+
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_forward(self):

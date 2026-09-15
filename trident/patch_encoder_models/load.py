@@ -95,6 +95,12 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "plip"
+        - "clip-rn50"
+        - "c-radio-v2-b"
+        - "c-radio-v2-l"
+        - "c-radio-v2-h"
+        - "c-radio-v2-g"
         - "gemma4-e4b"
         - "gemma4-26b"
 
@@ -1852,6 +1858,393 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class PLIPInferenceEncoder(BasePatchEncoder):
+    """
+    TRIDENT patch encoder wrapper for PLIP.
+
+    PLIP is a pathology-specific vision-language model based on CLIP,
+    trained using the OpenPath pathology image-text dataset.
+
+    Paper:
+        Huang et al., "A visual-language foundation model for pathology
+        image analysis using medical Twitter", Nature Medicine, 2023.
+        https://www.nature.com/articles/s41591-023-02504-3
+
+    Model:
+        https://huggingface.co/vinid/plip
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        Initialize the PLIP patch encoder.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, normalize=False):
+        """
+        Build the PLIP model and evaluation preprocessing pipeline.
+
+        The model is loaded either from a user-provided/local checkpoint
+        or directly from the Hugging Face Hub.
+
+        Parameters
+        ----------
+        normalize : bool, default=False
+            Whether to L2-normalize the output image embeddings.
+
+        Returns
+        -------
+        model : torch.nn.Module
+            Loaded PLIP CLIP model.
+
+        eval_transform : Callable
+            Image preprocessing pipeline used before inference.
+
+        precision : torch.dtype
+            Floating-point precision used during inference.
+        """
+        from transformers import CLIPModel
+        from torchvision import transforms
+
+        self.enc_name = "plip"
+        self.normalize = normalize
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = (
+                    weights_path
+                    if os.path.isdir(weights_path)
+                    else os.path.dirname(weights_path)
+                )
+
+                model = CLIPModel.from_pretrained(
+                    model_dir,
+                    local_files_only=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create PLIP model from local checkpoint "
+                    f"at '{weights_path}'. "
+                    "You can download the model from: "
+                    "https://huggingface.co/vinid/plip."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = CLIPModel.from_pretrained("vinid/plip")
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download PLIP model from Hugging Face."
+                )
+
+        eval_transform = transforms.Compose([
+            transforms.Resize(
+                224,
+                interpolation=transforms.InterpolationMode.BICUBIC,
+            ),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ])
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract PLIP image embeddings.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Batch of preprocessed images with shape
+            `(batch_size, 3, 224, 224)`.
+
+        Returns
+        -------
+        torch.Tensor
+            PLIP image embeddings with shape `(batch_size, 512)`.
+        """
+        features = self.model.get_image_features(
+            pixel_values=x
+        )
+
+        if self.normalize:
+            features = torch.nn.functional.normalize(
+                features,
+                dim=-1,
+            )
+
+        return features
+
+
+class CLIPRN50InferenceEncoder(BasePatchEncoder):
+    """
+    TRIDENT patch encoder wrapper for OpenAI CLIP-RN50.
+
+    CLIP-RN50 uses a modified ResNet-50 visual backbone trained with
+    CLIP's image-text contrastive objective.
+
+    Paper:
+        Radford et al., "Learning Transferable Visual Models From
+        Natural Language Supervision", ICML, 2021.
+        https://arxiv.org/abs/2103.00020
+
+    Model:
+        https://huggingface.co/timm/resnet50_clip.openai
+    """
+
+    def __init__(self, **build_kwargs):
+        """
+        Initialize the CLIP-RN50 patch encoder.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        """
+        Build the OpenAI CLIP-RN50 visual encoder and its evaluation
+        preprocessing pipeline.
+
+        The model is loaded either from a local checkpoint or from the
+        pretrained OpenAI CLIP-RN50 weights exposed through timm.
+
+        Returns
+        -------
+        model : torch.nn.Module
+            CLIP-RN50 visual encoder.
+
+        eval_transform : Callable
+            Evaluation preprocessing associated with the pretrained model.
+
+        precision : torch.dtype
+            Floating-point precision used for inference.
+        """
+        import timm
+        from timm.data import resolve_model_data_config
+        from timm.data.transforms_factory import create_transform
+
+        self.enc_name = "clip-rn50"
+
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model = timm.create_model(
+                    "resnet50_clip",
+                    pretrained=False,
+                    checkpoint_path=weights_path,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create CLIP-RN50 model from local "
+                    f"checkpoint at '{weights_path}'. "
+                    "You can download the pretrained model from: "
+                    "https://huggingface.co/timm/resnet50_clip.openai."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = timm.create_model(
+                    "resnet50_clip.openai",
+                    pretrained=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download OpenAI CLIP-RN50 model."
+                )
+
+        data_config = resolve_model_data_config(model)
+
+        eval_transform = create_transform(
+            **data_config,
+            is_training=False,
+        )
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract CLIP-RN50 image embeddings.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Batch of preprocessed images.
+
+        Returns
+        -------
+        torch.Tensor
+            CLIP-RN50 image embeddings.
+        """
+        return self.model(x)
+
+
+class _HFImageProcessorTransform:
+    """
+    Adapt a HuggingFace image processor to TRIDENT's `PIL.Image -> Tensor[C,H,W]` transform.
+
+    Defined at module level rather than as a closure so it can be pickled: TRIDENT hands the
+    patch dataset (which holds the transform) to dataloader workers, and on start methods
+    without `fork` (macOS, Windows) an unpicklable transform silently drops the run back to
+    single-process loading.
+    """
+
+    def __init__(self, image_processor):
+        self.image_processor = image_processor
+
+    def __call__(self, image):
+        return self.image_processor(images=image, return_tensors="pt")["pixel_values"].squeeze(0)
+
+
+class CRADIOv2InferenceEncoder(BasePatchEncoder):
+    """
+    Base TRIDENT patch encoder wrapper for NVIDIA C-RADIOv2 models.
+
+    C-RADIOv2 is a general-purpose vision foundation model for visual
+    feature extraction.
+
+    Paper:
+        Ranzinger et al., "RADIOv2.5: Improved Baselines for
+        Agglomerative Vision Foundation Models", CVPR 2025.
+        https://arxiv.org/abs/2412.07679
+
+    Notes:
+        Preprocessing comes from the checkpoint's own `CLIPImageProcessor`, which resizes the
+        shorter edge without center-cropping. TRIDENT always emits square patches, so the result
+        is square and valid; a *non-square* image would yield sides that are not both multiples of
+        the model's `min_resolution_step` (16) and raise a resolution error. Note also that B/L/H
+        upsample a 256px patch to 432x432 (~2.9x the pixels) while -g keeps 256x256, so the four
+        variants do not share preprocessing and cost more than `--patch_size` suggests.
+    """
+
+    HF_REPO = None
+    ENC_NAME = None
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from transformers import AutoModel, CLIPImageProcessor
+
+        self.enc_name = self.ENC_NAME
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = (
+                    weights_path
+                    if os.path.isdir(weights_path)
+                    else os.path.dirname(weights_path)
+                )
+
+                model = AutoModel.from_pretrained(
+                    model_dir,
+                    trust_remote_code=True,
+                    local_files_only=True,
+                )
+
+                image_processor = CLIPImageProcessor.from_pretrained(
+                    model_dir,
+                    local_files_only=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create {self.enc_name} model from "
+                    f"local checkpoint at '{weights_path}'. "
+                    "C-RADIOv2 remote code imports `open_clip`, which is not in the base install. "
+                    "Install it with `pip install open_clip_torch`, or via the patch-encoders extra."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = AutoModel.from_pretrained(
+                    self.HF_REPO,
+                    trust_remote_code=True,
+                )
+
+                image_processor = CLIPImageProcessor.from_pretrained(
+                    self.HF_REPO
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to load {self.enc_name} from Hugging Face. "
+                    "C-RADIOv2 remote code imports `open_clip`, which is not in the base install. "
+                    "Install it with `pip install open_clip_torch`, or via the patch-encoders extra."
+                )
+
+        eval_transform = _HFImageProcessorTransform(image_processor)
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract the global C-RADIOv2 image representation.
+
+        Returns
+        -------
+        torch.Tensor
+            Summary embeddings with shape (batch_size, feature_dim).
+        """
+        summary, _ = self.model(x)
+        return summary
+
+
+class CRADIOv2BInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Base (~90M parameters)."""
+
+    ENC_NAME = "c-radio-v2-b"
+    HF_REPO = "nvidia/C-RADIOv2-B"
+
+
+class CRADIOv2LInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Large (~320M parameters)."""
+
+    ENC_NAME = "c-radio-v2-l"
+    HF_REPO = "nvidia/C-RADIOv2-L"
+
+
+class CRADIOv2HInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Huge (~653M parameters)."""
+
+    ENC_NAME = "c-radio-v2-h"
+    HF_REPO = "nvidia/C-RADIOv2-H"
+
+
+class CRADIOv2GInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Gigantic (~1.1B parameters)."""
+
+    ENC_NAME = "c-radio-v2-g"
+    HF_REPO = "nvidia/C-RADIOv2-g"
+
+
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
     VARIANT = None    # "e4b" or "26b", set in subclasses
@@ -2090,6 +2483,12 @@ encoder_registry = {
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "plip": PLIPInferenceEncoder,
+    "clip-rn50": CLIPRN50InferenceEncoder,
+    "c-radio-v2-b": CRADIOv2BInferenceEncoder,
+    "c-radio-v2-l": CRADIOv2LInferenceEncoder,
+    "c-radio-v2-h": CRADIOv2HInferenceEncoder,
+    "c-radio-v2-g": CRADIOv2GInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }
