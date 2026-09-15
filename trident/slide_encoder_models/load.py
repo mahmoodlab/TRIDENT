@@ -108,6 +108,22 @@ slide_to_patch_encoder_name = {
 }
 
 
+def resolve_patch_encoder_name(slide_encoder_name: str) -> str:
+    """
+    The patch encoder a slide encoder consumes.
+
+    `mean-*` encoders pool whichever patch encoder their suffix names (e.g. 'mean-resnet50' ->
+    'resnet50'); every other slide encoder is pinned to one by `slide_to_patch_encoder_name`.
+
+    Raises:
+        KeyError: if `slide_encoder_name` has no patch encoder (e.g. 'abmil', which is a
+            building block rather than a pretrained encoder).
+    """
+    if slide_encoder_name.startswith('mean-'):
+        return slide_encoder_name.split('mean-', 1)[1]
+    return slide_to_patch_encoder_name[slide_encoder_name]
+
+
 
 class BaseSlideEncoder(torch.nn.Module):
     
