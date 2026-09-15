@@ -930,13 +930,10 @@ class Processor:
             Exception: Propagates exceptions unless `self.skip_errors` is set to True.
 
         """
-        from trident.slide_encoder_models.load import slide_to_patch_encoder_name
-        
-        if slide_encoder.enc_name.startswith('mean-'):
-            slide_to_patch_encoder_name[slide_encoder.enc_name] = slide_encoder.enc_name.split('mean-')[1] # e.g. mean-resnet18 -> resnet18
+        from trident.slide_encoder_models.load import resolve_patch_encoder_name
 
         # Setting I/O
-        mustbe_patch_encoder = slide_to_patch_encoder_name[slide_encoder.enc_name]
+        mustbe_patch_encoder = resolve_patch_encoder_name(slide_encoder.enc_name)
         patch_features_dir = os.path.join(coords_dir, f'features_{mustbe_patch_encoder}')
         if saveto is None:
             saveto = os.path.join(coords_dir, f'slide_features_{slide_encoder.enc_name}')
@@ -951,7 +948,7 @@ class Processor:
         if len(already_processed) < len(self.wsis):
             print(f"[PROCESSOR] Some patch features haven't been extracted in {len(already_processed)}/{len(self.wsis)} WSIs. Starting extraction.")
             from trident.patch_encoder_models.load import encoder_factory
-            patch_encoder = encoder_factory(slide_to_patch_encoder_name[slide_encoder.enc_name])
+            patch_encoder = encoder_factory(mustbe_patch_encoder)
             self.run_patch_feature_extraction_job(
                 coords_dir=coords_dir,
                 patch_encoder=patch_encoder,

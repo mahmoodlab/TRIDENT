@@ -580,7 +580,16 @@ def main() -> None:
         print('[MAIN] Warning: CUDA not available, using CPU.')
         gpu_ids = [-1]
 
-    run_id = start_run(args.job_dir, tool="run_batch_of_slides", args=vars(args))
+    # A slide encoder picks its own patch encoder, leaving --patch_encoder at its default.
+    # Record what will actually run, not the untouched default (issue #239).
+    manifest_args = vars(args).copy()
+    if args.slide_encoder:
+        from trident.slide_encoder_models.load import resolve_patch_encoder_name
+        try:
+            manifest_args["patch_encoder"] = resolve_patch_encoder_name(args.slide_encoder)
+        except KeyError:
+            manifest_args["patch_encoder"] = None  # metadata must never abort a run
+    run_id = start_run(args.job_dir, tool="run_batch_of_slides", args=manifest_args)
     run_status = "completed"
     run_error = None
 
