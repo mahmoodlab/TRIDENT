@@ -95,6 +95,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "beph"
         - "gemma4-e4b"
         - "gemma4-26b"
 
@@ -1851,6 +1852,204 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
     def forward(self, x):
         return self.model(x)
 
+def _convert_beph_state_dict(state_dict, model):
+    """Convert the official BEPH/MMSelfSup BEiT checkpoint to timm format."""
+    converted = {}
+
+    for key, value in state_dict.items():
+        if not key.startswith("backbone."):
+            continue
+
+        key = key.removeprefix("backbone.")
+
+        # Used only during masked-image pretraining.
+        if key == "mask_token":
+            continue
+
+        # BEPH stores one shared relative-position bias table.
+        # timm expects one table per transformer block.
+        if key == "rel_pos_bias.relative_position_bias_table":
+            for i in range(len(model.blocks)):
+                converted[
+                    f"blocks.{i}.attn.relative_position_bias_table"
+                ] = value.clone()
+            continue
+
+        # timm generates this buffer internally.
+        if key == "rel_pos_bias.relative_position_index":
+            continue
+
+        key = key.replace(
+            "patch_embed.projection.",
+            "patch_embed.proj.",
+        )
+        key = key.replace(
+            ".ffn.layers.0.0.",
+            ".mlp.fc1.",
+        )
+        key = key.replace(
+            ".ffn.layers.1.",
+            ".mlp.fc2.",
+        )
+        key = key.replace(".ln1.", ".norm1.")
+        key = key.replace(".ln2.", ".norm2.")
+
+        if key.startswith("layers."):
+            key = "blocks." + key[len("layers."):]
+
+        converted[key] = value
+
+    # The released BEPH backbone does not contain the final average-pooling
+    # LayerNorm parameters. Match LayerNorm's default initialization.
+    converted["fc_norm.weight"] = torch.ones_like(model.fc_norm.weight)
+    converted["fc_norm.bias"] = torch.zeros_like(model.fc_norm.bias)
+
+    return converted
+
+
+class BEPHInferenceEncoder(BasePatchEncoder):
+    """
+    BEPH patch encoder based on the pathology-pretrained BEiT-v2 Base backbone.
+
+    BEPH ("A foundation model for generalizable cancer diagnosis and survival
+    prediction from histopathological images") is a self-supervised
+    histopathology representation model pretrained on large-scale H&E image
+    patches.
+
+    This TRIDENT wrapper loads the official ``BEPH_backbone.pth`` checkpoint
+    and maps the MMSelfSup/OpenMMLab-style parameter names used by the released
+    model to the equivalent ``timm`` BEiT implementation. This avoids requiring
+    the full MMSelfSup/MMCV software stack at inference time.
+
+    Architecture
+    ------------
+    - Backbone: BEiT-v2 Base
+    - Transformer depth: 12 blocks
+    - Hidden dimension: 768
+    - Patch size: 16 x 16 pixels
+    - Nominal input size: 224 x 224 pixels
+    - Output dimension: 768
+
+    Feature representation
+    ----------------------
+    BEPH uses the transformer backbone representation rather than a
+    classification head. Patch-token representations are globally averaged
+    and normalized to produce a single 768-dimensional embedding for each
+    input image patch.
+
+    The resulting tensor returned by ``forward`` has shape::
+
+        (batch_size, 768)
+
+    Checkpoint conversion
+    ---------------------
+    The official checkpoint was released using the OpenMMLab/MMSelfSup BEiT
+    implementation. Several parameter names therefore differ from those used
+    by ``timm``. ``_convert_beph_state_dict`` performs the required mapping,
+    including:
+
+    - ``patch_embed.projection`` -> ``patch_embed.proj``
+    - ``layers.*`` -> ``blocks.*``
+    - ``ln1`` / ``ln2`` -> ``norm1`` / ``norm2``
+    - MMSelfSup FFN parameters -> ``timm`` MLP parameters
+    - expansion of BEPH's shared relative-position bias table into the
+      per-transformer-block tables expected by ``timm``
+
+    ``mask_token`` and ``relative_position_index`` are not loaded because the
+    former is used only for masked-image pretraining and the latter is
+    generated internally by ``timm``.
+
+    The released BEPH backbone checkpoint does not contain parameters for
+    ``timm``'s final ``fc_norm`` layer. These are initialized to the standard
+    LayerNorm identity initialization (weight=1, bias=0), matching the intended
+    average-token feature extraction behavior.
+
+    Preprocessing
+    -------------
+    Input patches are transformed to the model's nominal 224 x 224 resolution
+    and normalized using ImageNet mean and standard deviation. The transform
+    uses TRIDENT's standard torchvision-based evaluation pipeline, which also
+    remains picklable when passed to PyTorch DataLoader workers.
+
+    Checkpoint requirements
+    -----------------------
+    BEPH does not currently provide a directly loadable ``timm`` or
+    Hugging Face checkpoint. The official ``BEPH_backbone.pth`` checkpoint
+    must therefore be downloaded separately and supplied either through
+    ``weights_path`` or TRIDENT's ``local_ckpts.json`` mechanism.
+
+    References
+    ----------
+    Paper:
+        Yang et al.,
+        "A foundation model for generalizable cancer diagnosis and survival
+        prediction from histopathological images",
+        Nature Communications, 2025.
+
+    Official implementation:
+        https://github.com/Zhcyoung/BEPH
+
+    Notes
+    -----
+    This wrapper intentionally exposes the pathology-pretrained BEPH backbone
+    as a patch encoder only. It does not include any task-specific
+    classification, survival, or MIL heads from downstream BEPH experiments.
+    """
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        import timm
+        from torchvision.transforms import InterpolationMode
+
+        self.enc_name = "beph"
+
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            raise FileNotFoundError(
+                "BEPH requires the official BEPH_backbone.pth checkpoint. "
+                "Download it from the official BEPH repository and provide "
+                "it via weights_path or local_ckpts.json."
+            )
+
+        model = timm.create_model(
+            "beit_base_patch16_224",
+            pretrained=False,
+            num_classes=0,
+        )
+
+        checkpoint = torch.load(
+            weights_path,
+            map_location="cpu",
+            weights_only=True,
+        )
+
+        state_dict = checkpoint.get("state_dict", checkpoint)
+
+        state_dict = _convert_beph_state_dict(
+            state_dict,
+            model,
+        )
+
+        model.load_state_dict(state_dict, strict=True)
+
+        mean, std = get_constants("imagenet")
+
+        eval_transform = get_eval_transforms(
+            mean,
+            std,
+            target_img_size=224,
+            center_crop=True,
+            interpolation=InterpolationMode.BILINEAR,
+            antialias=True,
+        )
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
 
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
@@ -2090,6 +2289,7 @@ encoder_registry = {
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "beph": BEPHInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }
