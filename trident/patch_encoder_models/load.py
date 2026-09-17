@@ -97,6 +97,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "genbio-pathfm"
         - "gemma4-e4b"
         - "gemma4-26b"
+        - "omiclip"
 
         **kwargs (dict):
             Optional keyword arguments passed directly to the encoder constructor. These may include parameters such as:
@@ -2057,6 +2058,118 @@ class Gemma426BInferenceEncoder(Gemma4InferenceEncoder):
     def __init__(self, **build_kwargs):
         super().__init__(**build_kwargs)
 
+class OmiCLIPInferenceEncoder(BasePatchEncoder):
+    """
+    OmiCLIP patch encoder.
+
+    OmiCLIP is the histology image encoder from the Loki multimodal
+    histology-transcriptomics framework. The released checkpoint is based on
+    an OpenCLIP CoCa ViT-L/14 architecture and contains text, multimodal, and
+    visual components.
+
+    TRIDENT only requires image representations, so this wrapper extracts and
+    loads the ``visual.*`` parameters from the official checkpoint into the
+    corresponding OpenCLIP vision tower and discards the remaining CoCa
+    components after initialization.
+
+    Architecture
+    ------------
+    - Visual backbone: ViT-L/14
+    - Transformer depth: 24
+    - Hidden width: 1024
+    - Patch size: 14 x 14
+    - Input resolution: 224 x 224
+    - Output embedding dimension: 768
+
+    The OpenCLIP visual tower returns both a pooled image embedding and patch
+    token features. Only the pooled 768-dimensional image embedding is exposed
+    by this TRIDENT encoder.
+
+    Checkpoint loading
+    ------------------
+    The official OmiCLIP checkpoint contains more than just model weights and
+    was serialized in a format that is not compatible with PyTorch 2.6+'s
+    restricted ``weights_only=True`` loader.
+
+    Therefore, the checkpoint is loaded with ``weights_only=False``. This
+    should only be used with the official trusted OmiCLIP checkpoint. After
+    loading, only entries prefixed with ``visual.`` are retained and loaded
+    strictly into the OpenCLIP visual tower.
+
+    This avoids retaining the unused text and multimodal CoCa components
+    during patch extraction.
+
+    Reference
+    ---------
+    Loki / OmiCLIP:
+        https://github.com/GuangyuWangLab2021/Loki
+
+    Official checkpoint:
+        https://huggingface.co/WangGuangyuLab/Loki
+    """
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        import open_clip
+
+        self.enc_name = "omiclip"
+
+        weights_path = self._get_weights_path()
+
+        if not weights_path:
+            raise FileNotFoundError(
+                "OmiCLIP requires the official checkpoint.pt checkpoint. "
+                "Download it from WangGuangyuLab/Loki on Hugging Face and "
+                "provide its path through weights_path or local_ckpts.json."
+            )
+
+        # Build the official CoCa architecture without pretrained weights.
+        model, _, eval_transform = open_clip.create_model_and_transforms(
+            "coca_ViT-L-14",
+            pretrained=None,
+        )
+
+        # The official checkpoint contains optimizer/scaler metadata and
+        # requires unrestricted pickle loading under PyTorch >= 2.6.
+        checkpoint = torch.load(
+            weights_path,
+            map_location="cpu",
+            mmap=True,
+            weights_only=False,
+        )
+
+        visual_state = {
+            key.removeprefix("visual."): value
+            for key, value in checkpoint["state_dict"].items()
+            if key.startswith("visual.")
+        }
+
+        model.visual.load_state_dict(
+            visual_state,
+            strict=True,
+        )
+
+        # Keep only the image tower.
+        model = model.visual
+
+        del checkpoint
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        output = self.model(x)
+
+        # CoCa/OpenCLIP visual tower returns:
+        # (pooled_embedding, patch_tokens)
+        if isinstance(output, tuple):
+            output = output[0]
+
+        return output
+
 
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
@@ -2092,4 +2205,5 @@ encoder_registry = {
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
+    "omiclip": OmiCLIPInferenceEncoder,
 }
