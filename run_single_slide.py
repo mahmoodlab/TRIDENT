@@ -42,8 +42,8 @@ def parse_arguments():
     parser.add_argument('--segmenter', type=str, default='hest', 
                         choices=['hest', 'grandqc', 'otsu'],
                         help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
-    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi'], default=None,
-                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi"]. Defaults to None (auto-determine which reader to use).')
+    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi', 'isyntax'], default=None,
+                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi", "isyntax"]. Defaults to None (auto-determine which reader to use).')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
                     help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
