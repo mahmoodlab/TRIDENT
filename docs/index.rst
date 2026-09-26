@@ -67,7 +67,8 @@ Highlights
 **File formats**
 
 - OpenSlide (``.svs``, ``.tiff``, ``.ndpi``, ``.mrxs``, …), CuCIM, plain images
-  (``.png``, ``.jpeg``), SDPC (``.sdpc``), OME-Zarr / NGFF, Zeiss CZI (``.czi``), DICOM
+  (``.png``, ``.jpeg``), SDPC (``.sdpc``), OME-Zarr / NGFF, Zeiss CZI (``.czi``),
+  native Philips iSyntax (``.isyntax``, install ``.[isyntax]``), DICOM
   (``.dcm``, via OpenSlide). Use ``trident convert`` to make awkward formats friendly
   (pyramidal TIFF).
 

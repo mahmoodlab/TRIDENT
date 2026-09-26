@@ -60,7 +60,7 @@ Notes for power users
 
 - **Nested datasets**: ``search_nested=True`` uses relative paths under ``wsi_source`` (mirrors CLI ``--search_nested``).
 - **Subset runs**: pass ``custom_list_of_wsis="subset.csv"``; the CSV must have a ``wsi`` column.
-- **Reader selection**: force a backend with ``reader_type="openslide" | "cucim" | "image" | "sdpc" | "omezarr" | "czi"``.
+- **Reader selection**: force a backend with ``reader_type="openslide" | "cucim" | "image" | "sdpc" | "omezarr" | "czi" | "isyntax"``.
 - **Slide encoders**: slide embeddings require a specific underlying patch encoder. The mapping lives in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``. If patch features are missing for that encoder, ``run_slide_feature_extraction_job`` extracts them on the fly.
 - **Resume / idempotency**: every job uses self-describing ``.lock`` files (PID, host, timestamp). If an output exists and is not actively locked, the job is skipped on re-run. Use ``trident.IO.clear_dead_locks(job_dir)`` (or pass ``--clear_dead_locks`` to the CLI) to remove orphaned locks safely.
 - **Multi-GPU**: the CLI handles GPU sharding via ``--gpus``. From Python, run separate ``Processor`` instances per shard with disjoint ``selected_wsi_paths`` and distinct ``device="cuda:N"`` arguments to the run-* methods.
