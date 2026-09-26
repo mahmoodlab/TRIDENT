@@ -95,7 +95,8 @@ def collect_valid_slides(
 
     else:
         if wsi_ext is None:
-            from trident.wsi_objects.WSIFactory import PIL_EXTENSIONS, OPENSLIDE_EXTENSIONS, ISYNTAX_EXTENSIONS
+            from trident.Converter import PIL_EXTENSIONS, OPENSLIDE_EXTENSIONS
+            from trident.wsi_objects.WSIFactory import ISYNTAX_EXTENSIONS
             wsi_ext = list(PIL_EXTENSIONS) + list(OPENSLIDE_EXTENSIONS) + list(ISYNTAX_EXTENSIONS)
 
         wsi_ext = [ext.lower() for ext in wsi_ext]
