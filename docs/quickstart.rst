@@ -126,7 +126,7 @@ High-signal knobs
 - ``--search_nested``: discover slides in nested subfolders.
 - ``--custom_list_of_wsis my.csv``: process a CSV subset (column ``wsi`` with paths
   relative to ``--wsi_dir``; optional ``mpp`` column).
-- ``--reader_type {openslide,cucim,image,sdpc,omezarr,czi}``: force a backend, mostly
+- ``--reader_type {openslide,cucim,image,sdpc,omezarr,czi,isyntax}``: force a backend, mostly
   for debugging.
 - ``--max_workers 0``: force single-process data loading (use this if your environment has
   DataLoader multiprocessing issues).

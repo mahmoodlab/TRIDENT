@@ -19,6 +19,7 @@ from trident.wsi_objects.WSIFactory import (
     SDPC_EXTENSIONS,
     OMEZARR_EXTENSIONS,
     CZI_EXTENSIONS,
+    ISYNTAX_EXTENSIONS,
 )
 
 
@@ -83,7 +84,7 @@ class Processor:
                 Maximum number of workers for data loading. If None, the default behavior will be used.
                 Defaults to None.
             reader_type (WSIReaderType, optional):
-                Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr"]. Defaults to None
+                Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi", "isyntax"]. Defaults to None
                 (auto-determine the right engine based on image extension).
             search_nested (bool, optional):  
                 If True, the processor will recursively search for WSIs within all subdirectories of `wsi_source`.
@@ -126,6 +127,7 @@ class Processor:
             + list(SDPC_EXTENSIONS)
             + list(OMEZARR_EXTENSIONS)
             + list(CZI_EXTENSIONS)
+            + list(ISYNTAX_EXTENSIONS)
         )
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
