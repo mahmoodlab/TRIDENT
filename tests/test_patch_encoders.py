@@ -174,6 +174,12 @@ class TestPatchEncoders(unittest.TestCase):
 
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
+        
+    def test_c_radio_v2_forward(self):
+        self._test_encoder_forward("c-radio-v2-b")
+        self._test_encoder_forward("c-radio-v2-l")
+        self._test_encoder_forward("c-radio-v2-h")
+        self._test_encoder_forward("c-radio-v2-g")
 
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")

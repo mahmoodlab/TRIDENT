@@ -2057,6 +2057,126 @@ class Gemma426BInferenceEncoder(Gemma4InferenceEncoder):
     def __init__(self, **build_kwargs):
         super().__init__(**build_kwargs)
 
+class CRADIOv2InferenceEncoder(BasePatchEncoder):
+    """
+    Base TRIDENT patch encoder wrapper for NVIDIA C-RADIOv2 models.
+
+    C-RADIOv2 is a general-purpose vision foundation model for visual
+    feature extraction.
+
+    Paper:
+        Ranzinger et al., "RADIOv2.5: Improved Baselines for
+        Agglomerative Vision Foundation Models", CVPR 2025.
+        https://arxiv.org/abs/2412.07679
+    """
+
+    HF_REPO = None
+    ENC_NAME = None
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self):
+        from transformers import AutoModel, CLIPImageProcessor
+
+        self.enc_name = self.ENC_NAME
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = (
+                    weights_path
+                    if os.path.isdir(weights_path)
+                    else os.path.dirname(weights_path)
+                )
+
+                model = AutoModel.from_pretrained(
+                    model_dir,
+                    trust_remote_code=True,
+                    local_files_only=True,
+                )
+
+                image_processor = CLIPImageProcessor.from_pretrained(
+                    model_dir,
+                    local_files_only=True,
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create {self.enc_name} model from "
+                    f"local checkpoint at '{weights_path}'."
+                )
+
+        else:
+            self.ensure_has_internet(self.enc_name)
+
+            try:
+                model = AutoModel.from_pretrained(
+                    self.HF_REPO,
+                    trust_remote_code=True,
+                )
+
+                image_processor = CLIPImageProcessor.from_pretrained(
+                    self.HF_REPO
+                )
+
+            except Exception:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to download {self.enc_name} from Hugging Face."
+                )
+
+        def eval_transform(image):
+            return image_processor(
+                images=image,
+                return_tensors="pt",
+            )["pixel_values"].squeeze(0)
+
+        precision = torch.float32
+
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        """
+        Extract the global C-RADIOv2 image representation.
+
+        Returns
+        -------
+        torch.Tensor
+            Summary embeddings with shape (batch_size, feature_dim).
+        """
+        summary, _ = self.model(x)
+        return summary
+
+
+class CRADIOv2BInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Base (~90M parameters)."""
+
+    ENC_NAME = "c-radio-v2-b"
+    HF_REPO = "nvidia/C-RADIOv2-B"
+
+
+class CRADIOv2LInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Large (~320M parameters)."""
+
+    ENC_NAME = "c-radio-v2-l"
+    HF_REPO = "nvidia/C-RADIOv2-L"
+
+
+class CRADIOv2HInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Huge (~653M parameters)."""
+
+    ENC_NAME = "c-radio-v2-h"
+    HF_REPO = "nvidia/C-RADIOv2-H"
+
+
+class CRADIOv2GInferenceEncoder(CRADIOv2InferenceEncoder):
+    """C-RADIOv2 Gigantic (~1.1B parameters)."""
+
+    ENC_NAME = "c-radio-v2-g"
+    HF_REPO = "nvidia/C-RADIOv2-g"
+
 
 encoder_registry = {
     "conch_v1": Conchv1InferenceEncoder,
@@ -2092,4 +2212,8 @@ encoder_registry = {
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
+    "c-radio-v2-b": CRADIOv2BInferenceEncoder,
+    "c-radio-v2-l": CRADIOv2LInferenceEncoder,
+    "c-radio-v2-h": CRADIOv2HInferenceEncoder,
+    "c-radio-v2-g": CRADIOv2GInferenceEncoder,
 }
