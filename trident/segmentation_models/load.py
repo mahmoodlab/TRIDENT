@@ -1,15 +1,15 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import os
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from trident.IO import get_dir, get_weights_path, has_internet_connection
 
 
-class SegmentationModel(torch.nn.Module):
+class BaseSegmentationModel(torch.nn.Module, ABC):
 
     _has_internet = has_internet_connection()
 
@@ -54,6 +54,12 @@ class SegmentationModel(torch.nn.Module):
         z = self.model(image)
         return z
         
+    @property
+    def name(self) -> Optional[str]:
+        """Canonical model id — uniform ``.name`` accessor shared across all model families
+        (set by ``segmentation_model_factory``)."""
+        return getattr(self, "model_name", None)
+
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[nn.Module, transforms.Compose]:
         """
@@ -62,7 +68,11 @@ class SegmentationModel(torch.nn.Module):
         pass
 
 
-class HESTSegmenter(SegmentationModel):
+# Backward-compatible alias for the pre-rename base class.
+SegmentationModel = BaseSegmentationModel
+
+
+class HESTSegmenter(BaseSegmentationModel):
 
     def __init__(self, **build_kwargs: Dict[str, Any]):
         """
@@ -92,7 +102,7 @@ class HESTSegmenter(SegmentationModel):
         model.classifier[4] = nn.Conv2d(256, 2, kernel_size=1, stride=1)
 
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally in model registry at trident/segmentation_models/local_ckpts.json.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -164,7 +174,7 @@ class JpegCompressionTransform:
         return Image.fromarray(image)
 
 
-class GrandQCArtifactSegmenter(SegmentationModel):
+class GrandQCArtifactSegmenter(BaseSegmentationModel):
 
     _class_mapping = {
         1: "Normal Tissue",
@@ -211,7 +221,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
 
         # Attempt to download if file is missing and not already available
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -266,7 +276,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         return predictions
 
 
-class GrandQCSegmenter(SegmentationModel):
+class GrandQCSegmenter(BaseSegmentationModel):
     
     def __init__(self, **build_kwargs):
         """
@@ -293,7 +303,7 @@ class GrandQCSegmenter(SegmentationModel):
 
         # Verify checkpoint path
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally at '{weights_path}'.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -351,7 +361,7 @@ class GrandQCSegmenter(SegmentationModel):
         return predictions
 
 
-class OtsuSegmenter(SegmentationModel):
+class OtsuSegmenter(BaseSegmentationModel):
     """
     Classical image-processing tissue segmenter based on two-pass Otsu thresholding.
     """
@@ -396,7 +406,7 @@ def segmentation_model_factory(
     confidence_thresh: float = 0.5, 
     freeze: bool = True,
     **build_kwargs,
-) -> SegmentationModel:
+) -> BaseSegmentationModel:
     """
     Factory function to build a segmentation model by name.
     """
@@ -411,12 +421,14 @@ def segmentation_model_factory(
         )
 
     if model_name == 'hest':
-        return HESTSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = HESTSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'grandqc':
-        return GrandQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = GrandQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'grandqc_artifact':
-        return GrandQCArtifactSegmenter(freeze=freeze, **build_kwargs)
+        model = GrandQCArtifactSegmenter(freeze=freeze, **build_kwargs)
     elif model_name == 'otsu':
-        return OtsuSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = OtsuSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     else:
         raise ValueError(f"Model type {model_name} not supported")
+    model.model_name = model_name  # canonical id for the uniform `.name` accessor
+    return model

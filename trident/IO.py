@@ -37,7 +37,7 @@ def collect_valid_slides(
     custom_list_path: Optional[str] = None,
     wsi_ext: Optional[List[str]] = None,
     search_nested: bool = False,
-    max_workers: int = 8,
+    max_workers: Optional[int] = 8,
     return_relative_paths: bool = False
 ) -> Union[List[str], Tuple[List[str], List[str]]]:
     """
@@ -52,8 +52,9 @@ def collect_valid_slides(
             Allowed file extensions.
         search_nested (bool):
             Whether to search subdirectories.
-        max_workers (int):
-            Threads to use when checking file existence.
+        max_workers (Optional[int]):
+            Threads to use when checking file existence. Set to 0 to validate
+            paths synchronously in the main process; None uses the executor default.
         return_relative_paths (bool):
             Whether to also return relative paths.
 
@@ -81,8 +82,14 @@ def collect_valid_slides(
         def exists_fn(rel_path: str) -> bool:
             return os.path.exists(os.path.join(wsi_dir, rel_path))
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(executor.map(exists_fn, rel_paths))
+        if max_workers is not None and max_workers < 0:
+            raise ValueError("max_workers must be non-negative.")
+
+        if max_workers == 0:
+            results = [exists_fn(rel_path) for rel_path in rel_paths]
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = list(executor.map(exists_fn, rel_paths))
 
         for rel_path, exists in zip(rel_paths, results):
             if not exists:

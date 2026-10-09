@@ -196,6 +196,7 @@ class OpenSlideWSI(WSI):
         >>> print(region.shape)
         (512, 512, 3)
         """
+        self._ensure_open()  # reopen the handle if this WSI is cold (e.g. unpickled in a worker)
         try:
             region = self.img.read_region(location, level, size).convert('RGB')
 
