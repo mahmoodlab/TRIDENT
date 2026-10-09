@@ -12,7 +12,7 @@ from trident.segmentation_models.load import BaseSegmentationModel
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
-    save_h5, read_coords,
+    save_h5, read_coords, read_coords_legacy,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
     splitext
 )
@@ -963,7 +963,16 @@ class WSI:
 
         except (KeyError, FileNotFoundError, ValueError) as e:
             warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
+            # Keep the legacy coords and attributes: they are saved next to the features.
+            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
+            coords_attrs = {
+                'patch_size': patch_size,
+                'patch_level': patch_level,
+                'custom_downsample': custom_downsample,
+            }
+            patcher = WSIPatcher.from_legacy_coords(
+                self, patch_size, patch_level, custom_downsample, coords, coords_only=False, pil=True
+            )
 
         else:
             patcher = self.create_patcher(
@@ -981,7 +990,6 @@ class WSI:
             warnings.warn(
                 f"No patch coordinates available for slide '{self.name}'. Saving empty features."
             )
-            coords_attrs = coords_attrs if 'coords_attrs' in locals() else {}
             coords = np.empty((0, 2), dtype=np.int64)
             embedding_dim = getattr(patch_encoder, "embedding_dim", None)
             if embedding_dim is None:
