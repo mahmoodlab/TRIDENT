@@ -155,7 +155,12 @@ def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
         else:
             summary[task_name] = label
 
-    summary.update(grouped)
+    for family, scopes in grouped.items():
+        # An unscoped task of the same family (e.g. "coords", written by an older version in the
+        # same job dir) is kept under the "unscoped" key instead of being overwritten.
+        if family in summary:
+            scopes = {"unscoped": summary[family], **scopes}
+        summary[family] = scopes
     state["summary"] = summary
     return summary
 

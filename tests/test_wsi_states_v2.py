@@ -276,6 +276,20 @@ class TestWSIStatesV2(unittest.TestCase):
             self.assertEqual(vq["patho_r1_7b:vlm_rois_a"], "completed")
             self.assertEqual(vq["patho_r1_7b:vlm_rois_b"], "completed")
 
+    def test_unscoped_and_scoped_keys_in_same_job_dir(self):
+        """A job dir started by an older version (key "coords") and continued with scoped keys
+        ("coords:<dir>") keeps both statuses in the summary."""
+        from trident.State import update_task_state, load_all_states
+        with tempfile.TemporaryDirectory() as job_dir:
+            ref = self._mk(job_dir)
+            update_task_state(job_dir, ref, "coords", "skipped", reason="already_generated")
+            update_task_state(job_dir, ref, "coords:20x_256px_0px_overlap", "completed")
+            st = load_all_states(job_dir)[ref["id"]]
+            self.assertEqual(st["summary"]["coords"], {
+                "unscoped": "skipped (already_generated)",
+                "20x_256px_0px_overlap": "completed",
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

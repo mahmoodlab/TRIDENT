@@ -24,6 +24,7 @@ _WARNED_CTX_FALLBACKS: set[str] = set()
 _SPAWN_PICKLING_MSGS = (
     'ctypes objects containing pointers cannot be pickled',
     "Can't pickle",
+    "cannot pickle",  # wording used by Python >= 3.10 for C objects
     "PicklingError",
 )
 
