@@ -138,27 +138,24 @@ def _merge_attempt(t: Dict[str, Any], attempt_event: Dict[str, Any], final_statu
 
 
 def _recompute_summary(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Summarize task statuses. A scoped task name ``<family>:<scope>`` (e.g.
+    ``patch_features:uni_v1:20x_256px_0px_overlap``) is grouped under ``summary[<family>][<scope>]``,
+    so tasks added by downstream packages are grouped without being listed here."""
     tasks = state.get("tasks", {}) or {}
     summary: Dict[str, Any] = {}
-    patch_feats: Dict[str, str] = {}
-    slide_feats: Dict[str, str] = {}
+    grouped: Dict[str, Dict[str, str]] = {}
 
     for task_name, t in tasks.items():
         status = t.get("status")
         reason = t.get("reason")
         label = status if not reason else f"{status} ({reason})"
-        if task_name.startswith("patch_features:"):
-            patch_feats[task_name.split(":", 1)[1]] = label
-        elif task_name.startswith("slide_features:"):
-            slide_feats[task_name.split(":", 1)[1]] = label
+        if ":" in task_name:
+            family, scope = task_name.split(":", 1)
+            grouped.setdefault(family, {})[scope] = label
         else:
             summary[task_name] = label
 
-    if patch_feats:
-        summary["patch_features"] = patch_feats
-    if slide_feats:
-        summary["slide_features"] = slide_feats
-
+    summary.update(grouped)
     state["summary"] = summary
     return summary
 
@@ -183,6 +180,12 @@ def _update_resume(
             "message": message,
             "error": (attempt or {}).get("error") if attempt else message,
         }
+    else:
+        # A later non-error outcome for the same task resolves a prior recorded error;
+        # drop the stale `last_error` so a recovered slide doesn't keep reporting it.
+        prev_error = resume.get("last_error")
+        if isinstance(prev_error, dict) and prev_error.get("task") == task:
+            resume.pop("last_error", None)
 
 
 def ensure_states_dir(job_dir: str) -> str:
@@ -354,8 +357,10 @@ def update_task_state(
     tasks = state.setdefault("tasks", {})
     t = _ensure_task(tasks, task)
     t["status"] = status
-    if reason is not None:
-        t["reason"] = reason
+    # Always reflect the latest outcome's reason (None for a clean success). Without this,
+    # a task that was skipped (e.g. "geojson_not_found") and later completed would keep the
+    # stale skip-reason, producing contradictory summaries like "completed (geojson_not_found)".
+    t["reason"] = reason
     if message is not None:
         t["message"] = message
     else:
