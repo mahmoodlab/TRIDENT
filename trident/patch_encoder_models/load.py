@@ -1,5 +1,5 @@
 import traceback
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Literal, Optional, Any, Dict, Tuple, Callable
 import torch
 import os 
@@ -129,7 +129,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         raise ValueError(f"Unknown encoder name {model_name}")
 
 
-class BasePatchEncoder(torch.nn.Module):
+class BasePatchEncoder(torch.nn.Module, ABC):
 
     _has_internet = has_internet_connection()
     
@@ -201,6 +201,11 @@ class BasePatchEncoder(torch.nn.Module):
         z = self.model(x)
         return z
         
+    @property
+    def name(self) -> Optional[str]:
+        """Canonical model id — uniform ``.name`` accessor shared across all model families."""
+        return self.enc_name
+
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[torch.nn.Module, Callable, torch.dtype]:
         pass

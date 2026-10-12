@@ -89,14 +89,16 @@ def _task_label(status: Any, reason: Any) -> str:
     return str(status)
 
 
-def _aggregate_states(job_dir: str) -> Tuple[int, Dict[str, Any], Dict[str, Any]]:
+def _aggregate_states(job_dir: str) -> Tuple[int, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Returns:
-        (num_slides, task_counts, errors)
+        (num_slides, task_counts, grouped_counts, errors), where ``grouped_counts`` maps each
+        scoped task family (``<family>:<scope>``) to per-scope status counts.
     """
     states = load_all_states(job_dir)
     num_slides = len(states)
     task_counts: Dict[str, Any] = {}
+    grouped_counts: Dict[str, Any] = {}
     errors: Dict[str, Any] = {}
 
     for _, st in states.items():
@@ -119,21 +121,17 @@ def _aggregate_states(job_dir: str) -> Tuple[int, Dict[str, Any], Dict[str, Any]
             reason = t.get("reason")
             label = _task_label(status, reason)
 
-            if task_name.startswith("patch_features:"):
-                enc = task_name.split(":", 1)[1]
-                group = task_counts.setdefault("patch_features", {})
-                enc_counts = group.setdefault(enc, {})
-                enc_counts[label] = int(enc_counts.get(label, 0)) + 1
-            elif task_name.startswith("slide_features:"):
-                enc = task_name.split(":", 1)[1]
-                group = task_counts.setdefault("slide_features", {})
-                enc_counts = group.setdefault(enc, {})
-                enc_counts[label] = int(enc_counts.get(label, 0)) + 1
+            if ":" in task_name:
+                # Scoped task `<family>:<scope>` (per encoder, per coords config, ...).
+                family, scope = task_name.split(":", 1)
+                group = grouped_counts.setdefault(family, {})
+                scope_counts = group.setdefault(scope, {})
+                scope_counts[label] = int(scope_counts.get(label, 0)) + 1
             else:
                 counts = task_counts.setdefault(task_name, {})
                 counts[label] = int(counts.get(label, 0)) + 1
 
-    return num_slides, task_counts, errors
+    return num_slides, task_counts, grouped_counts, errors
 
 
 def _render_counts(counts: Dict[str, int]) -> str:
@@ -165,6 +163,7 @@ def _render_run_section(
     manifest: Dict[str, Any],
     num_slides: int,
     task_counts: Dict[str, Any],
+    grouped_counts: Dict[str, Any],
     errors: Dict[str, Any],
 ) -> str:
     started_at = manifest.get("started_at") or "unknown"
@@ -197,18 +196,14 @@ def _render_run_section(
         return "\n".join(lines)
 
     # Top-level tasks
-    for task_name in sorted(k for k in task_counts.keys() if k not in {"patch_features", "slide_features"}):
+    for task_name in sorted(task_counts.keys()):
         lines.append(f"- {task_name}: {_render_counts(task_counts[task_name])}")
 
-    # Grouped features
-    if "patch_features" in task_counts:
-        lines.append("- Patch features:")
-        for enc in sorted(task_counts["patch_features"].keys()):
-            lines.append(f"  - {enc}: {_render_counts(task_counts['patch_features'][enc])}")
-    if "slide_features" in task_counts:
-        lines.append("- Slide features:")
-        for enc in sorted(task_counts["slide_features"].keys()):
-            lines.append(f"  - {enc}: {_render_counts(task_counts['slide_features'][enc])}")
+    # Scoped task families (per encoder, per coords config, ...)
+    for family in sorted(grouped_counts.keys()):
+        lines.append(f"- {family.replace('_', ' ').capitalize()}:")
+        for scope in sorted(grouped_counts[family].keys()):
+            lines.append(f"  - {scope}: {_render_counts(grouped_counts[family][scope])}")
 
     if errors:
         lines.append(f"- Errors ({len(errors)}):")
@@ -247,13 +242,14 @@ def finalize_run(
     atomic_write_json(manifest_path, manifest)
 
     # Render and append a new section to summary.md
-    num_slides, task_counts, errors = _aggregate_states(job_dir)
+    num_slides, task_counts, grouped_counts, errors = _aggregate_states(job_dir)
     section = _render_run_section(
         run_id=run_id,
         tool=str(manifest.get("tool") or "unknown"),
         manifest=manifest,
         num_slides=num_slides,
         task_counts=task_counts,
+        grouped_counts=grouped_counts,
         errors=errors,
     )
 

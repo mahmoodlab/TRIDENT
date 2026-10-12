@@ -2,7 +2,7 @@ import sys
 import os
 import torch
 import traceback
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from einops import rearrange
 from typing import Optional, Tuple, Dict, Any
 
@@ -109,7 +109,7 @@ slide_to_patch_encoder_name = {
 
 
 
-class BaseSlideEncoder(torch.nn.Module):
+class BaseSlideEncoder(torch.nn.Module, ABC):
     
     def __init__(self, freeze: bool = True, **build_kwargs: Dict[str, Any]) -> None:
         """
@@ -132,6 +132,11 @@ class BaseSlideEncoder(torch.nn.Module):
         z = self.model(batch)
         return z
         
+    @property
+    def name(self) -> Optional[str]:
+        """Canonical model id — uniform ``.name`` accessor shared across all model families."""
+        return self.enc_name
+
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[torch.nn.Module, torch.dtype, int]:
         """
@@ -608,7 +613,16 @@ class TitanSlideEncoder(BaseSlideEncoder):
     def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
-        from transformers import AutoModel 
+        from transformers import AutoModel
+        # transformers compatibility shim: TITAN's remote code references
+        # PreTrainedModel.all_tied_weights_keys, which is absent in some transformers versions
+        # and makes from_pretrained raise. Define it as empty if missing (harmless when present).
+        try:
+            from transformers.modeling_utils import PreTrainedModel
+            if not hasattr(PreTrainedModel, 'all_tied_weights_keys'):
+                PreTrainedModel.all_tied_weights_keys = {}
+        except Exception:
+            pass
         model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
         precision = torch.float16
         embedding_dim = 768
