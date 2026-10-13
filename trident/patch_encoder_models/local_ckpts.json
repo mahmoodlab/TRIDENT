@@ -28,6 +28,9 @@
     "mascaret": "",
     "musk": "",
     "genbio-pathfm": "",
+    "quiltnet-b32": "",
+    "quiltnet-b16": "",
+    "quiltnet-b16-pmb": "",
     "gemma4-e4b": "",
     "gemma4-26b": "",
     "custom_encoder": ""
