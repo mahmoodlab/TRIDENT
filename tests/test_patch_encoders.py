@@ -98,6 +98,9 @@ class TestPatchEncoders(unittest.TestCase):
     def test_uni_v2_forward(self):
         self._test_encoder_forward('uni_v2')
 
+    def test_digepath_forward(self):
+        self.assertEqual(self._output_dim('digepath'), 1024)
+
     def test_ctranspath_forward(self):
         self._test_encoder_forward('ctranspath')
 
@@ -206,6 +209,9 @@ class TestPatchEncoders(unittest.TestCase):
     def test_uni_v2_resize(self):
         # patch_size 14 -> 448 is a multiple.
         self._test_encoder_resize('uni_v2', target_img_size=448)
+
+    def test_digepath_resize(self):
+        self._test_encoder_resize('digepath', target_img_size=448)
 
     def test_virchow_resize(self):
         self._test_encoder_resize('virchow', target_img_size=448)

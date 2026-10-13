@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (33) — embedding dim + required patch_size/mag
+- Patch encoders (34) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -107,6 +107,7 @@ column is **required** for correct features — copy it verbatim.
 |---|---:|---|
 | `uni_v1` | 1024 | `--patch_size 256 --mag 20` |
 | `uni_v2` | 1536 | `--patch_size 256 --mag 20` |
+| `digepath` | 1024 | `--patch_size 256 --mag 20` |
 | `conch_v1` | 512 | `--patch_size 512 --mag 20` |
 | `conch_v15` (default) | 768 | `--patch_size 512 --mag 20` |
 | `virchow` | 2560 | `--patch_size 224 --mag 20` |
