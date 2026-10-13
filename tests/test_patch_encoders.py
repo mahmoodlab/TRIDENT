@@ -181,6 +181,10 @@ class TestPatchEncoders(unittest.TestCase):
         self._test_encoder_forward('gemma4-e4b')
         self._test_encoder_forward('gemma4-26b')
 
+    def test_omiclip_forward(self):
+        output = self._test_encoder_forward("omiclip")
+        self.assertEqual(output.shape[-1], 768)
+
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_shape_and_batch(self):
