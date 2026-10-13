@@ -376,6 +376,7 @@ class Processor:
                     gdf_saveto = wsi.segment_tissue(
                         segmentation_model=artifact_remover_model,
                         target_mag=artifact_remover_model.target_mag,
+                        device=device,
                         holes_are_tissue=False,
                         job_dir=self.job_dir
                     )

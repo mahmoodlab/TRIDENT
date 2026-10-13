@@ -8,6 +8,7 @@ python run_single_slide.py --slide_path output/wsis/394140.svs --job_dir output/
 """
 import argparse
 import os
+import torch
 
 from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
@@ -22,6 +23,8 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description="Process a WSI from A to Z.")
     parser.add_argument("--gpu", type=int, default=0, help="GPU index to use for processing tasks")
+    parser.add_argument("--device", choices=["cpu", "mps"], default=None,
+                        help="Use CPU or Apple Silicon MPS instead of --gpu. MPS uses single-process data loading.")
     parser.add_argument("--slide_path", type=str, required=True, help="Path to the WSI file to process")
     parser.add_argument("--job_dir", type=str, required=True, help="Directory to store outputs")
     parser.add_argument('--patch_encoder', type=str, default='conch_v15', 
@@ -74,7 +77,11 @@ def parse_arguments():
         '--dump_patches_jpeg_quality', type=int, default=90,
         help='JPEG quality (1-100) when --dump_patches_format=jpg. Defaults to 90.'
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.device == "mps" and not torch.backends.mps.is_available():
+        parser.error("MPS is not available. Use --device cpu or a PyTorch build and Mac with MPS support.")
+    args.device = args.device or (f"cuda:{args.gpu}" if args.gpu >= 0 else "cpu")
+    return args
 
 
 def process_slide(args):
@@ -82,10 +89,11 @@ def process_slide(args):
     Process a single WSI by performing segmentation, patch extraction, and feature extraction sequentially.
     """
 
+    device = getattr(args, "device", None) or (f"cuda:{args.gpu}" if args.gpu >= 0 else "cpu")
     # Initialize the WSI
     print(f"Processing slide: {args.slide_path}")
     with load_wsi(slide_path=args.slide_path, reader_type=getattr(args, "reader_type", None), lazy_init=False, custom_mpp_keys=args.custom_mpp_keys) as slide:
-        seg_device = "cpu" if args.segmenter == "otsu" else f"cuda:{args.gpu}"
+        seg_device = "cpu" if args.segmenter == "otsu" else device
         # Step 1: Tissue Segmentation
         print("Running tissue segmentation...")
         segmentation_model = segmentation_model_factory(
@@ -112,6 +120,7 @@ def process_slide(args):
             slide.segment_tissue(
                 segmentation_model=artifact_remover_model,
                 target_mag=artifact_remover_model.target_mag,
+                device=device,
                 holes_are_tissue=False,
                 job_dir=args.job_dir
             )
@@ -160,13 +169,13 @@ def process_slide(args):
             encoder_kwargs['target_img_size'] = patch_encoder_img_size
         encoder = encoder_factory(args.patch_encoder, **encoder_kwargs)
         encoder.eval()
-        encoder.to(f"cuda:{args.gpu}")
+        encoder.to(device)
         features_path = features_dir = os.path.join(save_coords, "features_{}".format(args.patch_encoder))
         slide.extract_patch_features(
             patch_encoder=encoder,
             coords_path=os.path.join(save_coords, 'patches', f'{slide.name}_patches.h5'),
             save_features=features_dir,
-            device=f"cuda:{args.gpu}",
+            device=device,
             batch_limit=args.batch_size
         )
         print(f"Feature extraction completed. Results saved to {features_path}")

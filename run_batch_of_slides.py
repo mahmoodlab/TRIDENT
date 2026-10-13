@@ -66,6 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--gpus', type=int, nargs='+', default=None,
                         help='Optional space-separated list of GPU indices to enable multi-GPU execution.')
+    parser.add_argument('--device', choices=['cpu', 'mps'], default=None,
+                        help='Use CPU or Apple Silicon MPS in one slide-processing worker, overriding --gpu/--gpus. MPS uses single-process data loading.')
     parser.add_argument('--task', type=str, default='seg', 
                         choices=['seg', 'coords', 'feat', 'all'], 
                         help='Task to run: seg (segmentation), coords (save tissue coordinates), feat (extract patch/slide features), or all (run the full pipeline).')
@@ -197,7 +199,13 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.device == 'mps' and not torch.backends.mps.is_available():
+        parser.error('MPS is not available. Use --device cpu or a PyTorch build and Mac with MPS support.')
+    if args.device is not None:
+        args.gpus = [-1]
+        return args
 
     # Normalize to always have `args.gpus` so downstream code only needs one path.
     if args.gpus is None:
@@ -333,6 +341,8 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
                 batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,
             )
         else:
+            if device == 'mps' and args.slide_encoder in {'gigapath', 'gigapath-flash', 'prism2'}:
+                raise ValueError(f"The {args.slide_encoder} slide encoder requires FlashAttention and does not support MPS. Use a supported patch encoder or run this slide encoder on CUDA.")
             from trident.slide_encoder_models.load import encoder_factory
             encoder = encoder_factory(args.slide_encoder)
             mag_str = f"{float(args.mag):g}"
@@ -579,6 +589,7 @@ def main() -> None:
     if not torch.cuda.is_available() and any(gpu_id >= 0 for gpu_id in gpu_ids):
         print('[MAIN] Warning: CUDA not available, using CPU.')
         gpu_ids = [-1]
+        args.device = 'cpu'
 
     run_id = start_run(args.job_dir, tool="run_batch_of_slides", args=vars(args))
     run_status = "completed"
@@ -597,7 +608,7 @@ def main() -> None:
         if len(gpu_ids) == 1:
             worker_args = argparse.Namespace(**vars(args))
             worker_args.gpu = gpu_ids[0]
-            worker_args.device = f"cuda:{gpu_ids[0]}" if gpu_ids[0] >= 0 else "cpu"
+            worker_args.device = args.device
             worker_args.selected_wsi_paths = shards[0]
             worker_entrypoint(worker_args)
             return

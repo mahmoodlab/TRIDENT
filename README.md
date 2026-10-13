@@ -66,6 +66,26 @@ Run this command to perform all processing steps for a **single** slide:
 python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_processed --patch_encoder uni_v1 --mag 20 --patch_size 256
 ```
 
+**Apple Silicon (MPS):** Both scripts accept `--device mps`. For example, start
+with Otsu segmentation on CPU and ResNet50 patch features on MPS:
+
+```bash
+python run_single_slide.py --slide_path ./wsis/xxxx.svs --job_dir ./trident_mps --device mps --segmenter otsu --patch_encoder resnet50 --mag 20 --patch_size 256
+```
+
+For a directory, use `run_batch_of_slides.py --task all --wsi_dir ./wsis` with
+the same options (omit `--slide_path`). `--device cpu` explicitly selects CPU.
+These options override `--gpu`/`--gpus`; omit `--device` to retain existing CUDA
+and multi-GPU behavior. An unavailable MPS backend produces an error, not a
+silent CPU fallback.
+
+MPS data loading runs in the main process regardless of the requested worker
+count. On macOS, CPU data loading tries `spawn` and falls back to zero workers
+if the slide reader cannot be pickled; it does not use unsafe `fork`.
+This does not make every encoder MPS-compatible: GigaPath, GigaPath-Flash, and
+PRISM2 **slide encoders** require FlashAttention and cannot run on MPS.
+Other encoders still depend on their model-specific operators and precision.
+
 Convert images/WSIs to pyramidal TIFF:
 ```
 trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1
