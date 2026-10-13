@@ -14,7 +14,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
-- **33 patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
+- **39 patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
 - **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
@@ -31,7 +31,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
   - This installs the shared model stack (`timm>=0.9.16,<2`, `transformers>=4.51,<5`, `safetensors`, etc.).
 
 Optional install profiles:
-- `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF)).
+- `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF), [C-RADIOv2](https://huggingface.co/nvidia/C-RADIOv2-B) via `open_clip_torch`).
 - `pip install -e ".[slide-encoders]"` for slide embedding-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine)).
 - `pip install -e ".[omezarr]"` for OME Zarr WSI reader support ([OME-NGFF / OME-Zarr](https://ngff.openmicroscopy.org/latest/)).
 - `pip install -e ".[czi]"` for Zeiss CZI WSI reader support ([pylibCZIrw](https://pypi.org/project/pylibCZIrw/)).
@@ -125,7 +125,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 39 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
@@ -156,6 +156,12 @@ Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https
 | **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) | 🌐 [Lunit non-commercial](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |
 | **Hibou**             | 1024           | `--patch_encoder hibou_l --patch_size 224 --mag 20`              | [histai/hibou-L](https://huggingface.co/histai/hibou-L) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **CTransPath-CHIEF**  | 768            | `--patch_encoder ctranspath --patch_size 256 --mag 10`           | — | 🌐 [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) |
+| **PLIP**                 | 512            | `--patch_encoder plip --patch_size 256 --mag 20`              | [plip](https://huggingface.co/vinid/plip) |
+| **CLIP-RN50**            | 1024           | `--patch_encoder clip-rn50 --patch_size 256 --mag 20`         | [clip-rn50](https://huggingface.co/timm/resnet50_clip.openai) |
+| **C-RADIOv2-B**          | 2304           | `--patch_encoder c-radio-v2-b --patch_size 256 --mag 20`      | [c-radio-v2-b](https://huggingface.co/nvidia/C-RADIOv2-B) |
+| **C-RADIOv2-L**          | 3072           | `--patch_encoder c-radio-v2-l --patch_size 256 --mag 20`      | [c-radio-v2-l](https://huggingface.co/nvidia/C-RADIOv2-L) |
+| **C-RADIOv2-H**          | 3840           | `--patch_encoder c-radio-v2-h --patch_size 256 --mag 20`      | [c-radio-v2-h](https://huggingface.co/nvidia/C-RADIOv2-H) |
+| **C-RADIOv2-G**          | 3072           | `--patch_encoder c-radio-v2-g --patch_size 256 --mag 20`      | [c-radio-v2-g](https://huggingface.co/nvidia/C-RADIOv2-g) |
 | **ResNet50**          | 1024           | `--patch_encoder resnet50 --patch_size 256 --mag 20`             | — | 🌐 [BSD-3-Clause](https://opensource.org/license/bsd-3-clause) |
 
 ¹ Gemma 4 requires `transformers>=5`, which is incompatible with `hibou_l`. Use a separate environment.
