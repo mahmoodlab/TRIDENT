@@ -30,5 +30,9 @@
     "genbio-pathfm": "",
     "gemma4-e4b": "",
     "gemma4-26b": "",
+    "c-radio-v2-b": "",
+    "c-radio-v2-l": "",
+    "c-radio-v2-h": "",
+    "c-radio-v2-g": "",
     "custom_encoder": ""
 }
