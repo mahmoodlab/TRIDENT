@@ -294,8 +294,8 @@ Factory for slide-level encoder models.
    * - **Threads**
      - conch_v15
      - ``--slide_encoder threads --patch_size 512 --mag 20``
-     - *(Coming Soon!)*
-     - —
+     - `MahmoodLab/threads <https://huggingface.co/MahmoodLab/threads>`__
+     - 🔒 `CC-BY-NC-ND-4.0 <https://creativecommons.org/licenses/by-nc-nd/4.0/>`__
    * - **Titan**
      - conch_v15
      - ``--slide_encoder titan --patch_size 512 --mag 20``
