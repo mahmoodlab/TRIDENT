@@ -1644,7 +1644,10 @@ class Mettle15InferenceEncoder(BasePatchEncoder):
                 model = AutoModel.from_pretrained(self.HF_REPO, trust_remote_code=True)
             except:
                 traceback.print_exc()
-                raise Exception(f"Failed to download METTLE 1.5 model from https://huggingface.co/{self.HF_REPO}")
+                raise Exception(
+                    "Failed to download METTLE 1.5 model, make sure that you were granted access to "
+                    f"https://huggingface.co/{self.HF_REPO} and that you correctly registered your token"
+                )
 
         # Preprocessing from the model's `preprocessor_config.json`: direct bicubic resize to
         # 224 x 224 and the H-optimus-0 normalization constants.

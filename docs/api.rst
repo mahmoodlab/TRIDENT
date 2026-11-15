@@ -230,7 +230,7 @@ Factory for loading patch-level encoder models.
      - 1536/3072
      - ``--patch_encoder mettle-1.5 --patch_size 224 --mag 20``
      - `slideflow-labs/mettle-1.5 <https://huggingface.co/slideflow-labs/mettle-1.5>`__
-     - 🌐 See `model card <https://huggingface.co/slideflow-labs/mettle-1.5>`__
+     - 🔒 `CC-BY-NC-ND-4.0 <https://creativecommons.org/licenses/by-nc-nd/4.0/>`__
    * - **OpenMidnight**
      - 1536
      - ``--patch_encoder openmidnight --patch_size 224 --mag 20``
