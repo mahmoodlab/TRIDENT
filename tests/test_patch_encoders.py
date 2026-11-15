@@ -172,6 +172,11 @@ class TestPatchEncoders(unittest.TestCase):
         self.assertEqual(self._output_dim('mascaret'), 1536)
         self.assertEqual(self._output_dim('mascaret', return_type="cls+mean"), 3072)
 
+    def test_mettle15_forward(self):
+        # Robustness-fine-tuned H-optimus-0 with a CLS refinement head.
+        self.assertEqual(self._output_dim('mettle-1.5'), 1536)
+        self.assertEqual(self._output_dim('mettle-1.5', return_type="cls+mean"), 3072)
+
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 

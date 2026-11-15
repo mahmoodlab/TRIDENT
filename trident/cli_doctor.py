@@ -314,6 +314,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         ("Midnight", "kaiko-ai/midnight", "model"),
         ("Phaet", "wearewaiv/phaet", "model"),
         ("Mascaret", "wearewaiv/mascaret", "model"),
+        ("METTLE 1.5", "slideflow-labs/mettle-1.5", "model"),
         ("OpenMidnight", "SophontAI/OpenMidnight", "model"),
         ("GPFM", "majiabo/GPFM", "model"),
         ("Lunit vits8", "1aurent/vit_small_patch8_224.lunit_dino", "model"),

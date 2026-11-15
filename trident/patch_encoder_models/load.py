@@ -84,6 +84,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "h0-mini"
         - "phaet"
         - "mascaret"
+        - "mettle-1.5"
         - "musk"
         - "openmidnight"
         - "gpfm"
@@ -1603,6 +1604,72 @@ class MascaretInferenceEncoder(WaivFinetunedInferenceEncoder):
         super().__init__(**build_kwargs)
 
 
+class Mettle15InferenceEncoder(BasePatchEncoder):
+    """
+    METTLE 1.5 from Slideflow Labs: robustness fine-tune of H-optimus-0 (ViT-g/14 with four
+    register tokens) with a CLS refinement head. See https://huggingface.co/slideflow-labs/mettle-1.5.
+
+    The checkpoint ships as a custom HuggingFace architecture (hence `trust_remote_code=True`)
+    wrapping the timm backbone it fine-tunes, plus the head. Unlike the raw-CLS encoders, the
+    embedding returned here is the model's own output: the head-refined CLS (1536-dim), or with
+    `return_type="cls+mean"` the refined CLS concatenated with the mean patch token (3072-dim).
+    """
+    HF_REPO = 'slideflow-labs/mettle-1.5'
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+        from transformers import AutoModel
+        from torchvision import transforms
+
+        self.enc_name = 'mettle-1.5'
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = AutoModel.from_pretrained(model_dir, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create METTLE 1.5 model from local checkpoint at '{weights_path}'. "
+                    "You can download the required `model.safetensors`, `config.json`, "
+                    "`configuration_mettle.py` and `modeling_mettle.py` from: "
+                    f"https://huggingface.co/{self.HF_REPO}."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = AutoModel.from_pretrained(self.HF_REPO, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(f"Failed to download METTLE 1.5 model from https://huggingface.co/{self.HF_REPO}")
+
+        # Preprocessing from the model's `preprocessor_config.json`: direct bicubic resize to
+        # 224 x 224 and the H-optimus-0 normalization constants.
+        eval_transform = transforms.Compose([
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.707223, 0.578729, 0.703617),
+                std=(0.211883, 0.230117, 0.177517)
+            ),
+        ])
+
+        if return_type not in ("cls_token", "cls+mean"):
+            raise ValueError(
+                f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{return_type}'"
+            )
+        self.return_type = return_type
+        precision = torch.float16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        feature_view = "cls" if self.return_type == "cls_token" else "cls_mean"
+        return self.model(pixel_values=x, feature_view=feature_view).pooler_output
+
+
 class H0MiniInferenceEncoder(BasePatchEncoder):
 
     def __init__(self, **build_kwargs):
@@ -2094,6 +2161,7 @@ encoder_registry = {
     "midnight12k": Midnight12kInferenceEncoder,
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
+    "mettle-1.5": Mettle15InferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,

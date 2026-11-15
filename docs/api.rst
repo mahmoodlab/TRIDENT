@@ -226,6 +226,11 @@ Factory for loading patch-level encoder models.
      - ``--patch_encoder mascaret --patch_size 224 --mag 20``
      - `wearewaiv/mascaret <https://huggingface.co/wearewaiv/mascaret>`__
      - 🔒 `Waiv non-commercial <https://huggingface.co/wearewaiv/mascaret/blob/main/LICENSE.pdf>`__
+   * - **METTLE 1.5**
+     - 1536/3072
+     - ``--patch_encoder mettle-1.5 --patch_size 224 --mag 20``
+     - `slideflow-labs/mettle-1.5 <https://huggingface.co/slideflow-labs/mettle-1.5>`__
+     - 🌐 See `model card <https://huggingface.co/slideflow-labs/mettle-1.5>`__
    * - **OpenMidnight**
      - 1536
      - ``--patch_encoder openmidnight --patch_size 224 --mag 20``
