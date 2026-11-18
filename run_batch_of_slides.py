@@ -21,6 +21,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
+
+# ABMIL is an untrained aggregator that needs hyperparameters the CLI cannot pass (Python API only).
+CLI_SLIDE_ENCODERS = [name for name in slide_encoder_registry if name != 'abmil']
 from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
 from trident.Summary import start_run, finalize_run
@@ -183,7 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument('--slide_encoder', type=str, default=None, 
-                        choices=slide_encoder_registry.keys(), 
+                        choices=CLI_SLIDE_ENCODERS, 
                         help='Slide encoder to use')
     parser.add_argument('--feat_batch_size', type=int, default=None, 
                         help='Batch size for feature extraction. Defaults to None (use `batch_size` argument instead).')

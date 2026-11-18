@@ -249,6 +249,14 @@ class TestRunBatchOfSlides(unittest.TestCase):
         with patch("sys.argv", base + ["--patch_encoder", "uni_v1"]):
             self.assertEqual(batch_mod.parse_arguments().patch_encoder, "uni_v1")
 
+    def test_cli_slide_encoders_exclude_untrained_abmil(self):
+        # ABMIL needs hyperparameters the CLI cannot pass, so it is Python API only.
+        parser = batch_mod.build_parser()
+        base = ["--job_dir", "job", "--wsi_dir", "wsis", "--slide_encoder"]
+        self.assertEqual(parser.parse_args(base + ["feather"]).slide_encoder, "feather")
+        with patch("sys.stderr"), self.assertRaises(SystemExit):
+            parser.parse_args(base + ["abmil"])
+
 
 if __name__ == "__main__":
     unittest.main()
