@@ -60,7 +60,7 @@ Notes for power users
 
 - **Nested datasets**: ``search_nested=True`` uses relative paths under ``wsi_source`` (mirrors CLI ``--search_nested``).
 - **Subset runs**: pass ``custom_list_of_wsis="subset.csv"``; the CSV must have a ``wsi`` column.
-- **Reader selection**: force a backend with ``reader_type="openslide" | "cucim" | "image" | "sdpc" | "omezarr" | "czi"``.
+- **Reader selection**: force a backend with ``reader_type="openslide" | "cucim" | "image" | "sdpc" | "omezarr" | "czi" | "isyntax"``.
 - **Slide encoders**: slide embeddings require a specific underlying patch encoder. The mapping lives in ``trident.slide_encoder_models.load.slide_to_patch_encoder_name``. If patch features are missing for that encoder, ``run_slide_feature_extraction_job`` extracts them on the fly.
 - **Resume / idempotency**: every job uses self-describing ``.lock`` files (PID, host, timestamp). If an output exists and is not actively locked, the job is skipped on re-run. Use ``trident.IO.clear_dead_locks(job_dir)`` (or pass ``--clear_dead_locks`` to the CLI) to remove orphaned locks safely.
 - **Multi-GPU**: the CLI handles GPU sharding via ``--gpus``. From Python, run separate ``Processor`` instances per shard with disjoint ``selected_wsi_paths`` and distinct ``device="cuda:N"`` arguments to the run-* methods.
@@ -241,6 +241,11 @@ Factory for loading patch-level encoder models.
      - ``--patch_encoder genbio-pathfm --patch_size 224 --mag 20``
      - `genbio-ai/genbio-pathfm <https://huggingface.co/genbio-ai/genbio-pathfm>`__
      - 🌐 `GenBio AI Community <https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt>`__
+   * - **PLIP**
+     - 768
+     - ``--patch_encoder plip --patch_size 224 --mag 20``
+     - `vinid/plip <https://huggingface.co/vinid/plip>`__
+     - —
    * - **Gemma 4**
      - 768/1152
      - ``--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20``

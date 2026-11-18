@@ -14,10 +14,10 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 <img align="right" src="_readme/trident_crop.jpg" width="250px" />
 
 - **End-to-end pipeline**: tissue segmentation → patch coordinates → patch / slide embeddings, in one command (`--task all`) or stage-by-stage.
-- **33 patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
+- **34 patch encoders**: [UNI](https://www.nature.com/articles/s41591-024-02857-3), [CONCHv1.5](https://huggingface.co/MahmoodLab/conchv1_5), [Virchow](https://www.nature.com/articles/s41591-024-03141-0), [Prov-GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [H-Optimus-0](https://github.com/bioptimus/releases/tree/main/models/h-optimus/v0), etc.
 - **Slide encoders**: [Titan](https://arxiv.org/abs/2411.19666), [GigaPath](https://www.nature.com/articles/s41586-024-07441-w), [PRISM](https://huggingface.co/paige-ai/Prism), [CHIEF](https://github.com/hms-dbmi/CHIEF), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [Feather](https://huggingface.co/MahmoodLab/abmil.base.conch_v15.pc108-24k).
 - **Tissue segmentation**: [HEST](https://huggingface.co/MahmoodLab/hest-tissue-seg), [GrandQC](https://github.com/cpath-ukk/grandqc), or **Otsu** for CPU-only runs. Optional `--remove_artifacts` / `--remove_penmarks` clean-up pass.
-- **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`). Or convert to pyramidal TIFF with `trident convert`.
+- **Multiple WSI readers**: OpenSlide, CuCIM, plain images (`.png`, `.jpeg`), SDPC, OME-Zarr (`.zarr`), Zeiss CZI (`.czi`), native Philips iSyntax (`.isyntax`). Or convert to pyramidal TIFF with `trident convert`.
 - **Multi-GPU**: `--gpus 0 1 2 3` distributes pending slides across GPUs.
 - **Smart resume**: outputs are tracked per-slide; re-running on the same `--job_dir` skips already-completed work. `.lock` files protect in-flight tasks; stale ones are cleaned safely with `--clear_dead_locks`.
 - **WSI cache pipeline** for slow / network storage: `--wsi_cache /local/ssd --cache_batch_size 32` stages slides locally via a producer/consumer pipeline.
@@ -35,6 +35,7 @@ Optional install profiles:
 - `pip install -e ".[slide-encoders]"` for slide embedding-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine)).
 - `pip install -e ".[omezarr]"` for OME Zarr WSI reader support ([OME-NGFF / OME-Zarr](https://ngff.openmicroscopy.org/latest/)).
 - `pip install -e ".[czi]"` for Zeiss CZI WSI reader support ([pylibCZIrw](https://pypi.org/project/pylibCZIrw/)).
+- `pip install -e ".[isyntax]"` for native Philips iSyntax support ([pyisyntax](https://github.com/anibali/pyisyntax), >=0.1.7 for correct WSI pixel-size metadata). `.isyntax` files are detected automatically; use `--reader_type isyntax` to select the backend explicitly.
 - `pip install -e ".[convert]"` for slide conversion to tiff.
 - `pip install -e ".[full]"` to install all pip-installable optional dependencies.
 
@@ -125,7 +126,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 34 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
@@ -151,6 +152,7 @@ Trident supports 33 patch encoders, loaded via a patch [`encoder_factory`](https
 | **OpenMidnight**      | 1536           | `--patch_encoder openmidnight --patch_size 224 --mag 20`         | [SophontAI/OpenMidnight](https://huggingface.co/SophontAI/OpenMidnight) | 🔒 [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) |
 | **GPFM**              | 1024           | `--patch_encoder gpfm --patch_size 224 --mag 20`                 | [majiabo/GPFM](https://huggingface.co/majiabo/GPFM) | 🌐 [MIT](https://opensource.org/license/mit) |
 | **GenBio-PathFM**     | 4608           | `--patch_encoder genbio-pathfm --patch_size 224 --mag 20`        | [genbio-ai/genbio-pathfm](https://huggingface.co/genbio-ai/genbio-pathfm) | 🌐 [GenBio AI Community](https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt) |
+| **PLIP**              | 768            | `--patch_encoder plip --patch_size 224 --mag 20`                 | [vinid/plip](https://huggingface.co/vinid/plip) | — |
 | **Gemma 4** ¹         | 768/1152       | `--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20` | [google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) / [google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B) | 🌐 [Gemma Terms](https://ai.google.dev/gemma/docs/gemma_4_license) |
 | **Kaiko**             | 384/768/1024   | `--patch_encoder {kaiko-vits8, kaiko-vits16, kaiko-vitb8, kaiko-vitb16, kaiko-vitl14} --patch_size 256 --mag 20` | [1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795](https://huggingface.co/collections/1aurent/kaikoai-models-66636c99d8e1e34bc6dcf795) | 🌐 [Kaiko non-commercial](https://github.com/kaiko-ai/towards_large_pathology_fms/blob/main/LICENSE) |
 | **Lunit**             | 384            | `--patch_encoder lunit-vits8 --patch_size 224 --mag 20`          | [1aurent/vit_small_patch8_224.lunit_dino](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) | 🌐 [Lunit non-commercial](https://huggingface.co/1aurent/vit_small_patch8_224.lunit_dino) |

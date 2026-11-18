@@ -205,4 +205,4 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - `gemma4-*` asserting on transformers → it needs v5 (see Setup).
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
-- Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
+- Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi,isyntax}`.
