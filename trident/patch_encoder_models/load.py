@@ -88,6 +88,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "hoptimus0"
         - "hoptimus1"
         - "h0-mini"
+        - "midnight12k"
         - "phaet"
         - "mascaret"
         - "musk"

@@ -126,7 +126,7 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_256px_0px_overlap/features_uni_v1`. (Shape: `(n_patches, feature_dim)`)
 
-Trident supports 34 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 34 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
@@ -176,7 +176,7 @@ Trident supports 34 patch encoders, loaded via a patch [`encoder_factory`](https
  - **Outputs**: 
    - Features are saved as h5 files in `./trident_processed/20x_512px_0px_overlap/slide_features_titan`. (Shape: `(feature_dim)`)
 
-Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py#L14). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
+Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/slide_encoder_models/load.py). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
 | Slide Encoder | Patch Encoder | Args | Link | License |
 |---------------|----------------|------|------|---------|
@@ -194,7 +194,7 @@ Trident supports 12 slide encoders, loaded via a slide-level [`encoder_factory`]
 | **ABMIL** | any | Python API only — untrained aggregator, see note below | — | — |
 
 > [!NOTE]
-> **ABMIL** is an untrained attention-pooling aggregator, not a pretrained encoder. It is only usable from the Python API with explicit hyperparameters (`encoder_factory('abmil', pretrained=False, input_feature_dim=768, n_heads=1, head_dim=64, dropout=0.1, gated=True)`); `--slide_encoder abmil` raises a `TypeError`.
+> **ABMIL** is an untrained attention-pooling aggregator, not a pretrained encoder. It is only usable from the Python API with explicit hyperparameters (`encoder_factory('abmil', pretrained=False, input_feature_dim=768, n_heads=1, head_dim=64, dropout=0.1, gated=True)`), so it is not offered by `--slide_encoder`.
 
 > [!NOTE]
 > If your task includes multiple slides per patient, you can generate patient-level embeddings by: (1) processing each slide independently and taking their average slide embedding (late fusion) or (2) pooling all patches together and processing that as a single "pseudo-slide" (early fusion). For an implementation of both fusion strategies, please check out our sister repository [Patho-Bench](https://github.com/mahmoodlab/Patho-Bench).

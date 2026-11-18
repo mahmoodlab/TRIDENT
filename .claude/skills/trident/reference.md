@@ -153,7 +153,7 @@ pass its required patch_size/mag.
 | `feather_uni_v2` | uni_v2 | `--patch_size 256 --mag 20` |
 | `care` | conch_v15 | `--patch_size 512 --mag 20` |
 | `threads` | conch_v15 | `--patch_size 512 --mag 20` *(coming soon)* |
-| `abmil` | any | **Python API only** — untrained aggregator; needs `pretrained=False` + `input_feature_dim`/`n_heads`/`head_dim`/`dropout`/`gated`. `--slide_encoder abmil` raises TypeError. |
+| `abmil` | any | **Python API only** — untrained aggregator; needs `pretrained=False` + `input_feature_dim`/`n_heads`/`head_dim`/`dropout`/`gated`. Not offered by `--slide_encoder`. |
 
 ## Segmenters & artifact removal
 
