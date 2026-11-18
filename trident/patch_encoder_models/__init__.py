@@ -39,6 +39,10 @@ from trident.patch_encoder_models.load import (
     WaivFinetunedInferenceEncoder,
     PhaetInferenceEncoder,
     MascaretInferenceEncoder,
+    CRADIOv2BInferenceEncoder,
+    CRADIOv2LInferenceEncoder,
+    CRADIOv2HInferenceEncoder,
+    CRADIOv2GInferenceEncoder,
 )
 
 __all__ = [
@@ -82,4 +86,8 @@ __all__ = [
     "WaivFinetunedInferenceEncoder",
     "PhaetInferenceEncoder",
     "MascaretInferenceEncoder",
+    "CRADIOv2BInferenceEncoder",
+    "CRADIOv2LInferenceEncoder",
+    "CRADIOv2HInferenceEncoder",
+    "CRADIOv2GInferenceEncoder",
 ]
