@@ -101,6 +101,14 @@ class TestAnyToTiffConverter(unittest.TestCase):
             mpp = 1e4 / (num / den)
             self.assertAlmostEqual(mpp, 0.25, places=4)
 
+    def test_save_tiff_uses_jpeg_quality_95(self):
+        converter = AnyToTiffConverter(job_dir=".")
+        pyvips_img = MagicMock()
+        converter._save_pyvips_tiff(pyvips_img, "slide.tiff", mpp=0.25, pyvips_module=MagicMock())
+        kwargs = pyvips_img.tiffsave.call_args.kwargs
+        self.assertEqual(kwargs["compression"], "jpeg")
+        self.assertEqual(kwargs["Q"], 95)
+
 
 if __name__ == "__main__":
     unittest.main()

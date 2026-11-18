@@ -266,6 +266,7 @@ class AnyToTiffConverter:
             tile_width=256,
             tile_height=256,
             compression='jpeg',
+            Q=95,
             resunit=pyvips_module.enums.ForeignTiffResunit.CM,
             xres=1. / (mpp * 1e-3),
             yres=1. / (mpp * 1e-3)
