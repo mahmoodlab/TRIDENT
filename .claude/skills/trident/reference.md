@@ -49,7 +49,7 @@ without features, run `--task seg` then `--task coords`.
   pandas reads the path directly) with column `wsi` (filenames/relative paths, with extension) and
   optional column `mpp`. Only listed slides run.
 - `--custom_mpp_keys KEY ...` — metadata keys to read micron-per-pixel from.
-- `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}` — force a reader (default: auto).
+- `--reader_type {openslide,image,cucim,sdpc,omezarr,czi,isyntax}` — force a reader (default: auto).
 - `--search_nested` — recurse into subdirectories of `--wsi_dir`.
 
 **Segmentation**
@@ -180,7 +180,8 @@ mask=tissue_gdf)` — masking matters, or empty borders dominate) and take
 ## WSI readers & formats
 
 OpenSlide (`.svs`, `.tiff`, `.ndpi`, `.mrxs`, …), CuCIM, plain images (`.png`, `.jpeg`),
-SDPC, OME-Zarr (`.zarr`, needs `.[omezarr]`), Zeiss CZI (`.czi`, needs `.[czi]`).
+SDPC, OME-Zarr (`.zarr`, needs `.[omezarr]`), Zeiss CZI (`.czi`, needs `.[czi]`),
+Philips iSyntax (`.isyntax`, needs `.[isyntax]`).
 Multi-file formats like MIRAX (`.mrxs`) sit in `--wsi_dir` exactly like single-file slides:
 the `.mrxs` index file next to its same-named data folder; the custom list references the
 `.mrxs` by basename.
@@ -304,7 +305,7 @@ side `patch_size_level0 / downsample`.
 pip install -e .                     # core (transformers, timm, safetensors)
 pip install -e ".[patch-encoders]"   # CONCH, MUSK, CTransPath/CHIEF, …
 pip install -e ".[slide-encoders]"   # PRISM, GigaPath, Madeleine, …
-pip install -e ".[omezarr]" / ".[czi]" / ".[convert]" / ".[full]"
+pip install -e ".[omezarr]" / ".[czi]" / ".[isyntax]" / ".[convert]" / ".[full]"
 trident-doctor --profile base
 trident-doctor --profile patch-encoders --check-gated
 ```

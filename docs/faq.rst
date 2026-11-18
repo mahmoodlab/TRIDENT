@@ -54,6 +54,7 @@ Getting started and discovery
    - ``sdpc``: SDPC files
    - ``omezarr``: OME-Zarr / NGFF Zarr
    - ``czi``: Zeiss CZI (requires the optional CZI dependency)
+   - ``isyntax``: native Philips iSyntax (requires the optional ``.[isyntax]`` dependency)
 
 Metadata and patching semantics
 -------------------------------
