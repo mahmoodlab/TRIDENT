@@ -417,7 +417,7 @@ class WSI:
 
             for batch in iterator:
 
-                with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                with torch.autocast(device_type=torch.device(device).type, dtype=precision, enabled=(precision != torch.float32)):
                     if collate_fn is not None:
                         if 'xcoords' not in batch or 'ycoords' not in batch:
                             raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
@@ -1036,7 +1036,7 @@ class WSI:
             for imgs, _ in iterator:
                 imgs = imgs.to(device)
                 with torch.autocast(
-                    device_type=device.split(":")[0],
+                    device_type=torch.device(device).type,
                     dtype=precision,
                     enabled=(precision != torch.float32),
                 ):
@@ -1187,7 +1187,7 @@ class WSI:
         # Generate slide-level features
         precision = getattr(slide_encoder, "precision", torch.float32)
         with torch.autocast(
-            device_type=device.split(":")[0],
+            device_type=torch.device(device).type,
             enabled=(precision != torch.float32),
         ):
             features = slide_encoder(batch, device)
