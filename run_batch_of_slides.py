@@ -210,6 +210,15 @@ def parse_arguments() -> argparse.Namespace:
     primary_gpu = (args.gpus or [-1])[0]
     args.device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
 
+    # A slide encoder selects its own patch encoder. Record that one so run manifests
+    # and summary.md report the encoder that is actually used.
+    if args.slide_encoder is not None:
+        from trident.slide_encoder_models.load import slide_to_patch_encoder_name
+        if args.slide_encoder.startswith('mean-'):
+            args.patch_encoder = args.slide_encoder.split('mean-', 1)[1]
+        else:
+            args.patch_encoder = slide_to_patch_encoder_name.get(args.slide_encoder, args.patch_encoder)
+
     return args
 
 

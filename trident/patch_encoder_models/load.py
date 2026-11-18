@@ -1,3 +1,4 @@
+import inspect
 import traceback
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Any, Dict, Tuple, Callable
@@ -52,6 +53,11 @@ def _resolve_target_img_size(enc_name: str, target_img_size: Optional[int], defa
         f"{patch_size * (target_img_size // patch_size + 1)}."
     )
     return target_img_size
+
+
+def _l2_normalize_output(module: torch.nn.Module, inputs: Any, output: torch.Tensor) -> torch.Tensor:
+    """Forward hook that L2-normalizes patch embeddings along the feature dimension."""
+    return torch.nn.functional.normalize(output, dim=-1)
 
 
 def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
@@ -133,7 +139,7 @@ class BasePatchEncoder(torch.nn.Module, ABC):
 
     _has_internet = has_internet_connection()
     
-    def __init__(self, weights_path: Optional[str] = None, **build_kwargs: Dict[str, Any]):
+    def __init__(self, weights_path: Optional[str] = None, normalize: bool = False, **build_kwargs: Dict[str, Any]):
         """
         Initialize BasePatchEncoder.
 
@@ -141,6 +147,9 @@ class BasePatchEncoder(torch.nn.Module, ABC):
             weights_path (Optional[str]):
                 Optional path to local model weights. If None, the model is loaded from the model registry or
                 downloaded from Hugging Face Hub.
+            normalize (bool):
+                If True, output embeddings are L2-normalized. Encoders whose `_build()` accepts a
+                `normalize` argument handle it natively; all others are normalized by a forward hook.
             **build_kwargs (dict):
                 Additional keyword arguments passed to the `_build()` method to customize model creation.
 
@@ -160,7 +169,12 @@ class BasePatchEncoder(torch.nn.Module, ABC):
         super().__init__()
         self.enc_name: Optional[str] = None
         self.weights_path: Optional[str] = weights_path
+        native_normalize = 'normalize' in inspect.signature(self._build).parameters
+        if native_normalize:
+            build_kwargs['normalize'] = normalize
         self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
+        if normalize and not native_normalize:
+            self.register_forward_hook(_l2_normalize_output)
 
     def ensure_valid_weights_path(self, weights_path: str) -> None:
         if not weights_path:

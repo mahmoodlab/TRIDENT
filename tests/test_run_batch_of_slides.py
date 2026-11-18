@@ -232,6 +232,23 @@ class TestRunBatchOfSlides(unittest.TestCase):
                 self.assertEqual(len(shard_counts), 2, "Expected 2 GPU workers after dedup of `0 0 1`")
                 self.assertEqual(sum(shard_counts), len(slide_paths))
 
+    def test_parse_arguments_records_patch_encoder_of_slide_encoder(self):
+        # Regression for #239: run manifests must report the patch encoder the slide encoder uses.
+        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis", "--task", "feat"]
+        cases = {
+            "feather_uni_v2": "uni_v2",
+            "titan": "conch_v15",
+            "mean-virchow2": "virchow2",
+        }
+        for slide_encoder, expected in cases.items():
+            with self.subTest(slide_encoder=slide_encoder):
+                with patch("sys.argv", base + ["--slide_encoder", slide_encoder]):
+                    args = batch_mod.parse_arguments()
+                self.assertEqual(args.patch_encoder, expected)
+
+        with patch("sys.argv", base + ["--patch_encoder", "uni_v1"]):
+            self.assertEqual(batch_mod.parse_arguments().patch_encoder, "uni_v1")
+
 
 if __name__ == "__main__":
     unittest.main()
