@@ -241,6 +241,11 @@ Factory for loading patch-level encoder models.
      - ``--patch_encoder genbio-pathfm --patch_size 224 --mag 20``
      - `genbio-ai/genbio-pathfm <https://huggingface.co/genbio-ai/genbio-pathfm>`__
      - 🌐 `GenBio AI Community <https://huggingface.co/genbio-ai/genbio-pathfm/blob/main/LICENSE.txt>`__
+   * - **PLIP**
+     - 768
+     - ``--patch_encoder plip --patch_size 224 --mag 20``
+     - `vinid/plip <https://huggingface.co/vinid/plip>`__
+     - —
    * - **Gemma 4**
      - 768/1152
      - ``--patch_encoder {gemma4-e4b, gemma4-26b} --patch_size 224 --mag 20``

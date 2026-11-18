@@ -57,7 +57,7 @@ Highlights
 
 - **22+ patch encoders**: UNI / UNI2-h, CONCH / CONCHv1.5, Virchow / Virchow2, Phikon /
   Phikon-v2, KEEP, Prov-GigaPath, H-Optimus 0/1, H0-mini, MUSK, Midnight-12k,
-  OpenMidnight, GPFM, GenBio-PathFM, Kaiko (5 variants), Lunit, Hibou-L, CTransPath,
+  OpenMidnight, GPFM, GenBio-PathFM, PLIP, Kaiko (5 variants), Lunit, Hibou-L, CTransPath,
   ResNet50.
 - **6+ slide encoders**: Threads (coming soon), Titan, PRISM, CHIEF, GigaPath, Madeleine,
   Feather. Auto-runs the correct underlying patch encoder for you.

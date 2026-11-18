@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (33) — embedding dim + required patch_size/mag
+- Patch encoders (34) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -127,6 +127,7 @@ column is **required** for correct features — copy it verbatim.
 | `openmidnight` | 1536 | `--patch_size 224 --mag 20` |
 | `gpfm` | 1024 | `--patch_size 224 --mag 20` |
 | `genbio-pathfm` | 4608 | `--patch_size 224 --mag 20` |
+| `plip` | 768 | `--patch_size 224 --mag 20` |
 | `gemma4-e4b` / `gemma4-26b` | 768/1152 | `--patch_size 224 --mag 20` — needs `transformers>=5`, excludes `hibou_l` |
 | `kaiko-vits8/vits16/vitb8/vitb16/vitl14` | 384/768/1024 | `--patch_size 256 --mag 20` |
 | `lunit-vits8` | 384 | `--patch_size 224 --mag 20` |

@@ -175,6 +175,10 @@ class TestPatchEncoders(unittest.TestCase):
     def test_genbio_pathfm_forward(self):
         self._test_encoder_forward('genbio-pathfm')
 
+    def test_plip_forward(self):
+        self.assertEqual(self._output_dim('plip'), 768)
+        self.assertEqual(self._output_dim('plip', with_proj=True), 512)
+
     @unittest.skipUnless(GEMMA4_AVAILABLE,
                          "Gemma 4 requires transformers>=5 (see README: Library version support).")
     def test_gemma4_forward(self):
