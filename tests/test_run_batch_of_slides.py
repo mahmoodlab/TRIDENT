@@ -58,6 +58,16 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cuda:0")
 
+    def test_segmentation_batch_size_override_and_default(self):
+        for override, expected in ((None, 8), (3, 3)):
+            with self.subTest(override=override):
+                processor = _DummyProcessor()
+                args = self._base_args("otsu")
+                args.seg_batch_size = override
+                with patch("trident.segmentation_models.load.segmentation_model_factory", return_value=_DummySegmentationModel()):
+                    batch_mod.run_task(processor, args)
+                self.assertEqual(processor.calls[0][1]["batch_size"], expected)
+
     def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_dir = os.path.join(tmpdir, "job")
