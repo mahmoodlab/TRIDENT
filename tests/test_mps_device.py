@@ -96,9 +96,10 @@ class TestMPSDevice(unittest.TestCase):
              patch.object(module, "create_lock"), patch.object(module, "remove_lock"), \
              patch.object(module.gpd, "read_file", return_value=MagicMock(empty=False)):
             processor.job_dir = directory
-            processor.run_segmentation_job(MagicMock(), artifact_remover_model=MagicMock(), device="mps")
+            processor.run_segmentation_job(MagicMock(), artifact_remover_model=MagicMock(), device="mps", batch_size=7)
         self.assertEqual(len(slide.segment_tissue.call_args_list), 2)
         self.assertTrue(all(call.kwargs["device"] == "mps" for call in slide.segment_tissue.call_args_list))
+        self.assertEqual([call.kwargs["batch_size"] for call in slide.segment_tissue.call_args_list], [7, 7])
 
     def test_macos_does_not_try_fork(self):
         with patch.object(wsi.sys, "platform", "darwin"):
