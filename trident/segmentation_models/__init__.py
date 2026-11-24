@@ -5,6 +5,7 @@ from trident.segmentation_models.load import (
     HESTSegmenter,
     GrandQCSegmenter,
     GrandQCArtifactSegmenter,
+    TissueQCSegmenter,
     OtsuSegmenter,
 )
 from trident.segmentation_models.model_zoo.otsu import (
@@ -18,6 +19,7 @@ __all__ = [
     "HESTSegmenter",
     "GrandQCSegmenter",
     "GrandQCArtifactSegmenter",
+    "TissueQCSegmenter",
     "OtsuSegmenter",
     "apply_otsu_thresholding",
     "mask_rgb",

@@ -86,16 +86,17 @@ Models and compute (GPU/CPU)
 
 .. dropdown:: **Which tissue vs. background segmenter should I use?**
 
-   TRIDENT supports three segmenters:
+   TRIDENT supports four segmenters:
 
    - ``hest``: preferred for IHC and dirtier slides.
    - ``grandqc``: often preferred for clean H&E workflows (fast and reliable).
+   - ``tissueqc``: segments tissue and artifacts in one 5x pass, so ``--remove_artifacts`` runs no extra model.
    - ``otsu``: image-processing-only fallback (no segmentation weights required), runs at 1.25x on CPU.
 
 .. dropdown:: **Which tasks need GPU and which are fine on CPU?**
 
    - Segmentation:
-     - ``hest`` and ``grandqc`` use GPU.
+     - ``hest``, ``grandqc`` and ``tissueqc`` use GPU.
      - Optional artifact cleanup (``--remove_artifacts`` / ``--remove_penmarks``) adds additional segmentation cost.
      - ``otsu`` runs on CPU.
    - Patching:
@@ -275,7 +276,8 @@ Environment and advanced usage
       {
         "hest": "./ckpts/trident/deeplabv3_seg_v4.ckpt",
         "grandqc": "./ckpts/trident/Tissue_Detection_MPP10.pth",
-        "grandqc_artifact": "./ckpts/trident/GrandQC_MPP1_state_dict.pth"
+        "grandqc_artifact": "./ckpts/trident/GrandQC_MPP1_state_dict.pth",
+        "tissueqc": "./ckpts/trident/model.safetensors"
       }
 
    **2. Patch Encoder Models**
@@ -338,7 +340,7 @@ Environment and advanced usage
       from trident.patch_encoder_models.load import encoder_factory as patch_encoder_model_factory
       from trident.slide_encoder_models.load import encoder_factory as slide_encoder_model_factory
 
-      segmentation_models = ["hest", "grandqc", "grandqc_artifact", "otsu"]
+      segmentation_models = ["hest", "grandqc", "grandqc_artifact", "tissueqc", "otsu"]
       for model in segmentation_models:
           try:
               segmentation_model_factory(model)

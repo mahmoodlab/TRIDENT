@@ -58,6 +58,34 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cuda:0")
 
+    def test_run_task_seg_tissueqc_removes_artifacts_itself(self):
+        processor = _DummyProcessor()
+        args = self._base_args("tissueqc")
+        args.remove_artifacts = True
+        model = _DummySegmentationModel(target_mag=5)
+        model.detects_artifacts, model.batch_size = True, 4
+
+        with patch("trident.segmentation_models.load.segmentation_model_factory", return_value=model) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_called_once_with("tissueqc", confidence_thresh=0.5)
+        self.assertTrue(model.remove_artifacts)
+        kwargs = processor.calls[0][1]
+        self.assertIsNone(kwargs["artifact_remover_model"])
+        self.assertEqual(kwargs["batch_size"], 4)
+
+    def test_run_task_seg_hest_keeps_grandqc_artifact_remover(self):
+        processor = _DummyProcessor()
+        args = self._base_args("hest")
+        args.remove_artifacts = True
+
+        with patch("trident.segmentation_models.load.segmentation_model_factory",
+                   return_value=_DummySegmentationModel(target_mag=10)) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_any_call("grandqc_artifact", remove_penmarks_only=False)
+        self.assertEqual(processor.calls[0][1]["batch_size"], 8)
+
     def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_dir = os.path.join(tmpdir, "job")
