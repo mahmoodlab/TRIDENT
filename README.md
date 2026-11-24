@@ -32,7 +32,7 @@ This project was developed by the [Mahmood Lab](https://faisal.ai/) at Harvard M
 
 Optional install profiles:
 - `pip install -e ".[patch-encoders]"` for patch embedding-related extras (e.g. [CONCH](https://huggingface.co/MahmoodLab/CONCH), [MUSK](https://huggingface.co/xiangjx/musk), [CTransPath / CHIEF](https://github.com/hms-dbmi/CHIEF)).
-- `pip install -e ".[slide-encoders]"` for slide embedding-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine)).
+- `pip install -e ".[slide-encoders]"` for slide embedding-related extras (e.g. [PRISM](https://huggingface.co/paige-ai/Prism), [GigaPath](https://huggingface.co/prov-gigapath/prov-gigapath), [Madeleine](https://huggingface.co/MahmoodLab/madeleine), [THREADS](https://github.com/mahmoodlab/threadsmodel)).
 - `pip install -e ".[omezarr]"` for OME Zarr WSI reader support ([OME-NGFF / OME-Zarr](https://ngff.openmicroscopy.org/latest/)).
 - `pip install -e ".[czi]"` for Zeiss CZI WSI reader support ([pylibCZIrw](https://pypi.org/project/pylibCZIrw/)).
 - `pip install -e ".[isyntax]"` for native Philips iSyntax support ([pyisyntax](https://github.com/anibali/pyisyntax), >=0.1.7 for correct WSI pixel-size metadata). `.isyntax` files are detected automatically; use `--reader_type isyntax` to select the backend explicitly.

@@ -41,7 +41,7 @@ Optional install profiles:
 When to use each profile:
 
 - ``.[patch-encoders]``: extra patch encoder dependencies (e.g., CONCH / MUSK / CTransPath).
-- ``.[slide-encoders]``: extra slide encoder dependencies (e.g., PRISM / GigaPath / Madeleine).
+- ``.[slide-encoders]``: extra slide encoder dependencies (e.g., PRISM / GigaPath / Madeleine / THREADS).
 - ``.[convert]``: required for ``trident convert`` workflows (BioFormats-backed conversion to pyramidal TIFF).
 - ``.[czi]``: enables the Zeiss CZI reader (``--reader_type czi``).
 - ``.[isyntax]``: enables native Philips iSyntax reading (``--reader_type isyntax``),
