@@ -536,7 +536,7 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
     def __init__(self, **build_kwargs):
         """
-        Threads initialization.
+        THREADS initialization.
         """
         super().__init__(**build_kwargs)
 
@@ -546,14 +546,32 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
         try:
             from threadsmodel.inference import create_model, create_model_from_pretrained
-        except:
+        except Exception:
             traceback.print_exc()
-            raise Exception("Coming Soon! Thanks for your patience.")
-        
-        return None, None, None
+            raise Exception("Please install THREADS using `pip install git+https://github.com/mahmoodlab/threadsmodel.git`")
+
+        # The config and weights are gated on Hugging Face.
+        build = create_model_from_pretrained if pretrained else create_model
+        try:
+            model, precision, embedding_dim = build(checkpoint_path="hf_hub:MahmoodLab/threads")
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                "Failed to load THREADS from Hugging Face. "
+                "Please make sure you have been granted access to MahmoodLab/threads "
+                "and logged in with `huggingface-cli login`."
+            )
+
+        return model, precision, embedding_dim  # precision: torch.bfloat16, embedding_dim: 1024
 
     def forward(self, batch, device='cuda', return_raw_attention=False):
-        pass
+        features = batch['features'].to(device)
+        if features.dim() == 2:
+            features = features.unsqueeze(0)
+        # Run in THREADS' own precision (bfloat16), whatever dtype an outer autocast uses.
+        device_type = torch.device(device).type
+        with torch.autocast(device_type=device_type, dtype=self.precision, enabled=self.precision != torch.float32):
+            return self.model(features, return_raw_attention=return_raw_attention)
 
 
 class CARESlideEncoder(BaseSlideEncoder):
