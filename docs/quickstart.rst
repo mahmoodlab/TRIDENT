@@ -116,6 +116,7 @@ High-signal knobs
 
   - ``grandqc`` — fast, accurate on clean H&E.
   - ``hest`` — better on IHC / dirtier slides.
+  - ``tissueqc`` — tissue and artifacts in one 5x pass; ``--remove_artifacts`` runs no extra model.
   - ``otsu`` — CPU-only fallback, no model weights needed.
 
 - ``--mag`` / ``--patch_size`` / ``--overlap`` define the patch grid; the same values must be

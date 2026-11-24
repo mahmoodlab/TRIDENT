@@ -60,7 +60,7 @@ GPU vs CPU
 ----------
 
 - **Segmentation**:
-  - ``hest`` / ``grandqc`` are GPU workflows in practice.
+  - ``hest`` / ``grandqc`` / ``tissueqc`` are GPU workflows in practice.
   - ``otsu`` is CPU-only and requires **no model weights**.
 - **Feature extraction** (patch or slide): GPU strongly recommended.
 

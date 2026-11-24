@@ -53,10 +53,10 @@ without features, run `--task seg` then `--task coords`.
 - `--search_nested` — recurse into subdirectories of `--wsi_dir`.
 
 **Segmentation**
-- `--segmenter {hest,grandqc,otsu}` (default `hest`).
-- `--seg_conf_thresh FLOAT` (default 0.5) — lower keeps more tissue (try 0.4).
+- `--segmenter {hest,grandqc,tissueqc,otsu}` (default `hest`).
+- `--seg_conf_thresh FLOAT` (default 0.5) — lower keeps more tissue (try 0.4). For `tissueqc`, the artifact probability threshold: lower finds more artifacts.
 - `--remove_holes` — drop patches over tissue holes (default keeps them).
-- `--remove_artifacts` — extra GrandQC pass removing folds/blur/stains/penmarks/OOF (aggressive).
+- `--remove_artifacts` — extra GrandQC pass removing folds/blur/stains/penmarks/OOF (aggressive). With `tissueqc`, cuts the artifacts TissueQC predicted, no extra pass.
 - `--remove_penmarks` — extra pass removing penmarks only (gentle).
 - `--seg_batch_size INT`.
 
@@ -159,6 +159,7 @@ pass its required patch_size/mag.
 
 - `hest` (default): general tissue-vs-background, GPU.
 - `grandqc`: fast H&E (non-commercial license; cite the GrandQC paper).
+- `tissueqc`: tissue, background and artifact (fold, ink, blur, knife line, bubble, debris) in one 5x pass, GPU, Apache-2.0 weights (`JaumeLab/TissueQC`). Default mask keeps artifacts on tissue; `--remove_artifacts` cuts regions at least 24 µm wide and 0.005 mm² large out of the same prediction. Can over-call artifact on dense tumour, smooth muscle, fat septa and thyroid colloid edges.
 - `otsu`: classical thresholding, **CPU-only**, no model download — the fallback when no GPU.
 - `--remove_penmarks`: removes GrandQC class PenMarking (+Background). Gentle.
 - `--remove_artifacts`: keeps **only** GrandQC class "Normal Tissue", removing Fold,

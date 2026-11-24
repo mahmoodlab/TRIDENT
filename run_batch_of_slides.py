@@ -120,14 +120,17 @@ def build_parser() -> argparse.ArgumentParser:
                               "Defaults to False (only top-level slides are included)."))
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
-                        choices=['hest', 'grandqc', 'otsu'],
-                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
+                        choices=['hest', 'grandqc', 'tissueqc', 'otsu'],
+                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, TissueQC (tissue, background '
+                             'and artifacts in one 5x model), or Otsu.')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
-                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
+                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option. '
+                         'For TissueQC, the artifact probability threshold: lower it to find more artifacts.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
                         help='Do you want to remove holes?')
     parser.add_argument('--remove_artifacts', action='store_true', default=False, 
-                        help='Do you want to run an additional model to remove artifacts (including penmarks, blurs, stains, etc.)?')
+                        help='Do you want to remove artifacts (including penmarks, blurs, stains, etc.)? TissueQC removes them from '
+                             'its own prediction; other segmenters run an additional GrandQC model.')
     parser.add_argument('--remove_penmarks', action='store_true', default=False, 
                         help='Do you want to run an additional model to remove penmarks?')
     parser.add_argument('--seg_batch_size', type=int, default=None, 
@@ -294,10 +297,16 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             args.segmenter,
             confidence_thresh=args.seg_conf_thresh,
         )
-        if args.remove_artifacts or args.remove_penmarks:
+        # a segmenter that detects artifacts (TissueQC) removes them itself; GrandQC handles the rest
+        if getattr(segmentation_model, 'detects_artifacts', False):
+            segmentation_model.remove_artifacts = args.remove_artifacts
+            grandqc_artifacts = False
+        else:
+            grandqc_artifacts = args.remove_artifacts
+        if grandqc_artifacts or args.remove_penmarks:
             artifact_remover_model = segmentation_model_factory(
                 'grandqc_artifact',
-                remove_penmarks_only=args.remove_penmarks and not args.remove_artifacts
+                remove_penmarks_only=not grandqc_artifacts
             )
         else:
             artifact_remover_model = None
@@ -308,7 +317,8 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             seg_mag=segmentation_model.target_mag,
             holes_are_tissue= not args.remove_holes,
             artifact_remover_model=artifact_remover_model,
-            batch_size=args.seg_batch_size if args.seg_batch_size is not None else args.batch_size,
+            batch_size=(args.seg_batch_size if args.seg_batch_size is not None
+                        else getattr(segmentation_model, 'batch_size', None) or args.batch_size),
             device=seg_device,
         )
     elif args.task == 'coords':

@@ -107,6 +107,10 @@ them before any commercial use.
      - ``--segmenter grandqc``
      - `cpath-ukk/grandqc <https://github.com/cpath-ukk/grandqc>`__
      - 🌐 `CC-BY-NC-SA-4.0 <https://creativecommons.org/licenses/by-nc-sa/4.0/>`__
+   * - **TissueQC**
+     - ``--segmenter tissueqc``
+     - `JaumeLab/TissueQC <https://huggingface.co/JaumeLab/TissueQC>`__
+     - 🌐 `Apache-2.0 <https://www.apache.org/licenses/LICENSE-2.0>`__
    * - **Otsu**
      - ``--segmenter otsu``
      - —

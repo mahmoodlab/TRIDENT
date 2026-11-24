@@ -47,5 +47,8 @@ class TestSegmentationModels(unittest.TestCase):
     def test_grandqc(self):
         self._test_forward('grandqc')
 
+    def test_tissueqc(self):
+        self._test_forward('tissueqc')
+
 if __name__ == '__main__':
     unittest.main()

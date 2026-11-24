@@ -101,6 +101,7 @@ two Virchow2 flavours are therefore never interchangeable; they live in separate
 `features_virchow2/` vs `features_virchow2-cls/` folders by design.
 
 **3. Segmenter.** Default `--segmenter hest` (a model — runs on GPU). `grandqc` = fast H&E.
+`tissueqc` = tissue and artifacts in one 5x pass (GPU); with it `--remove_artifacts` runs no extra model.
 `otsu` = classical, **CPU-only** — on a machine with no GPU you must pass `--segmenter otsu`
 explicitly (the default `hest` expects a GPU). For segmentation, `--gpus -1` and `otsu`
 go together.
