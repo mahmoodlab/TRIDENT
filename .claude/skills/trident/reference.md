@@ -8,7 +8,7 @@ For the workflow and decisions, see [SKILL.md](SKILL.md).
 - Entry points
 - `run_batch_of_slides.py` flags
 - `run_single_slide.py` flags
-- Patch encoders (33) — embedding dim + required patch_size/mag
+- Patch encoders (34) — embedding dim + required patch_size/mag
 - Slide encoders — required patch encoder + patch_size/mag
 - Segmenters & artifact removal
 - WSI readers & formats
@@ -49,14 +49,14 @@ without features, run `--task seg` then `--task coords`.
   pandas reads the path directly) with column `wsi` (filenames/relative paths, with extension) and
   optional column `mpp`. Only listed slides run.
 - `--custom_mpp_keys KEY ...` — metadata keys to read micron-per-pixel from.
-- `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}` — force a reader (default: auto).
+- `--reader_type {openslide,image,cucim,sdpc,omezarr,czi,isyntax}` — force a reader (default: auto).
 - `--search_nested` — recurse into subdirectories of `--wsi_dir`.
 
 **Segmentation**
-- `--segmenter {hest,grandqc,otsu}` (default `hest`).
-- `--seg_conf_thresh FLOAT` (default 0.5) — lower keeps more tissue (try 0.4).
+- `--segmenter {hest,grandqc,tissueqc,otsu}` (default `hest`).
+- `--seg_conf_thresh FLOAT` (default 0.5) — lower keeps more tissue (try 0.4). For `tissueqc`, the artifact probability threshold: lower finds more artifacts.
 - `--remove_holes` — drop patches over tissue holes (default keeps them).
-- `--remove_artifacts` — extra GrandQC pass removing folds/blur/stains/penmarks/OOF (aggressive).
+- `--remove_artifacts` — extra GrandQC pass removing folds/blur/stains/penmarks/OOF (aggressive). With `tissueqc`, cuts the artifacts TissueQC predicted, no extra pass.
 - `--remove_penmarks` — extra pass removing penmarks only (gentle).
 - `--seg_batch_size INT`.
 
@@ -127,6 +127,7 @@ column is **required** for correct features — copy it verbatim.
 | `openmidnight` | 1536 | `--patch_size 224 --mag 20` |
 | `gpfm` | 1024 | `--patch_size 224 --mag 20` |
 | `genbio-pathfm` | 4608 | `--patch_size 224 --mag 20` |
+| `plip` | 768 | `--patch_size 224 --mag 20` |
 | `gemma4-e4b` / `gemma4-26b` | 768/1152 | `--patch_size 224 --mag 20` — needs `transformers>=5`, excludes `hibou_l` |
 | `kaiko-vits8/vits16/vitb8/vitb16/vitl14` | 384/768/1024 | `--patch_size 256 --mag 20` |
 | `lunit-vits8` | 384 | `--patch_size 224 --mag 20` |
@@ -152,12 +153,13 @@ pass its required patch_size/mag.
 | `feather_uni_v2` | uni_v2 | `--patch_size 256 --mag 20` |
 | `care` | conch_v15 | `--patch_size 512 --mag 20` |
 | `threads` | conch_v15 | `--patch_size 512 --mag 20` (needs `pip install git+https://github.com/mahmoodlab/threadsmodel.git`) |
-| `abmil` | any | **Python API only** — untrained aggregator; needs `pretrained=False` + `input_feature_dim`/`n_heads`/`head_dim`/`dropout`/`gated`. `--slide_encoder abmil` raises TypeError. |
+| `abmil` | any | **Python API only** — untrained aggregator; needs `pretrained=False` + `input_feature_dim`/`n_heads`/`head_dim`/`dropout`/`gated`. Not offered by `--slide_encoder`. |
 
 ## Segmenters & artifact removal
 
 - `hest` (default): general tissue-vs-background, GPU.
 - `grandqc`: fast H&E (non-commercial license; cite the GrandQC paper).
+- `tissueqc`: tissue, background and artifact (fold, ink, blur, knife line, bubble, debris) in one 5x pass, GPU, Apache-2.0 weights (`JaumeLab/TissueQC`). Default mask keeps artifacts on tissue; `--remove_artifacts` cuts regions at least 24 µm wide and 0.005 mm² large out of the same prediction. Can over-call artifact on dense tumour, smooth muscle, fat septa and thyroid colloid edges.
 - `otsu`: classical thresholding, **CPU-only**, no model download — the fallback when no GPU.
 - `--remove_penmarks`: removes GrandQC class PenMarking (+Background). Gentle.
 - `--remove_artifacts`: keeps **only** GrandQC class "Normal Tissue", removing Fold,
@@ -179,7 +181,8 @@ mask=tissue_gdf)` — masking matters, or empty borders dominate) and take
 ## WSI readers & formats
 
 OpenSlide (`.svs`, `.tiff`, `.ndpi`, `.mrxs`, …), CuCIM, plain images (`.png`, `.jpeg`),
-SDPC, OME-Zarr (`.zarr`, needs `.[omezarr]`), Zeiss CZI (`.czi`, needs `.[czi]`).
+SDPC, OME-Zarr (`.zarr`, needs `.[omezarr]`), Zeiss CZI (`.czi`, needs `.[czi]`),
+Philips iSyntax (`.isyntax`, needs `.[isyntax]`).
 Multi-file formats like MIRAX (`.mrxs`) sit in `--wsi_dir` exactly like single-file slides:
 the `.mrxs` index file next to its same-named data folder; the custom list references the
 `.mrxs` by basename.
@@ -303,7 +306,7 @@ side `patch_size_level0 / downsample`.
 pip install -e .                     # core (transformers, timm, safetensors)
 pip install -e ".[patch-encoders]"   # CONCH, MUSK, CTransPath/CHIEF, …
 pip install -e ".[slide-encoders]"   # PRISM, GigaPath, Madeleine, …
-pip install -e ".[omezarr]" / ".[czi]" / ".[convert]" / ".[full]"
+pip install -e ".[omezarr]" / ".[czi]" / ".[isyntax]" / ".[convert]" / ".[full]"
 trident-doctor --profile base
 trident-doctor --profile patch-encoders --check-gated
 ```

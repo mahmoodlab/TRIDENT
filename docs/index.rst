@@ -55,19 +55,21 @@ Highlights
 
 **Models**
 
-- **22+ patch encoders**: UNI / UNI2-h, CONCH / CONCHv1.5, Virchow / Virchow2, Phikon /
-  Phikon-v2, KEEP, Prov-GigaPath, H-Optimus 0/1, H0-mini, MUSK, Midnight-12k,
-  OpenMidnight, GPFM, GenBio-PathFM, Kaiko (5 variants), Lunit, Hibou-L, CTransPath,
-  ResNet50.
-- **6+ slide encoders**: Threads, Titan, PRISM, CHIEF, GigaPath, Madeleine,
-  Feather. Auto-runs the correct underlying patch encoder for you.
+- **34 patch encoders**: UNI / UNI2-h, CONCH / CONCHv1.5, Virchow / Virchow2 / Virchow2 (CLS),
+  Phikon / Phikon-v2, KEEP, Prov-GigaPath / Prov-GigaPath-Flash, H-Optimus 0/1, H0-mini, MUSK,
+  Midnight-12k, Phaet, Mascaret, OpenMidnight, GPFM, GenBio-PathFM, PLIP, Gemma 4 (2 variants),
+  Kaiko (5 variants), Lunit, Hibou-L, CTransPath, ResNet50.
+- **12 slide encoders**: Threads, Titan, PRISM, PRISM2, CHIEF, GigaPath,
+  GigaPath-Flash, Madeleine, Feather, Feather-UNI2, CARE, and an untrained ABMIL aggregator.
+  Auto-runs the correct underlying patch encoder for you.
 - **Bring your own encoder**: ``CustomInferenceEncoder`` / ``CustomSlideEncoder`` plug
   into the same pipeline.
 
 **File formats**
 
 - OpenSlide (``.svs``, ``.tiff``, ``.ndpi``, ``.mrxs``, …), CuCIM, plain images
-  (``.png``, ``.jpeg``), SDPC (``.sdpc``), OME-Zarr / NGFF, Zeiss CZI (``.czi``), DICOM
+  (``.png``, ``.jpeg``), SDPC (``.sdpc``), OME-Zarr / NGFF, Zeiss CZI (``.czi``),
+  native Philips iSyntax (``.isyntax``, install ``.[isyntax]``), DICOM
   (``.dcm``, via OpenSlide). Use ``trident convert`` to make awkward formats friendly
   (pyramidal TIFF).
 

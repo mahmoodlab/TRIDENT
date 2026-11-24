@@ -58,6 +58,34 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cuda:0")
 
+    def test_run_task_seg_tissueqc_removes_artifacts_itself(self):
+        processor = _DummyProcessor()
+        args = self._base_args("tissueqc")
+        args.remove_artifacts = True
+        model = _DummySegmentationModel(target_mag=5)
+        model.detects_artifacts, model.batch_size = True, 4
+
+        with patch("trident.segmentation_models.load.segmentation_model_factory", return_value=model) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_called_once_with("tissueqc", confidence_thresh=0.5)
+        self.assertTrue(model.remove_artifacts)
+        kwargs = processor.calls[0][1]
+        self.assertIsNone(kwargs["artifact_remover_model"])
+        self.assertEqual(kwargs["batch_size"], 4)
+
+    def test_run_task_seg_hest_keeps_grandqc_artifact_remover(self):
+        processor = _DummyProcessor()
+        args = self._base_args("hest")
+        args.remove_artifacts = True
+
+        with patch("trident.segmentation_models.load.segmentation_model_factory",
+                   return_value=_DummySegmentationModel(target_mag=10)) as factory:
+            batch_mod.run_task(processor, args)
+
+        factory.assert_any_call("grandqc_artifact", remove_penmarks_only=False)
+        self.assertEqual(processor.calls[0][1]["batch_size"], 8)
+
     def test_cleanup_cache_resets_cache_without_touching_job_locks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             job_dir = os.path.join(tmpdir, "job")
@@ -231,6 +259,31 @@ class TestRunBatchOfSlides(unittest.TestCase):
                     batch_mod.main()
                 self.assertEqual(len(shard_counts), 2, "Expected 2 GPU workers after dedup of `0 0 1`")
                 self.assertEqual(sum(shard_counts), len(slide_paths))
+
+    def test_parse_arguments_records_patch_encoder_of_slide_encoder(self):
+        # Regression for #239: run manifests must report the patch encoder the slide encoder uses.
+        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis", "--task", "feat"]
+        cases = {
+            "feather_uni_v2": "uni_v2",
+            "titan": "conch_v15",
+            "mean-virchow2": "virchow2",
+        }
+        for slide_encoder, expected in cases.items():
+            with self.subTest(slide_encoder=slide_encoder):
+                with patch("sys.argv", base + ["--slide_encoder", slide_encoder]):
+                    args = batch_mod.parse_arguments()
+                self.assertEqual(args.patch_encoder, expected)
+
+        with patch("sys.argv", base + ["--patch_encoder", "uni_v1"]):
+            self.assertEqual(batch_mod.parse_arguments().patch_encoder, "uni_v1")
+
+    def test_cli_slide_encoders_exclude_untrained_abmil(self):
+        # ABMIL needs hyperparameters the CLI cannot pass, so it is Python API only.
+        parser = batch_mod.build_parser()
+        base = ["--job_dir", "job", "--wsi_dir", "wsis", "--slide_encoder"]
+        self.assertEqual(parser.parse_args(base + ["feather"]).slide_encoder, "feather")
+        with patch("sys.stderr"), self.assertRaises(SystemExit):
+            parser.parse_args(base + ["abmil"])
 
 
 if __name__ == "__main__":

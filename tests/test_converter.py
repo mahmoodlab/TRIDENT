@@ -84,6 +84,31 @@ class TestAnyToTiffConverter(unittest.TestCase):
             calls = [str(c) for c in print_mock.call_args_list]
             self.assertTrue(any("MPP mismatch" in c for c in calls))
 
+    def test_save_tiff_writes_correct_resolution(self):
+        # Regression for #135: pyvips expects xres/yres in pixels/mm regardless of resunit.
+        try:
+            import pyvips  # noqa: F401
+            import tifffile
+        except ImportError:
+            self.skipTest("pyvips and tifffile are required")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            converter = AnyToTiffConverter(job_dir=tmpdir)
+            converter._save_tiff(np.zeros((512, 512, 3), dtype=np.uint8), "slide", mpp=0.25)
+            with tifffile.TiffFile(f"{tmpdir}/slide.tiff") as tif:
+                tags = tif.pages[0].tags
+                num, den = tags["XResolution"].value
+                self.assertEqual(tags["ResolutionUnit"].value, tifffile.RESUNIT.CENTIMETER)
+            mpp = 1e4 / (num / den)
+            self.assertAlmostEqual(mpp, 0.25, places=4)
+
+    def test_save_tiff_uses_jpeg_quality_95(self):
+        converter = AnyToTiffConverter(job_dir=".")
+        pyvips_img = MagicMock()
+        converter._save_pyvips_tiff(pyvips_img, "slide.tiff", mpp=0.25, pyvips_module=MagicMock())
+        kwargs = pyvips_img.tiffsave.call_args.kwargs
+        self.assertEqual(kwargs["compression"], "jpeg")
+        self.assertEqual(kwargs["Q"], 95)
+
 
 if __name__ == "__main__":
     unittest.main()

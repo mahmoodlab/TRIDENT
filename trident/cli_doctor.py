@@ -314,6 +314,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
         ("Midnight", "kaiko-ai/midnight", "model"),
         ("Phaet", "wearewaiv/phaet", "model"),
         ("Mascaret", "wearewaiv/mascaret", "model"),
+        ("METTLE 1.5", "slideflow-labs/mettle-1.5", "model"),
         ("OpenMidnight", "SophontAI/OpenMidnight", "model"),
         ("GPFM", "majiabo/GPFM", "model"),
         ("Lunit vits8", "1aurent/vit_small_patch8_224.lunit_dino", "model"),
@@ -329,6 +330,7 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
     slide_gated_repos = [
         ("PRISM", "paige-ai/Prism", "model"),
         ("PRISM2", "paige-ai/Prism2", "model"),
+        ("THREADS", "MahmoodLab/threads", "model"),
         ("Titan", "MahmoodLab/TITAN", "model"),
         ("Feather", "MahmoodLab/abmil.base.conch_v15.pc108-24k", "model"),
     ]
@@ -374,6 +376,11 @@ def run_checks(profile: str, check_gated: bool) -> List[CheckResult]:
                     "madeleine",
                     "Madeleine dependency",
                     "Install with: pip install git+https://github.com/mahmoodlab/MADELEINE.git",
+                ),
+                _check_module(
+                    "threadsmodel",
+                    "THREADS dependency",
+                    "Install with: pip install git+https://github.com/mahmoodlab/threadsmodel.git",
                 ),
                 _check_chief_repo_root(repo_root),
                 _check_flash_attn_gpu(),

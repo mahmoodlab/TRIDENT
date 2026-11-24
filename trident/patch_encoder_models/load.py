@@ -1,3 +1,4 @@
+import inspect
 import traceback
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, Any, Dict, Tuple, Callable
@@ -54,6 +55,11 @@ def _resolve_target_img_size(enc_name: str, target_img_size: Optional[int], defa
     return target_img_size
 
 
+def _l2_normalize_output(module: torch.nn.Module, inputs: Any, output: torch.Tensor) -> torch.Tensor:
+    """Forward hook that L2-normalizes patch embeddings along the feature dimension."""
+    return torch.nn.functional.normalize(output, dim=-1)
+
+
 def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
     """
     Instantiate a patch encoder model by name.
@@ -82,8 +88,10 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "hoptimus0"
         - "hoptimus1"
         - "h0-mini"
+        - "midnight12k"
         - "phaet"
         - "mascaret"
+        - "mettle-1.5"
         - "musk"
         - "openmidnight"
         - "gpfm"
@@ -95,6 +103,7 @@ def encoder_factory(model_name: str, **kwargs) -> torch.nn.Module:
         - "kaiko-vitl14"
         - "lunit-vits8"
         - "genbio-pathfm"
+        - "plip"
         - "gemma4-e4b"
         - "gemma4-26b"
 
@@ -133,7 +142,7 @@ class BasePatchEncoder(torch.nn.Module, ABC):
 
     _has_internet = has_internet_connection()
     
-    def __init__(self, weights_path: Optional[str] = None, **build_kwargs: Dict[str, Any]):
+    def __init__(self, weights_path: Optional[str] = None, normalize: bool = False, **build_kwargs: Dict[str, Any]):
         """
         Initialize BasePatchEncoder.
 
@@ -141,6 +150,9 @@ class BasePatchEncoder(torch.nn.Module, ABC):
             weights_path (Optional[str]):
                 Optional path to local model weights. If None, the model is loaded from the model registry or
                 downloaded from Hugging Face Hub.
+            normalize (bool):
+                If True, output embeddings are L2-normalized. Encoders whose `_build()` accepts a
+                `normalize` argument handle it natively; all others are normalized by a forward hook.
             **build_kwargs (dict):
                 Additional keyword arguments passed to the `_build()` method to customize model creation.
 
@@ -160,7 +172,12 @@ class BasePatchEncoder(torch.nn.Module, ABC):
         super().__init__()
         self.enc_name: Optional[str] = None
         self.weights_path: Optional[str] = weights_path
+        native_normalize = 'normalize' in inspect.signature(self._build).parameters
+        if native_normalize:
+            build_kwargs['normalize'] = normalize
         self.model, self.eval_transforms, self.precision = self._build(**build_kwargs)
+        if normalize and not native_normalize:
+            self.register_forward_hook(_l2_normalize_output)
 
     def ensure_valid_weights_path(self, weights_path: str) -> None:
         if not weights_path:
@@ -1603,6 +1620,75 @@ class MascaretInferenceEncoder(WaivFinetunedInferenceEncoder):
         super().__init__(**build_kwargs)
 
 
+class Mettle15InferenceEncoder(BasePatchEncoder):
+    """
+    METTLE 1.5 from Slideflow Labs: robustness fine-tune of H-optimus-0 (ViT-g/14 with four
+    register tokens) with a CLS refinement head. See https://huggingface.co/slideflow-labs/mettle-1.5.
+
+    The checkpoint ships as a custom HuggingFace architecture (hence `trust_remote_code=True`)
+    wrapping the timm backbone it fine-tunes, plus the head. Unlike the raw-CLS encoders, the
+    embedding returned here is the model's own output: the head-refined CLS (1536-dim), or with
+    `return_type="cls+mean"` the refined CLS concatenated with the mean patch token (3072-dim).
+    """
+    HF_REPO = 'slideflow-labs/mettle-1.5'
+
+    def __init__(self, **build_kwargs):
+        super().__init__(**build_kwargs)
+
+    def _build(self, return_type: Literal["cls_token", "cls+mean"] = "cls_token"):
+        from transformers import AutoModel
+        from torchvision import transforms
+
+        self.enc_name = 'mettle-1.5'
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = AutoModel.from_pretrained(model_dir, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create METTLE 1.5 model from local checkpoint at '{weights_path}'. "
+                    "You can download the required `model.safetensors`, `config.json`, "
+                    "`configuration_mettle.py` and `modeling_mettle.py` from: "
+                    f"https://huggingface.co/{self.HF_REPO}."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = AutoModel.from_pretrained(self.HF_REPO, trust_remote_code=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    "Failed to download METTLE 1.5 model, make sure that you were granted access to "
+                    f"https://huggingface.co/{self.HF_REPO} and that you correctly registered your token"
+                )
+
+        # Preprocessing from the model's `preprocessor_config.json`: direct bicubic resize to
+        # 224 x 224 and the H-optimus-0 normalization constants.
+        eval_transform = transforms.Compose([
+            transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.707223, 0.578729, 0.703617),
+                std=(0.211883, 0.230117, 0.177517)
+            ),
+        ])
+
+        if return_type not in ("cls_token", "cls+mean"):
+            raise ValueError(
+                f"expected return_type to be one of 'cls_token' or 'cls+mean', but got '{return_type}'"
+            )
+        self.return_type = return_type
+        precision = torch.float16
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        feature_view = "cls" if self.return_type == "cls_token" else "cls_mean"
+        return self.model(pixel_values=x, feature_view=feature_view).pooler_output
+
+
 class H0MiniInferenceEncoder(BasePatchEncoder):
 
     def __init__(self, **build_kwargs):
@@ -1857,6 +1943,74 @@ class GenBioPathFMInferenceEncoder(BasePatchEncoder):
         return self.model(x)
 
 
+class PLIPInferenceEncoder(BasePatchEncoder):
+    """
+    PLIP: CLIP ViT-B/32 fine-tuned on pathology image-text pairs from OpenPath.
+    See Huang et al., Nature Medicine 2023 (https://www.nature.com/articles/s41591-023-02504-3)
+    and https://huggingface.co/vinid/plip.
+
+    As for CONCH v1, the default output is the pooled vision embedding before the contrastive
+    projection (768-dim). Set `with_proj=True` for the projected image embedding (512-dim).
+    """
+
+    HF_REPO = 'vinid/plip'
+
+    def __init__(self, **build_kwargs):
+        """
+        PLIP initialization.
+        """
+        super().__init__(**build_kwargs)
+
+    def _build(self, with_proj=False, normalize=False):
+        from transformers import CLIPVisionModelWithProjection
+        from torchvision import transforms
+
+        self.enc_name = 'plip'
+        self.with_proj = with_proj
+        self.normalize = normalize
+        weights_path = self._get_weights_path()
+
+        if weights_path:
+            try:
+                model_dir = weights_path if os.path.isdir(weights_path) else os.path.dirname(weights_path)
+                model = CLIPVisionModelWithProjection.from_pretrained(model_dir, local_files_only=True)
+            except:
+                traceback.print_exc()
+                raise Exception(
+                    f"Failed to create PLIP model from local checkpoint at '{weights_path}'. "
+                    "You can download the required `config.json` and `pytorch_model.bin` from: "
+                    f"https://huggingface.co/{self.HF_REPO}."
+                )
+        else:
+            self.ensure_has_internet(self.enc_name)
+            try:
+                model = CLIPVisionModelWithProjection.from_pretrained(self.HF_REPO)
+            except:
+                traceback.print_exc()
+                raise Exception(f"Failed to download PLIP model from https://huggingface.co/{self.HF_REPO}.")
+
+        # Same preprocessing as the PLIP CLIPProcessor: bicubic resize of the shortest side,
+        # center crop to 224 x 224 and OpenAI CLIP normalization.
+        mean, std = get_constants('openai_clip')
+        eval_transform = transforms.Compose([
+            transforms.Resize(224, interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std),
+        ])
+
+        precision = torch.float32
+        return model, eval_transform, precision
+
+    def forward(self, x):
+        z = self.model.vision_model(pixel_values=x).pooler_output
+        if self.with_proj:
+            z = self.model.visual_projection(z)
+        if self.normalize:
+            z = torch.nn.functional.normalize(z, dim=-1)
+        return z
+
+
 class Gemma4InferenceEncoder(BasePatchEncoder):
     """Gemma 4 vision tower (base class). Subclassed per variant (see below)."""
     VARIANT = None    # "e4b" or "26b", set in subclasses
@@ -2094,7 +2248,9 @@ encoder_registry = {
     "midnight12k": Midnight12kInferenceEncoder,
     "phaet": PhaetInferenceEncoder,
     "mascaret": MascaretInferenceEncoder,
+    "mettle-1.5": Mettle15InferenceEncoder,
     "genbio-pathfm": GenBioPathFMInferenceEncoder,
+    "plip": PLIPInferenceEncoder,
     "gemma4-e4b": Gemma4E4BInferenceEncoder,
     "gemma4-26b": Gemma426BInferenceEncoder,
 }

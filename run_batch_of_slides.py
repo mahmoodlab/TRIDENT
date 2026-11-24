@@ -21,6 +21,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
+
+# ABMIL is an untrained aggregator that needs hyperparameters the CLI cannot pass (Python API only).
+CLI_SLIDE_ENCODERS = [name for name in slide_encoder_registry if name != 'abmil']
 from trident.Concurrency import batch_producer, batch_consumer
 from trident.IO import collect_valid_slides
 from trident.Summary import start_run, finalize_run
@@ -108,8 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help='Custom keys used to store the resolution as MPP (micron per pixel) in your list of whole-slide image.')
     parser.add_argument('--custom_list_of_wsis', type=str, default=None,
                     help='Custom list of WSIs specified in a csv file.')
-    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi'], default=None,
-                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi"]. Defaults to None (auto-determine which reader to use).')
+    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi', 'isyntax'], default=None,
+                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi", "isyntax"]. Defaults to None (auto-determine which reader to use).')
     parser.add_argument("--search_nested", action="store_true",
                         help=("If set, recursively search for whole-slide images (WSIs) within all subdirectories of "
                               "`wsi_source`. Uses `os.walk` to include slides from nested folders. "
@@ -117,14 +120,17 @@ def build_parser() -> argparse.ArgumentParser:
                               "Defaults to False (only top-level slides are included)."))
     # Segmentation arguments 
     parser.add_argument('--segmenter', type=str, default='hest', 
-                        choices=['hest', 'grandqc', 'otsu'],
-                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
+                        choices=['hest', 'grandqc', 'tissueqc', 'otsu'],
+                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, TissueQC (tissue, background '
+                             'and artifacts in one 5x model), or Otsu.')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
-                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
+                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option. '
+                         'For TissueQC, the artifact probability threshold: lower it to find more artifacts.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
                         help='Do you want to remove holes?')
     parser.add_argument('--remove_artifacts', action='store_true', default=False, 
-                        help='Do you want to run an additional model to remove artifacts (including penmarks, blurs, stains, etc.)?')
+                        help='Do you want to remove artifacts (including penmarks, blurs, stains, etc.)? TissueQC removes them from '
+                             'its own prediction; other segmenters run an additional GrandQC model.')
     parser.add_argument('--remove_penmarks', action='store_true', default=False, 
                         help='Do you want to run an additional model to remove penmarks?')
     parser.add_argument('--seg_batch_size', type=int, default=None, 
@@ -183,7 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument('--slide_encoder', type=str, default=None, 
-                        choices=slide_encoder_registry.keys(), 
+                        choices=CLI_SLIDE_ENCODERS, 
                         help='Slide encoder to use')
     parser.add_argument('--feat_batch_size', type=int, default=None, 
                         help='Batch size for feature extraction. Defaults to None (use `batch_size` argument instead).')
@@ -209,6 +215,15 @@ def parse_arguments() -> argparse.Namespace:
     # Multi-process workers override this per worker via `worker_args.device`.
     primary_gpu = (args.gpus or [-1])[0]
     args.device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
+
+    # A slide encoder selects its own patch encoder. Record that one so run manifests
+    # and summary.md report the encoder that is actually used.
+    if args.slide_encoder is not None:
+        from trident.slide_encoder_models.load import slide_to_patch_encoder_name
+        if args.slide_encoder.startswith('mean-'):
+            args.patch_encoder = args.slide_encoder.split('mean-', 1)[1]
+        else:
+            args.patch_encoder = slide_to_patch_encoder_name.get(args.slide_encoder, args.patch_encoder)
 
     return args
 
@@ -282,10 +297,16 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             args.segmenter,
             confidence_thresh=args.seg_conf_thresh,
         )
-        if args.remove_artifacts or args.remove_penmarks:
+        # a segmenter that detects artifacts (TissueQC) removes them itself; GrandQC handles the rest
+        if getattr(segmentation_model, 'detects_artifacts', False):
+            segmentation_model.remove_artifacts = args.remove_artifacts
+            grandqc_artifacts = False
+        else:
+            grandqc_artifacts = args.remove_artifacts
+        if grandqc_artifacts or args.remove_penmarks:
             artifact_remover_model = segmentation_model_factory(
                 'grandqc_artifact',
-                remove_penmarks_only=args.remove_penmarks and not args.remove_artifacts
+                remove_penmarks_only=not grandqc_artifacts
             )
         else:
             artifact_remover_model = None
@@ -296,7 +317,8 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             seg_mag=segmentation_model.target_mag,
             holes_are_tissue= not args.remove_holes,
             artifact_remover_model=artifact_remover_model,
-            batch_size=args.seg_batch_size if args.seg_batch_size is not None else args.batch_size,
+            batch_size=(args.seg_batch_size if args.seg_batch_size is not None
+                        else getattr(segmentation_model, 'batch_size', None) or args.batch_size),
             device=seg_device,
         )
     elif args.task == 'coords':

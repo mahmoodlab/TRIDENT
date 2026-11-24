@@ -417,7 +417,7 @@ class WSI:
 
             for batch in iterator:
 
-                with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                with torch.autocast(device_type=torch.device(device).type, dtype=precision, enabled=(precision != torch.float32)):
                     if collate_fn is not None:
                         if 'xcoords' not in batch or 'ycoords' not in batch:
                             raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
@@ -492,11 +492,17 @@ class WSI:
             verbose (bool, optional):
                 Whether to print segmentation progress. Defaults to False.
             num_workers (Optional[int], optional):
-                Number of workers to use for the tile dataloader. If None, the number of workers is automatically
+                Number of workers to use for the tile dataloader. If None, the segmentation model's
+                ``num_workers`` attribute is used when it has one, else the number of workers is automatically
                 inferred. Defaults to None.
 
         Returns:
             Union[str, gpd.GeoDataFrame]: The absolute path to the GeoJSON if `job_dir` is not None; otherwise a GeoDataFrame.
+
+        Notes:
+            A segmentation model that defines ``to_contours(class_map, level0_mpp, holes_are_tissue)``
+            (e.g. TissueQC, which also predicts artifacts) turns its own stitched class map into contours,
+            in place of the binarised mask and ``mask_to_gdf``.
 
         Example
         -------
@@ -517,6 +523,11 @@ class WSI:
 
         # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
+        if num_workers is None and getattr(segmentation_model, 'num_workers', None) is not None:
+            num_workers = segmentation_model.num_workers
+            if self.max_workers is not None:
+                num_workers = min(num_workers, self.max_workers)
+
         predicted_mask, mpp_reduction_factor = self._segment_semantic(
             segmentation_model,
             target_mag,
@@ -527,23 +538,26 @@ class WSI:
             num_workers,
             None
         )
-        
-        # Post-process the mask
-        predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
-        # # Fill holes if desired
-        # if not holes_are_tissue:
-        #     holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-        #     for hole in holes:
-        #         cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
+        if hasattr(segmentation_model, 'to_contours'):
+            gdf_contours = segmentation_model.to_contours(predicted_mask, self.mpp, holes_are_tissue)
+        else:
+            # Post-process the mask
+            predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
-        gdf_contours = mask_to_gdf(
-            mask=predicted_mask,
-            max_nb_holes=0 if holes_are_tissue else 20,
-            min_contour_area=1000,
-            pixel_size=self.mpp,
-            contour_scale=1/mpp_reduction_factor
-        )
+            # # Fill holes if desired
+            # if not holes_are_tissue:
+            #     holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+            #     for hole in holes:
+            #         cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
+
+            gdf_contours = mask_to_gdf(
+                mask=predicted_mask,
+                max_nb_holes=0 if holes_are_tissue else 20,
+                min_contour_area=1000,
+                pixel_size=self.mpp,
+                contour_scale=1/mpp_reduction_factor
+            )
         if job_dir is not None:
 
             # Save thumbnail image
@@ -1036,7 +1050,7 @@ class WSI:
             for imgs, _ in iterator:
                 imgs = imgs.to(device)
                 with torch.autocast(
-                    device_type=device.split(":")[0],
+                    device_type=torch.device(device).type,
                     dtype=precision,
                     enabled=(precision != torch.float32),
                 ):
@@ -1187,7 +1201,7 @@ class WSI:
         # Generate slide-level features
         precision = getattr(slide_encoder, "precision", torch.float32)
         with torch.autocast(
-            device_type=device.split(":")[0],
+            device_type=torch.device(device).type,
             enabled=(precision != torch.float32),
         ):
             features = slide_encoder(batch, device)
