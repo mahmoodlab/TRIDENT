@@ -101,6 +101,7 @@ two Virchow2 flavours are therefore never interchangeable; they live in separate
 `features_virchow2/` vs `features_virchow2-cls/` folders by design.
 
 **3. Segmenter.** Default `--segmenter hest` (a model — runs on GPU). `grandqc` = fast H&E.
+`tissueqc` = tissue and artifacts in one 5x pass (GPU); with it `--remove_artifacts` runs no extra model.
 `otsu` = classical, **CPU-only** — on a machine with no GPU you must pass `--segmenter otsu`
 explicitly (the default `hest` expects a GPU). For segmentation, `--gpus -1` and `otsu`
 go together.
@@ -205,4 +206,4 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 - `gemma4-*` asserting on transformers → it needs v5 (see Setup).
 - Empty output after `--remove_artifacts` → see Decision 3.
 - Changing `--mag`/`--patch_size`/`--overlap` on a rerun → new output folder instead of a resume.
-- Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi}`.
+- Wrong reader auto-detected → force it with `--reader_type {openslide,image,cucim,sdpc,omezarr,czi,isyntax}`.

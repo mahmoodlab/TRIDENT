@@ -19,6 +19,7 @@ from trident.wsi_objects.WSIFactory import (
     SDPC_EXTENSIONS,
     OMEZARR_EXTENSIONS,
     CZI_EXTENSIONS,
+    ISYNTAX_EXTENSIONS,
 )
 
 
@@ -83,7 +84,7 @@ class Processor:
                 Maximum number of workers for data loading. If None, the default behavior will be used.
                 Defaults to None.
             reader_type (WSIReaderType, optional):
-                Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr"]. Defaults to None
+                Force the image reader engine to use. Options are are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi", "isyntax"]. Defaults to None
                 (auto-determine the right engine based on image extension).
             search_nested (bool, optional):  
                 If True, the processor will recursively search for WSIs within all subdirectories of `wsi_source`.
@@ -126,6 +127,7 @@ class Processor:
             + list(SDPC_EXTENSIONS)
             + list(OMEZARR_EXTENSIONS)
             + list(CZI_EXTENSIONS)
+            + list(ISYNTAX_EXTENSIONS)
         )
         self.skip_errors = skip_errors
         self.custom_mpp_keys = custom_mpp_keys
@@ -419,6 +421,7 @@ class Processor:
                         outputs={
                             "contour_geojson": gdf_saveto,
                             "contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg"),
+                            "thumbnail": os.path.join(self.job_dir, "thumbnails", f"{wsi.name}.jpg"),
                         },
                         attempt=make_attempt("finished"),
                         wsi_meta=wsi_meta,
@@ -431,6 +434,7 @@ class Processor:
                         outputs={
                             "contour_geojson": gdf_saveto,
                             "contour_jpg": os.path.join(saveto, f"{wsi.name}.jpg"),
+                            "thumbnail": os.path.join(self.job_dir, "thumbnails", f"{wsi.name}.jpg"),
                         },
                         attempt=make_attempt("finished"),
                         wsi_meta=wsi_meta,
@@ -545,8 +549,12 @@ class Processor:
             local_attrs=local_attrs,
             ignore = ['segmentation_model', 'loop', 'valid_slides', 'wsis']
         )
+        # Scope the per-slide state task by coords config (mag/patch/overlap), so multiple
+        # coords extractions in one job_dir don't overwrite each other — mirroring how
+        # patch features are keyed per encoder (`patch_features:<encoder>`).
+        coords_task = f"coords:{saveto}"
         self.loop = tqdm(self.wsis, desc=f'Saving tissue coordinates to {saveto}', total = len(self.wsis))
-        for wsi in self.loop:    
+        for wsi in self.loop:
             slide_ref = make_slide_ref(
                 name=wsi.name,
                 ext=wsi.ext,
@@ -566,7 +574,7 @@ class Processor:
                 self.loop.set_postfix_str(f'Patch coords already generated for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Patch coords already generated; skipping.",
                     reason="already_generated",
                     outputs={
@@ -581,7 +589,7 @@ class Processor:
                 self.loop.set_postfix_str(f'{wsi.name} is locked. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Locked by another worker; skipping.",
                     reason="locked",
                     outputs={
@@ -597,7 +605,7 @@ class Processor:
                 self.loop.set_postfix_str(f'GeoJSON not found for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Tissue GeoJSON not found; run segmentation first.",
                     reason="geojson_not_found",
                     outputs={"tissue_geojson": wsi.tissue_seg_path},
@@ -611,7 +619,7 @@ class Processor:
                 self.loop.set_postfix_str(f'Empty GeoDataFrame for {wsi.name}. Skipping...')
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "skipped",
+                    slide_ref, coords_task, "skipped",
                     "Tissue GeoDataFrame is empty; no coordinates to extract.",
                     reason="empty_geodataframe",
                     outputs={"tissue_geojson": wsi.tissue_seg_path},
@@ -624,7 +632,7 @@ class Processor:
                 create_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "running",
+                    slide_ref, coords_task, "running",
                     "Generating patch coords...",
                     outputs={
                         "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5")
@@ -661,14 +669,20 @@ class Processor:
                     )
 
                 remove_lock(os.path.join(self.job_dir, saveto, 'patches', f'{wsi.name}_patches.h5'))
+                # Record exactly the artifacts this run produced (don't list viz/patch
+                # images that weren't generated).
+                coords_outputs = {
+                    "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5"),
+                }
+                if visualize:
+                    coords_outputs["coords_viz"] = os.path.join(self.job_dir, saveto, "visualization", f"{wsi.name}.jpg")
+                if dump_patches:
+                    coords_outputs["patch_images"] = os.path.join(self.job_dir, saveto, "patch_images", wsi.name)
                 self._record_outcome(
                     os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                    slide_ref, "coords", "completed",
+                    slide_ref, coords_task, "completed",
                     "Patch coords generated.",
-                    outputs={
-                        "coords_h5": os.path.join(self.job_dir, saveto, "patches", f"{wsi.name}_patches.h5"),
-                        "coords_viz": os.path.join(self.job_dir, saveto, "visualization", f"{wsi.name}.jpg"),
-                    },
+                    outputs=coords_outputs,
                     attempt=make_attempt("finished"),
                     wsi_meta=wsi_meta,
                 )
@@ -686,7 +700,7 @@ class Processor:
                 if self.skip_errors:
                     self._record_outcome(
                         os.path.join(self.job_dir, saveto, '_logs_coords.txt'),
-                        slide_ref, "coords", "error",
+                        slide_ref, coords_task, "error",
                         f"ERROR: {e}",
                         attempt=make_attempt("error", error=str(e)),
                         wsi_meta=wsi_meta,
@@ -727,8 +741,8 @@ class Processor:
         saveto: str | None = None
     ) -> str:
         """
-        The `run_feature_extraction_job` function computes features from the patches generated during the 
-        patching step. These features are extracted using a deep learning model and saved in a specified format. 
+        The `run_patch_feature_extraction_job` function computes features from the patches generated during the
+        patching step. These features are extracted using a deep learning model and saved in a specified format.
         This step is often used in workflows that involve downstream analysis, such as classification or clustering.
 
         Parameters:
@@ -755,7 +769,7 @@ class Processor:
 
         >>> from models import PatchEncoder
         >>> encoder = PatchEncoder()
-        >>> processor.run_feature_extraction_job(
+        >>> processor.run_patch_feature_extraction_job(
         ...     coords_dir="output/patch_coords/",
         ...     patch_encoder=encoder,
         ...     device="cuda:0"
@@ -775,7 +789,11 @@ class Processor:
         )
 
         log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_feats_{patch_encoder.enc_name}.txt')
-        feat_task = f"patch_features:{patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else 'encoder'}"
+        # Scope the state task per (encoder, coords config) so extracting the same encoder's
+        # features from two different coords sets in one job_dir don't overwrite each other
+        # (mirrors how coords are keyed per config).
+        _enc_name = patch_encoder.enc_name if hasattr(patch_encoder, 'enc_name') else 'encoder'
+        feat_task = f"patch_features:{_enc_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Extracting patch features from coords in {coords_dir}', total = len(self.wsis))
         for wsi in self.loop:    
             slide_ref = make_slide_ref(
@@ -971,7 +989,9 @@ class Processor:
         )
 
         slide_feat_log_fp = os.path.join(self.job_dir, coords_dir, f'_logs_slide_features_{slide_encoder.enc_name}.txt')
-        slide_feat_task = f"slide_features:{slide_encoder.enc_name}"
+        # Scope per (slide encoder, coords config) like the other coords-derived tasks, so a
+        # slide encoder aggregated over two different coords sets doesn't overwrite its own state.
+        slide_feat_task = f"slide_features:{slide_encoder.enc_name}:{coords_dir}"
         self.loop = tqdm(self.wsis, desc=f'Extracting slide features using {slide_encoder.enc_name}', total=len(self.wsis))
         for wsi in self.loop:
             slide_ref = make_slide_ref(

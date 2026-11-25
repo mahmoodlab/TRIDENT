@@ -9,11 +9,11 @@ from typing import List, Tuple, Optional, Literal, Union
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from trident.segmentation_models.load import SegmentationModel
+from trident.segmentation_models.load import BaseSegmentationModel
 from trident.wsi_objects.WSIPatcher import *
 from trident.wsi_objects.WSIPatcherDataset import WSIPatcherDataset
 from trident.IO import (
-    save_h5, read_coords,
+    save_h5, read_coords, read_coords_legacy,
     mask_to_gdf, overlay_gdf_on_thumbnail, get_num_workers, coords_to_h5,
     splitext
 )
@@ -25,6 +25,7 @@ _WARNED_CTX_FALLBACKS: set[str] = set()
 _SPAWN_PICKLING_MSGS = (
     'ctypes objects containing pointers cannot be pickled',
     "Can't pickle",
+    "cannot pickle",  # wording used by Python >= 3.10 for C objects
     "PicklingError",
 )
 
@@ -185,6 +186,22 @@ class WSI:
         """Always release resources when leaving a context."""
         self.release()
         return False
+
+    def __getstate__(self) -> dict:
+        """Pickle the WSI's identity/config only — never the live backend handle.
+
+        The open image handle (``img``) and its handle-bound ``properties`` are a per-process
+        *resource*, not part of the WSI's *identity*, so they are dropped here (and ``_initialized``
+        reset). Whichever process unpickles the WSI reopens its own handle transparently on first
+        read (see ``_ensure_open``). This is what lets a WSI — and any patcher/dataset holding one —
+        cross a process boundary (e.g. spawned DataLoader workers) without pickling an unpicklable
+        C handle; fork inherits the handle directly and never calls this.
+        """
+        state = self.__dict__.copy()
+        state['img'] = None
+        state['properties'] = None
+        state['_initialized'] = False
+        return state
     
     def _lazy_initialize(self) -> None:
         """
@@ -221,6 +238,12 @@ class WSI:
                     self.gdf_contours = gpd.read_file(self.tissue_seg_path)
                 except FileNotFoundError:
                     raise FileNotFoundError(f"Tissue segmentation file not found: {self.tissue_seg_path}")
+
+    def _ensure_open(self) -> None:
+        """Open the backend handle if not already initialized (idempotent). Reads go through this so
+        a *cold* WSI — freshly constructed, or just unpickled in a worker — reopens on demand."""
+        if not self._initialized:
+            self._lazy_initialize()
 
     def create_patcher(
         self, 
@@ -324,7 +347,7 @@ class WSI:
 
     def _segment_semantic(
         self, 
-        segmentation_model: SegmentationModel,
+        segmentation_model: BaseSegmentationModel,
         target_mag: int, 
         verbose: bool,
         device: str,
@@ -337,7 +360,7 @@ class WSI:
         Segment semantic regions in the WSI using a specified segmentation model.
 
         Parameters:
-            segmentation_model (SegmentationModel):
+            segmentation_model (BaseSegmentationModel):
                 Model to use for segmentation.
             target_mag (int):
                 Perform segmentation at this magnification.
@@ -399,7 +422,7 @@ class WSI:
 
             for batch in iterator:
 
-                with torch.autocast(device_type=device.split(":")[0], dtype=precision, enabled=(precision != torch.float32)):
+                with torch.autocast(device_type=torch.device(device).type, dtype=precision, enabled=(precision != torch.float32)):
                     if collate_fn is not None:
                         if 'xcoords' not in batch or 'ycoords' not in batch:
                             raise ValueError(f"collate_fn must return level 0 patch coordinates in 'xcoords' and 'ycoords'")
@@ -444,7 +467,7 @@ class WSI:
     @torch.inference_mode()
     def segment_tissue(
         self,
-        segmentation_model: SegmentationModel,
+        segmentation_model: BaseSegmentationModel,
         target_mag: int = 10,
         holes_are_tissue: bool = True,
         job_dir: Optional[str] = None,
@@ -459,7 +482,7 @@ class WSI:
         treating holes in the mask as tissue. The segmented regions are saved as thumbnails and GeoJSON contours.
 
         Parameters:
-            segmentation_model (SegmentationModel):
+            segmentation_model (BaseSegmentationModel):
                 The model used for tissue segmentation.
             target_mag (int, optional):
                 Target magnification level for segmentation. Defaults to 10.
@@ -475,11 +498,17 @@ class WSI:
             verbose (bool, optional):
                 Whether to print segmentation progress. Defaults to False.
             num_workers (Optional[int], optional):
-                Number of workers to use for the tile dataloader. If None, the number of workers is automatically
+                Number of workers to use for the tile dataloader. If None, the segmentation model's
+                ``num_workers`` attribute is used when it has one, else the number of workers is automatically
                 inferred. Defaults to None.
 
         Returns:
             Union[str, gpd.GeoDataFrame]: The absolute path to the GeoJSON if `job_dir` is not None; otherwise a GeoDataFrame.
+
+        Notes:
+            A segmentation model that defines ``to_contours(class_map, level0_mpp, holes_are_tissue)``
+            (e.g. TissueQC, which also predicts artifacts) turns its own stitched class map into contours,
+            in place of the binarised mask and ``mask_to_gdf``.
 
         Example
         -------
@@ -500,6 +529,11 @@ class WSI:
 
         # dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=0, pin_memory=True)
 
+        if num_workers is None and getattr(segmentation_model, 'num_workers', None) is not None:
+            num_workers = segmentation_model.num_workers
+            if self.max_workers is not None:
+                num_workers = min(num_workers, self.max_workers)
+
         predicted_mask, mpp_reduction_factor = self._segment_semantic(
             segmentation_model,
             target_mag,
@@ -510,23 +544,26 @@ class WSI:
             num_workers,
             None
         )
-        
-        # Post-process the mask
-        predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
-        # # Fill holes if desired
-        # if not holes_are_tissue:
-        #     holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-        #     for hole in holes:
-        #         cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
+        if hasattr(segmentation_model, 'to_contours'):
+            gdf_contours = segmentation_model.to_contours(predicted_mask, self.mpp, holes_are_tissue)
+        else:
+            # Post-process the mask
+            predicted_mask = (predicted_mask > 0).astype(np.uint8) * 255
 
-        gdf_contours = mask_to_gdf(
-            mask=predicted_mask,
-            max_nb_holes=0 if holes_are_tissue else 20,
-            min_contour_area=1000,
-            pixel_size=self.mpp,
-            contour_scale=1/mpp_reduction_factor
-        )
+            # # Fill holes if desired
+            # if not holes_are_tissue:
+            #     holes, _ = cv2.findContours(predicted_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+            #     for hole in holes:
+            #         cv2.drawContours(predicted_mask, [hole], 0, 255, -1)
+
+            gdf_contours = mask_to_gdf(
+                mask=predicted_mask,
+                max_nb_holes=0 if holes_are_tissue else 20,
+                min_contour_area=1000,
+                pixel_size=self.mpp,
+                contour_scale=1/mpp_reduction_factor
+            )
         if job_dir is not None:
 
             # Save thumbnail image
@@ -554,7 +591,7 @@ class WSI:
     @torch.inference_mode()
     def segment_semantic(
         self,
-        segmentation_model: SegmentationModel,
+        segmentation_model: BaseSegmentationModel,
         target_mag: int = 10,
         batch_size: int = 16,
         device: str = 'cuda:0',
@@ -568,7 +605,7 @@ class WSI:
         Segment semantic regions in the WSI using a specified segmentation model.
 
         Parameters:
-            segmentation_model (SegmentationModel):
+            segmentation_model (BaseSegmentationModel):
                 The model used for tissue segmentation.
             target_mag (int, optional):
                 Target magnification level for segmentation. Defaults to 10.
@@ -798,7 +835,11 @@ class WSI:
                 src_mag=level0_magnification,
                 dst_mag=target_magnification,
                 custom_coords=coords,
-                coords_only=True
+                coords_only=True,
+                # Pass the coords' own overlap so the thumbnail annotation reports it correctly;
+                # otherwise the patcher keeps the default (0) and the viz mislabels overlap.
+                # `overlap` is 'NA' only if the key was missing; it's an (np) int otherwise.
+                overlap=int(overlap) if overlap != 'NA' else 0,
             )
 
         img =  patcher.visualize()
@@ -943,7 +984,16 @@ class WSI:
 
         except (KeyError, FileNotFoundError, ValueError) as e:
             warnings.warn(f"Cannot read using Trident coords format ({str(e)}). Trying with CLAM/Fishing-Rod.")
-            patcher = WSIPatcher.from_legacy_coords_file(self, coords_path, coords_only=True, pil=True)
+            # Keep the legacy coords and attributes: they are saved next to the features.
+            patch_size, patch_level, custom_downsample, coords = read_coords_legacy(coords_path)
+            coords_attrs = {
+                'patch_size': patch_size,
+                'patch_level': patch_level,
+                'custom_downsample': custom_downsample,
+            }
+            patcher = WSIPatcher.from_legacy_coords(
+                self, patch_size, patch_level, custom_downsample, coords, coords_only=False, pil=True
+            )
 
         else:
             patcher = self.create_patcher(
@@ -961,7 +1011,6 @@ class WSI:
             warnings.warn(
                 f"No patch coordinates available for slide '{self.name}'. Saving empty features."
             )
-            coords_attrs = coords_attrs if 'coords_attrs' in locals() else {}
             coords = np.empty((0, 2), dtype=np.int64)
             embedding_dim = getattr(patch_encoder, "embedding_dim", None)
             if embedding_dim is None:
@@ -1009,7 +1058,7 @@ class WSI:
             for imgs, _ in iterator:
                 imgs = imgs.to(device)
                 with torch.autocast(
-                    device_type=device.split(":")[0],
+                    device_type=torch.device(device).type,
                     dtype=precision,
                     enabled=(precision != torch.float32),
                 ):
@@ -1161,7 +1210,7 @@ class WSI:
         # Generate slide-level features
         precision = getattr(slide_encoder, "precision", torch.float32)
         with torch.autocast(
-            device_type=device.split(":")[0],
+            device_type=torch.device(device).type,
             enabled=(precision != torch.float32),
         ):
             features = slide_encoder(batch, device)

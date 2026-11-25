@@ -66,7 +66,13 @@ class TestSlideEncoders(unittest.TestCase):
             'attributes': {'patch_size_level0': 512}
         }
         self._test_encoder_forward(TitanSlideEncoder(), sample_batch, torch.float16)
-        
+
+    def test_threads_encoder_initialization(self):
+        sample_batch = {
+            'features': torch.randn(1, 100, 768),
+        }
+        self._test_encoder_forward(ThreadsSlideEncoder(), sample_batch, torch.bfloat16)
+
     def test_care_encoder_initialization(self):
         sample_batch = {
             'features': torch.randn(1, 100, 768),

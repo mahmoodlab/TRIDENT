@@ -238,7 +238,7 @@ class CuCIMWSI(WSI):
         >>> region = wsi.read_region((1000, 1000), level=0, size=(512, 512), read_as='pil')
         >>> region.show()
         """
-
+        self._ensure_open()  # reopen the handle if this WSI is cold (e.g. unpickled in a worker)
         region = self.img.read_region(location=location, level=level, size=size, device='cpu')
         # CuCIM returns NumPy arrays for CPU reads; keep a safe fallback
         # for unexpected array types without hard-requiring CuPy.

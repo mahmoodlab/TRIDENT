@@ -116,6 +116,7 @@ High-signal knobs
 
   - ``grandqc`` — fast, accurate on clean H&E.
   - ``hest`` — better on IHC / dirtier slides.
+  - ``tissueqc`` — tissue and artifacts in one 5x pass; ``--remove_artifacts`` runs no extra model.
   - ``otsu`` — CPU-only fallback, no model weights needed.
 
 - ``--mag`` / ``--patch_size`` / ``--overlap`` define the patch grid; the same values must be
@@ -126,7 +127,7 @@ High-signal knobs
 - ``--search_nested``: discover slides in nested subfolders.
 - ``--custom_list_of_wsis my.csv``: process a CSV subset (column ``wsi`` with paths
   relative to ``--wsi_dir``; optional ``mpp`` column).
-- ``--reader_type {openslide,cucim,image,sdpc,omezarr,czi}``: force a backend, mostly
+- ``--reader_type {openslide,cucim,image,sdpc,omezarr,czi,isyntax}``: force a backend, mostly
   for debugging.
 - ``--max_workers 0``: force single-process data loading (use this if your environment has
   DataLoader multiprocessing issues).

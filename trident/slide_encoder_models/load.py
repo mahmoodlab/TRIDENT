@@ -2,7 +2,7 @@ import sys
 import os
 import torch
 import traceback
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from einops import rearrange
 from typing import Optional, Tuple, Dict, Any
 
@@ -109,7 +109,7 @@ slide_to_patch_encoder_name = {
 
 
 
-class BaseSlideEncoder(torch.nn.Module):
+class BaseSlideEncoder(torch.nn.Module, ABC):
     
     def __init__(self, freeze: bool = True, **build_kwargs: Dict[str, Any]) -> None:
         """
@@ -132,6 +132,11 @@ class BaseSlideEncoder(torch.nn.Module):
         z = self.model(batch)
         return z
         
+    @property
+    def name(self) -> Optional[str]:
+        """Canonical model id — uniform ``.name`` accessor shared across all model families."""
+        return self.enc_name
+
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[torch.nn.Module, torch.dtype, int]:
         """
@@ -531,7 +536,7 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
     def __init__(self, **build_kwargs):
         """
-        Threads initialization.
+        THREADS initialization.
         """
         super().__init__(**build_kwargs)
 
@@ -541,14 +546,32 @@ class ThreadsSlideEncoder(BaseSlideEncoder):
 
         try:
             from threadsmodel.inference import create_model, create_model_from_pretrained
-        except:
+        except Exception:
             traceback.print_exc()
-            raise Exception("Coming Soon! Thanks for your patience.")
-        
-        return None, None, None
+            raise Exception("Please install THREADS using `pip install git+https://github.com/mahmoodlab/threadsmodel.git`")
+
+        # The config and weights are gated on Hugging Face.
+        build = create_model_from_pretrained if pretrained else create_model
+        try:
+            model, precision, embedding_dim = build(checkpoint_path="hf_hub:MahmoodLab/threads")
+        except Exception:
+            traceback.print_exc()
+            raise Exception(
+                "Failed to load THREADS from Hugging Face. "
+                "Please make sure you have been granted access to MahmoodLab/threads "
+                "and logged in with `huggingface-cli login`."
+            )
+
+        return model, precision, embedding_dim  # precision: torch.bfloat16, embedding_dim: 1024
 
     def forward(self, batch, device='cuda', return_raw_attention=False):
-        pass
+        features = batch['features'].to(device)
+        if features.dim() == 2:
+            features = features.unsqueeze(0)
+        # Run in THREADS' own precision (bfloat16), whatever dtype an outer autocast uses.
+        device_type = torch.device(device).type
+        with torch.autocast(device_type=device_type, dtype=self.precision, enabled=self.precision != torch.float32):
+            return self.model(features, return_raw_attention=return_raw_attention)
 
 
 class CARESlideEncoder(BaseSlideEncoder):
@@ -608,7 +631,16 @@ class TitanSlideEncoder(BaseSlideEncoder):
     def _build(self, pretrained=True):
         self.enc_name = 'titan'
         assert pretrained, "TitanSlideEncoder has no non-pretrained models. Please load with pretrained=True."
-        from transformers import AutoModel 
+        from transformers import AutoModel
+        # transformers compatibility shim: TITAN's remote code references
+        # PreTrainedModel.all_tied_weights_keys, which is absent in some transformers versions
+        # and makes from_pretrained raise. Define it as empty if missing (harmless when present).
+        try:
+            from transformers.modeling_utils import PreTrainedModel
+            if not hasattr(PreTrainedModel, 'all_tied_weights_keys'):
+                PreTrainedModel.all_tied_weights_keys = {}
+        except Exception:
+            pass
         model = AutoModel.from_pretrained('MahmoodLab/TITAN', trust_remote_code=True)
         precision = torch.float16
         embedding_dim = 768

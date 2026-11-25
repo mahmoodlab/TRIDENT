@@ -53,7 +53,9 @@ conch = { git = "https://github.com/Mahmoodlab/CONCH.git", optional = true }
 musk = { git = "https://github.com/lilab-stanford/MUSK", optional = true }
 gigapath = { git = "https://github.com/prov-gigapath/prov-gigapath.git", optional = true }
 madeleine = { git = "https://github.com/mahmoodlab/MADELEINE.git", optional = true }
+threadsmodel = { git = "https://github.com/mahmoodlab/threadsmodel.git", optional = true }
 pylibCZIrw = { version = "*", optional = true }
+pyisyntax = { version = ">=0.1.7", optional = true }
 bioio-bioformats = { version = "*", optional = true }
 cf-units = { version = ">=3.1", optional = true }
 ngff-zarr = { version = ">=0.12", optional = true }
@@ -72,6 +74,7 @@ slide-encoders = [
     "sacremoses",
     "gigapath",
     "madeleine",
+    "threadsmodel",
 ]
 converter = [
     "pylibCZIrw",
@@ -81,6 +84,9 @@ convert = [
 ]
 czi = [
     "pylibCZIrw",
+]
+isyntax = [
+    "pyisyntax",
 ]
 bioformats = [
     "bioio-bioformats",
@@ -94,6 +100,7 @@ full = [
     "musk",
     "gigapath",
     "madeleine",
+    "threadsmodel",
     "pylibCZIrw",
 ]
 omezarr = [

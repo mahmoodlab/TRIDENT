@@ -1,15 +1,15 @@
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import os
 import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision import transforms
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from trident.IO import get_dir, get_weights_path, has_internet_connection
 
 
-class SegmentationModel(torch.nn.Module):
+class BaseSegmentationModel(torch.nn.Module, ABC):
 
     _has_internet = has_internet_connection()
 
@@ -54,6 +54,12 @@ class SegmentationModel(torch.nn.Module):
         z = self.model(image)
         return z
         
+    @property
+    def name(self) -> Optional[str]:
+        """Canonical model id — uniform ``.name`` accessor shared across all model families
+        (set by ``segmentation_model_factory``)."""
+        return getattr(self, "model_name", None)
+
     @abstractmethod
     def _build(self, **build_kwargs: Dict[str, Any]) -> Tuple[nn.Module, transforms.Compose]:
         """
@@ -62,7 +68,11 @@ class SegmentationModel(torch.nn.Module):
         pass
 
 
-class HESTSegmenter(SegmentationModel):
+# Backward-compatible alias for the pre-rename base class.
+SegmentationModel = BaseSegmentationModel
+
+
+class HESTSegmenter(BaseSegmentationModel):
 
     def __init__(self, **build_kwargs: Dict[str, Any]):
         """
@@ -92,7 +102,7 @@ class HESTSegmenter(SegmentationModel):
         model.classifier[4] = nn.Conv2d(256, 2, kernel_size=1, stride=1)
 
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally in model registry at trident/segmentation_models/local_ckpts.json.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -164,7 +174,7 @@ class JpegCompressionTransform:
         return Image.fromarray(image)
 
 
-class GrandQCArtifactSegmenter(SegmentationModel):
+class GrandQCArtifactSegmenter(BaseSegmentationModel):
 
     _class_mapping = {
         1: "Normal Tissue",
@@ -211,7 +221,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
 
         # Attempt to download if file is missing and not already available
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -266,7 +276,7 @@ class GrandQCArtifactSegmenter(SegmentationModel):
         return predictions
 
 
-class GrandQCSegmenter(SegmentationModel):
+class GrandQCSegmenter(BaseSegmentationModel):
     
     def __init__(self, **build_kwargs):
         """
@@ -293,7 +303,7 @@ class GrandQCSegmenter(SegmentationModel):
 
         # Verify checkpoint path
         if not weights_path:
-            if not SegmentationModel._has_internet:
+            if not BaseSegmentationModel._has_internet:
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally at '{weights_path}'.\n\n"
                     f"To proceed, please manually download {model_ckpt_name} from:\n"
@@ -347,11 +357,144 @@ class GrandQCSegmenter(SegmentationModel):
         max_probs, predicted_classes = torch.max(probs, dim=1)  
         predictions = (max_probs >= self.confidence_thresh) * (1 - predicted_classes)
         predictions = predictions.to(torch.uint8)
- 
+
         return predictions
 
 
-class OtsuSegmenter(SegmentationModel):
+class TissueQCSegmenter(BaseSegmentationModel):
+    """
+    TissueQC: background, tissue and artifact segmentation at 5x in one forward pass.
+
+    A U-Net with an EfficientNet-B0 encoder predicts three classes per pixel at 2 um/px: 0 background
+    (glass, area outside the slide, artifacts lying on bare glass), 1 tissue, 2 artifact on tissue
+    (fold, ink, out-of-focus area, knife line, bubble, debris). The same prediction gives the default
+    tissue mask (artifacts on tissue kept) or, with ``remove_artifacts``, the mask with artifact regions
+    cut out, so no separate artifact model is needed. Weights: https://huggingface.co/JaumeLab/TissueQC
+    (Apache-2.0).
+    """
+
+    HF_REPO = "JaumeLab/TissueQC"
+    CKPT_NAME = "model.safetensors"
+    detects_artifacts = True          # artifacts come from this model's own prediction
+
+    # slide-level mask rules (see `trident.segmentation_models.model_zoo.tissueqc.tissue_masks`)
+    mask_mpp = 8.0                    # masks and contours are built on 8 um/px
+    min_artifact_width_um = 24.0      # narrower artifact regions (cracks, lines) stay tissue
+    min_artifact_area_mm2 = 0.005     # smaller artifact regions (specks) stay tissue
+    min_tissue_area_mm2 = 0.01
+
+    def __init__(self, remove_artifacts: bool = False, **build_kwargs: Dict[str, Any]):
+        """
+        TissueQCSegmenter initialization.
+
+        Parameters:
+            remove_artifacts (bool, optional):
+                Cut artifact regions out of the tissue mask. Defaults to False.
+            **build_kwargs (dict):
+                Forwarded to ``BaseSegmentationModel``. ``confidence_thresh`` is the artifact probability
+                threshold: a pixel is artifact when p(artifact) >= this value. Lower it to find more artifacts.
+        """
+        super().__init__(**build_kwargs)
+        self.remove_artifacts = remove_artifacts
+
+    def _build(self) -> Tuple[nn.Module, transforms.Compose]:
+        """
+        Build and load the TissueQC model.
+
+        Returns:
+            Tuple[nn.Module, transforms.Compose]: Model and preprocessing transforms.
+        """
+        import segmentation_models_pytorch as smp
+        from safetensors.torch import load_file
+
+        weights_path = get_weights_path('seg', 'tissueqc')
+
+        # Check if a path is provided but doesn't exist
+        if weights_path and not os.path.isfile(weights_path):
+            raise FileNotFoundError(f"Expected checkpoint at '{weights_path}', but the file was not found.")
+
+        if not weights_path:
+            if not BaseSegmentationModel._has_internet:
+                raise FileNotFoundError(
+                    f"Internet connection not available and checkpoint not found locally in model registry at trident/segmentation_models/local_ckpts.json.\n\n"
+                    f"To proceed, please manually download {self.CKPT_NAME} from:\n"
+                    f"https://huggingface.co/{self.HF_REPO}/\n"
+                    f"and place it at:\nlocal_ckpts.json"
+                )
+
+            # If internet is available, download from HuggingFace
+            from huggingface_hub import snapshot_download
+            checkpoint_dir = snapshot_download(
+                repo_id=self.HF_REPO,
+                repo_type='model',
+                local_dir=get_dir(),
+                cache_dir=get_dir(),
+                allow_patterns=[self.CKPT_NAME]
+            )
+            weights_path = os.path.join(checkpoint_dir, self.CKPT_NAME)
+
+        model = smp.Unet(encoder_name="tu-efficientnet_b0", encoder_weights=None, classes=3,
+                         decoder_channels=(128, 64, 48, 32, 16))
+        model.load_state_dict(load_file(weights_path))
+
+        # Store configuration
+        self.input_size = 512
+        self.precision = torch.bfloat16
+        self.target_mag = 5
+        # 5x tiles are cheap to infer and costly to decode: small batches spread over many loader workers
+        self.batch_size = 4
+        self.num_workers = 32
+
+        eval_transforms = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406),
+                                 std=(0.229, 0.224, 0.225))
+        ])
+
+        return model, eval_transforms
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """
+        Class map per pixel: uint8 tensor of shape (batch_size, H, W) with 0 background, 1 tissue, 2 artifact.
+        """
+        assert len(image.shape) == 4, f"Input must be 4D image tensor (shape: batch_size, C, H, W), got {image.shape} instead"
+        probs = self.model(image).float().softmax(1)
+        classes = (probs[:, 0] < 0.5).to(torch.uint8)
+        classes[probs[:, 2] >= self.confidence_thresh] = 2
+        return classes
+
+    def to_contours(self, class_map, level0_mpp: float, holes_are_tissue: bool = True):
+        """
+        Tissue contours from the stitched class map of a slide (used by ``WSI.segment_tissue``).
+
+        Parameters:
+            class_map (np.ndarray): Stitched output of :meth:`forward` at ``10 / target_mag`` um/px.
+            level0_mpp (float): Pixel size of the slide's level 0, used to scale contours to level-0 pixels.
+            holes_are_tissue (bool, optional): Fill holes enclosed by tissue. Defaults to True.
+
+        Returns:
+            gpd.GeoDataFrame: Tissue polygons (with holes) in level-0 pixels.
+        """
+        from trident.segmentation_models.model_zoo.tissueqc import tissue_masks, mask_to_polygons
+
+        default, clean = tissue_masks(
+            class_map,
+            holes_are_tissue=holes_are_tissue,
+            map_mpp=10 / self.target_mag,
+            mask_mpp=self.mask_mpp,
+            min_artifact_width_um=self.min_artifact_width_um,
+            min_artifact_area_mm2=self.min_artifact_area_mm2,
+        )
+        return mask_to_polygons(
+            clean if self.remove_artifacts else default,
+            mask_mpp=self.mask_mpp,
+            level0_mpp=level0_mpp,
+            min_tissue_area_mm2=self.min_tissue_area_mm2,
+            min_hole_area_mm2=self.min_artifact_area_mm2,
+        )
+
+
+class OtsuSegmenter(BaseSegmentationModel):
     """
     Classical image-processing tissue segmenter based on two-pass Otsu thresholding.
     """
@@ -396,7 +539,7 @@ def segmentation_model_factory(
     confidence_thresh: float = 0.5, 
     freeze: bool = True,
     **build_kwargs,
-) -> SegmentationModel:
+) -> BaseSegmentationModel:
     """
     Factory function to build a segmentation model by name.
     """
@@ -411,12 +554,16 @@ def segmentation_model_factory(
         )
 
     if model_name == 'hest':
-        return HESTSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = HESTSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'grandqc':
-        return GrandQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = GrandQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'grandqc_artifact':
-        return GrandQCArtifactSegmenter(freeze=freeze, **build_kwargs)
+        model = GrandQCArtifactSegmenter(freeze=freeze, **build_kwargs)
+    elif model_name == 'tissueqc':
+        model = TissueQCSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     elif model_name == 'otsu':
-        return OtsuSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
+        model = OtsuSegmenter(freeze=freeze, confidence_thresh=confidence_thresh, **build_kwargs)
     else:
         raise ValueError(f"Model type {model_name} not supported")
+    model.model_name = model_name  # canonical id for the uniform `.name` accessor
+    return model

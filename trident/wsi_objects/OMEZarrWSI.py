@@ -268,6 +268,7 @@ class OMEZarrWSI(WSI):
         >>> print(region.shape)
         (512, 512, 3)
         """
+        self._ensure_open()  # reopen the handle if this WSI is cold (e.g. unpickled in a worker)
         # 'location' is relative to the level as calls are made to the data array
         downsample_factor = self.level_downsamples[level]
         location_ = (

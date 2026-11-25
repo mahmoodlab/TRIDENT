@@ -41,9 +41,11 @@ Optional install profiles:
 When to use each profile:
 
 - ``.[patch-encoders]``: extra patch encoder dependencies (e.g., CONCH / MUSK / CTransPath).
-- ``.[slide-encoders]``: extra slide encoder dependencies (e.g., PRISM / GigaPath / Madeleine).
+- ``.[slide-encoders]``: extra slide encoder dependencies (e.g., PRISM / GigaPath / Madeleine / THREADS).
 - ``.[convert]``: required for ``trident convert`` workflows (BioFormats-backed conversion to pyramidal TIFF).
 - ``.[czi]``: enables the Zeiss CZI reader (``--reader_type czi``).
+- ``.[isyntax]``: enables native Philips iSyntax reading (``--reader_type isyntax``),
+  using pyisyntax >=0.1.7 for correct WSI pixel-size metadata.
 - ``.[omezarr]``: enables the OME-Zarr / NGFF reader (``--reader_type omezarr``).
 - ``.[full]``: install all model-related optional extras (does not include ``omezarr``).
 
@@ -58,7 +60,7 @@ GPU vs CPU
 ----------
 
 - **Segmentation**:
-  - ``hest`` / ``grandqc`` are GPU workflows in practice.
+  - ``hest`` / ``grandqc`` / ``tissueqc`` are GPU workflows in practice.
   - ``otsu`` is CPU-only and requires **no model weights**.
 - **Feature extraction** (patch or slide): GPU strongly recommended.
 

@@ -44,6 +44,12 @@ class CZIWSI(WSI):
         self._y0 = 0
         super().__init__(slide_path, **kwargs)
 
+    def __getstate__(self) -> dict:
+        """Also drop the open-file context, which is a live handle like ``img``."""
+        state = super().__getstate__()
+        state['_ctx'] = None
+        return state
+
     def release(self) -> None:
         """Close the underlying CZI reader and release resources."""
         if self._ctx is not None:

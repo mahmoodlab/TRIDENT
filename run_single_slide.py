@@ -43,16 +43,19 @@ def parse_arguments():
                         help="Magnification at which patches/features are extracted")
     parser.add_argument("--patch_size", type=int, default=256, help="Patch size at which coords/features are extracted")
     parser.add_argument('--segmenter', type=str, default='hest', 
-                        choices=['hest', 'grandqc', 'otsu'],
-                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, or Otsu.')
-    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi'], default=None,
-                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi"]. Defaults to None (auto-determine which reader to use).')
+                        choices=['hest', 'grandqc', 'tissueqc', 'otsu'],
+                        help='Type of tissue vs background segmenter. Options are HEST, GrandQC, TissueQC (tissue, background '
+                             'and artifacts in one 5x model), or Otsu.')
+    parser.add_argument('--reader_type', type=str, choices=['openslide', 'image', 'cucim', 'sdpc', 'omezarr', 'czi', 'isyntax'], default=None,
+                    help='Force the use of a specific WSI image reader. Options are ["openslide", "image", "cucim", "sdpc", "omezarr", "czi", "isyntax"]. Defaults to None (auto-determine which reader to use).')
     parser.add_argument('--seg_conf_thresh', type=float, default=0.5, 
-                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option.')
+                    help='Confidence threshold to apply to binarize segmentation predictions. Lower this threhsold to retain more tissue. Defaults to 0.5. Try 0.4 as 2nd option. '
+                         'For TissueQC, the artifact probability threshold: lower it to find more artifacts.')
     parser.add_argument('--remove_holes', action='store_true', default=False, 
                         help='Do you want to remove holes?')
     parser.add_argument('--remove_artifacts', action='store_true', default=False, 
-                        help='Do you want to run an additional model to remove artifacts (including penmarks, blurs, stains, etc.)?')
+                        help='Do you want to remove artifacts (including penmarks, blurs, stains, etc.)? TissueQC removes them from '
+                             'its own prediction; other segmenters run an additional GrandQC model.')
     parser.add_argument('--remove_penmarks', action='store_true', default=False, 
                         help='Do you want to run an additional model to remove penmarks?')
     parser.add_argument('--custom_mpp_keys', type=str, nargs='+', default=None,
@@ -100,10 +103,16 @@ def process_slide(args):
             model_name=args.segmenter,
             confidence_thresh=args.seg_conf_thresh,
         )
-        if args.remove_artifacts or args.remove_penmarks:
+        # a segmenter that detects artifacts (TissueQC) removes them itself; GrandQC handles the rest
+        if getattr(segmentation_model, 'detects_artifacts', False):
+            segmentation_model.remove_artifacts = args.remove_artifacts
+            grandqc_artifacts = False
+        else:
+            grandqc_artifacts = args.remove_artifacts
+        if grandqc_artifacts or args.remove_penmarks:
             artifact_remover_model = segmentation_model_factory(
                 'grandqc_artifact',
-                remove_penmarks_only=args.remove_penmarks and not args.remove_artifacts
+                remove_penmarks_only=not grandqc_artifacts
             )
         else:
             artifact_remover_model = None
@@ -113,7 +122,8 @@ def process_slide(args):
             target_mag=segmentation_model.target_mag,
             job_dir=args.job_dir,
             device=seg_device,
-            holes_are_tissue=not args.remove_holes
+            holes_are_tissue=not args.remove_holes,
+            batch_size=getattr(segmentation_model, 'batch_size', 16),
         )
         # additionally remove artifacts for better segmentation.
         if artifact_remover_model is not None:

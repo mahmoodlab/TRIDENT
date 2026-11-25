@@ -70,8 +70,9 @@ class TestMPSDevice(unittest.TestCase):
                 slide = MagicMock()
                 slide.name = "slide"
                 encoder = MagicMock()
+                segmenter = MagicMock(detects_artifacts=False)
                 with patch.object(single, "load_wsi") as loader, \
-                     patch.object(single, "segmentation_model_factory"), \
+                     patch.object(single, "segmentation_model_factory", return_value=segmenter), \
                      patch.object(single, "encoder_factory", return_value=encoder):
                     loader.return_value.__enter__.return_value = slide
                     single.process_slide(args)
