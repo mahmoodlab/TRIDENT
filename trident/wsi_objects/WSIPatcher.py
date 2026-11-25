@@ -164,6 +164,9 @@ class WSIPatcher:
         self.level, self.patch_size_level, self.overlap_level = self._prepare()  
         
         if custom_coords is None: 
+            step = self.patch_size_src - self.overlap_src
+            if step <= 0:
+                raise ValueError("Patch stride must be positive after rounding; reduce overlap or increase patch_size.")
             self.cols, self.rows = self._compute_cols_rows()
 
             if self.scan_order not in ("row-major", "col-major"):
@@ -182,7 +185,6 @@ class WSIPatcher:
                 col_rows = np.stack([cc.ravel(order="F"), rr.ravel(order="F")], axis=1)
 
             # Convert (col, row) -> (x, y) in level-0 coordinates.
-            step = self.patch_size_src - self.overlap_src
             coords = np.empty_like(col_rows)
             coords[:, 0] = col_rows[:, 0] * step
             coords[:, 1] = col_rows[:, 1] * step

@@ -192,7 +192,7 @@ to a `coords`/`all` run — writes PNGs (or `--dump_patches_format jpg`) to
 ## Common pitfalls
 
 - Mismatched `--patch_size`/`--mag` for the chosen encoder → meaningless features.
-- **`--overlap` must be `< --patch_size`.** `--overlap >= --patch_size` makes the patch step ≤ 0 and **hangs forever** (no error). Overlap is absolute pixels (e.g. `128` = 50% of a 256px patch).
+- Keep `--overlap` smaller than `--patch_size`. Patching raises a `ValueError` if overlap is at least as large as the patch size after both are rounded to level-0 pixels. Overlap is absolute pixels (e.g. `128` = 50% of a 256px patch).
 - Re-patching with a changed `--min_tissue_proportion` (or seg settings) on an existing `--job_dir` has **no effect** — the coords folder is keyed only by `mag/patch/overlap`, so the old coords are reused. Use a fresh `--job_dir` to re-patch.
 - `--patch_encoder_img_size` and `--patch_encoder_ckpt_path` apply only to `--patch_encoder`; they are silently ignored when `--slide_encoder` is set.
 - `--task coords`/`feat` on a fresh `--job_dir` → silently skips (no prior stage); use `--task all`, or run the stages in order.
