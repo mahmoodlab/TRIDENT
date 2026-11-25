@@ -13,6 +13,7 @@ from trident import load_wsi
 from trident.segmentation_models import segmentation_model_factory
 from trident.patch_encoder_models import encoder_factory
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.patch_encoder_models.load import PREFERRED_MAG_AND_PATCH_SIZE, resolve_patching_defaults
 from trident.Summary import start_run, finalize_run
 
 
@@ -77,7 +78,11 @@ def parse_arguments():
         '--dump_patches_jpeg_quality', type=int, default=90,
         help='JPEG quality (1-100) when --dump_patches_format=jpg. Defaults to 90.'
     )
-    return parser.parse_args()
+    # argparse skips defaults for attributes already set, so None marks an omitted flag.
+    args = parser.parse_args(namespace=argparse.Namespace(mag=None, patch_size=None))
+    preferred = PREFERRED_MAG_AND_PATCH_SIZE[args.patch_encoder]
+    resolve_patching_defaults(parser, args, args.patch_encoder, preferred)
+    return args
 
 
 def process_slide(args):

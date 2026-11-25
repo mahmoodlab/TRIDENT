@@ -76,14 +76,17 @@ class TestParsersExposeFlag(unittest.TestCase):
         self.assertEqual(args.patch_encoder_img_size, 512)
 
     def test_single_parser_defaults_to_none(self):
+        # Explicit patching flags satisfy the conch_v15 check so this tests img_size.
         with patch("sys.argv", ["run_single_slide.py", "--slide_path", "x.svs",
-                                "--job_dir", "job"]):
+                                "--job_dir", "job", "--mag", "20", "--patch_size", "512"]):
             args = single_mod.parse_arguments()
         self.assertIsNone(args.patch_encoder_img_size)
 
     def test_single_parser_accepts_value(self):
+        # Explicit patching flags satisfy the conch_v15 check so this tests img_size.
         with patch("sys.argv", ["run_single_slide.py", "--slide_path", "x.svs",
-                                "--job_dir", "job", "--patch_encoder_img_size", "448"]):
+                                "--job_dir", "job", "--mag", "20", "--patch_size", "512",
+                                "--patch_encoder_img_size", "448"]):
             args = single_mod.parse_arguments()
         self.assertEqual(args.patch_encoder_img_size, 448)
 

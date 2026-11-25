@@ -20,6 +20,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 from trident import Processor 
 from trident.patch_encoder_models import encoder_registry as patch_encoder_registry
+from trident.patch_encoder_models.load import PREFERRED_MAG_AND_PATCH_SIZE, resolve_patching_defaults
 from trident.slide_encoder_models import encoder_registry as slide_encoder_registry
 
 # ABMIL is an untrained aggregator that needs hyperparameters the CLI cannot pass (Python API only).
@@ -203,7 +204,9 @@ def parse_arguments() -> argparse.Namespace:
     Returns:
         argparse.Namespace: Parsed command-line arguments.
     """
-    args = build_parser().parse_args()
+    parser = build_parser()
+    # argparse skips defaults for attributes already set, so None marks an omitted flag.
+    args = parser.parse_args(namespace=argparse.Namespace(mag=None, patch_size=None))
 
     # Normalize to always have `args.gpus` so downstream code only needs one path.
     if args.gpus is None:
@@ -225,6 +228,12 @@ def parse_arguments() -> argparse.Namespace:
         else:
             args.patch_encoder = slide_to_patch_encoder_name.get(args.slide_encoder, args.patch_encoder)
 
+    makes_grid_for_features = args.task == 'all' or (args.task == 'feat' and not args.coords_dir)
+    preferred = None
+    if makes_grid_for_features:
+        # Madeleine uses a different grid from its CONCH backbone.
+        preferred = (10, 256) if args.slide_encoder == 'madeleine' else PREFERRED_MAG_AND_PATCH_SIZE.get(args.patch_encoder)
+    resolve_patching_defaults(parser, args, args.slide_encoder or args.patch_encoder, preferred)
     return args
 
 
