@@ -47,6 +47,16 @@ class TestRunBatchOfSlides(unittest.TestCase):
         kwargs = processor.calls[0][1]
         self.assertEqual(kwargs["device"], "cpu")
 
+    def test_otsu_artifact_remover_uses_execution_device(self):
+        processor = _DummyProcessor()
+        args = self._base_args("otsu")
+        args.device = "mps"
+        args.remove_artifacts = True
+        with patch("trident.segmentation_models.load.segmentation_model_factory", return_value=_DummySegmentationModel()):
+            batch_mod.run_task(processor, args)
+        self.assertEqual(processor.calls[0][1]["device"], "cpu")
+        self.assertEqual(processor.calls[0][1]["artifact_device"], "mps")
+
     def test_run_task_seg_uses_gpu_for_hest(self):
         processor = _DummyProcessor()
         args = self._base_args("hest")
@@ -283,6 +293,13 @@ class TestRunBatchOfSlides(unittest.TestCase):
                 with patch("sys.argv", base + ["--slide_encoder", slide_encoder]):
                     args = batch_mod.parse_arguments()
                 self.assertEqual(args.patch_encoder, expected)
+
+        for device in ("cpu", "mps"):
+            with self.subTest(device=device), patch("torch.backends.mps.is_available", return_value=True):
+                with patch("sys.argv", base + ["--slide_encoder", "mean-uni_v1", "--device", device]):
+                    args = batch_mod.parse_arguments()
+                self.assertEqual(args.device, device)
+                self.assertEqual(args.patch_encoder, "uni_v1")
 
         with patch("sys.argv", base + ["--patch_encoder", "uni_v1"]):
             self.assertEqual(batch_mod.parse_arguments().patch_encoder, "uni_v1")

@@ -211,18 +211,16 @@ def parse_arguments() -> argparse.Namespace:
         parser.error('MPS is not available. Use --device cpu or a PyTorch build and Mac with MPS support.')
     if args.device is not None:
         args.gpus = [-1]
-        return args
+    else:
+        # Normalize to always have `args.gpus` so downstream code only needs one path.
+        if args.gpus is None:
+            args.gpus = [args.gpu]
+        elif "--gpu" in sys.argv:
+            print("[MAIN] Warning: `--gpu` is deprecated and ignored when `--gpus` is provided.")
 
-    # Normalize to always have `args.gpus` so downstream code only needs one path.
-    if args.gpus is None:
-        args.gpus = [args.gpu]
-    elif "--gpu" in sys.argv:
-        print("[MAIN] Warning: `--gpu` is deprecated and ignored when `--gpus` is provided.")
-
-    # Normalize a default device for single-process paths.
-    # Multi-process workers override this per worker via `worker_args.device`.
-    primary_gpu = (args.gpus or [-1])[0]
-    args.device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
+        # Multi-process workers override this per worker via `worker_args.device`.
+        primary_gpu = (args.gpus or [-1])[0]
+        args.device = f"cuda:{primary_gpu}" if primary_gpu >= 0 else "cpu"
 
     # A slide encoder selects its own patch encoder. Record that one so run manifests
     # and summary.md report the encoder that is actually used.
@@ -325,6 +323,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
             seg_mag=segmentation_model.target_mag,
             holes_are_tissue= not args.remove_holes,
             artifact_remover_model=artifact_remover_model,
+            artifact_device=device,
             batch_size=(args.seg_batch_size if args.seg_batch_size is not None
                         else getattr(segmentation_model, 'batch_size', None) or args.batch_size),
             device=seg_device,
@@ -363,7 +362,7 @@ def run_task(processor: Processor, args: argparse.Namespace) -> None:
                 batch_limit=args.feat_batch_size if args.feat_batch_size is not None else args.batch_size,
             )
         else:
-            if device == 'mps' and args.slide_encoder in {'gigapath', 'gigapath-flash', 'prism2'}:
+            if torch.device(device).type == 'mps' and slide_encoder_registry[args.slide_encoder].requires_flash_attention:
                 raise ValueError(f"The {args.slide_encoder} slide encoder requires FlashAttention and does not support MPS. Use a supported patch encoder or run this slide encoder on CUDA.")
             from trident.slide_encoder_models.load import encoder_factory
             encoder = encoder_factory(args.slide_encoder)

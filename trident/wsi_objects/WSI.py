@@ -37,7 +37,7 @@ def _warn_ctx_fallback_once(key: str, message: str) -> None:
 
 
 def _dataloader_context_candidates(num_workers: int, device: str = 'cpu'):
-    if not num_workers or num_workers <= 0 or device == 'mps':
+    if not num_workers or num_workers <= 0 or torch.device(device).type == 'mps':
         return [None]
 
     candidates = []

@@ -87,6 +87,12 @@ This does not make every encoder MPS-compatible: GigaPath, GigaPath-Flash, and
 PRISM2 **slide encoders** require FlashAttention and cannot run on MPS.
 Other encoders still depend on their model-specific operators and precision.
 
+In the batch CLI, an additional artifact-removal model uses the selected
+segmentation batch size: `--seg_batch_size` takes precedence over the tissue
+model's batch size, if defined, and otherwise `--batch_size` (default 64).
+Previously, artifact removal used its own default of 16. This also affects CUDA
+and can increase GPU memory use; lower `--seg_batch_size` if needed.
+
 Convert images/WSIs to pyramidal TIFF:
 ```
 trident convert --input_dir ./wsis --mpp_csv ./wsis/to_process.csv --job_dir ./pyramidal_tiff --downscale_by 1 --num_workers 1

@@ -263,6 +263,7 @@ class Processor:
         batch_size: int = 16,
         artifact_remover_model: torch.nn.Module = None,
         device: str = 'cuda:0', 
+        artifact_device: str = None,
     ) -> str:
         """
         The `run_segmentation_job` function performs tissue segmentation on all slides managed by the processor. 
@@ -284,6 +285,8 @@ class Processor:
                 A pre-trained PyTorch model that can remove artifacts from an existing segmentation. Defaults to None.
             device (str): 
                 The computation device to use (e.g., 'cuda:0' for GPU or 'cpu' for CPU).
+            artifact_device (str, optional):
+                Device for artifact removal. Defaults to the segmentation device.
 
         Returns:
             str: Absolute path to where directory containing contours is saved.
@@ -379,7 +382,7 @@ class Processor:
                         segmentation_model=artifact_remover_model,
                         target_mag=artifact_remover_model.target_mag,
                         batch_size=batch_size,
-                        device=device,
+                        device=artifact_device if artifact_device is not None else device,
                         holes_are_tissue=False,
                         job_dir=self.job_dir
                     )

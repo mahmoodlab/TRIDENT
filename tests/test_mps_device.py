@@ -82,7 +82,9 @@ class TestMPSDevice(unittest.TestCase):
                 encoder.to.assert_called_once_with(device)
 
     def test_mps_never_uses_a_multiprocessing_context(self):
-        self.assertEqual(wsi._dataloader_context_candidates(8, device="mps"), [None])
+        for device in ("mps", "mps:0", torch.device("mps"), torch.device("mps:0")):
+            with self.subTest(device=device):
+                self.assertEqual(wsi._dataloader_context_candidates(8, device=device), [None])
 
     def test_processor_routes_artifact_removal_to_requested_device(self):
         module = importlib.import_module("trident.Processor")
@@ -101,6 +103,22 @@ class TestMPSDevice(unittest.TestCase):
         self.assertEqual(len(slide.segment_tissue.call_args_list), 2)
         self.assertTrue(all(call.kwargs["device"] == "mps" for call in slide.segment_tissue.call_args_list))
         self.assertEqual([call.kwargs["batch_size"] for call in slide.segment_tissue.call_args_list], [7, 7])
+
+    def test_processor_allows_separate_artifact_device(self):
+        module = importlib.import_module("trident.Processor")
+        processor = module.Processor.__new__(module.Processor)
+        slide = MagicMock()
+        slide.name, slide.ext = "slide", ".svs"
+        processor.wsis = [slide]
+        processor.skip_errors = False
+        processor.save_config = MagicMock()
+        processor._record_outcome = MagicMock()
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(module, "create_lock"), patch.object(module, "remove_lock"), \
+             patch.object(module.gpd, "read_file", return_value=MagicMock(empty=False)):
+            processor.job_dir = directory
+            processor.run_segmentation_job(MagicMock(), artifact_remover_model=MagicMock(), device="cpu", artifact_device="mps")
+        self.assertEqual([call.kwargs["device"] for call in slide.segment_tissue.call_args_list], ["cpu", "mps"])
 
     def test_macos_does_not_try_fork(self):
         with patch.object(wsi.sys, "platform", "darwin"):
