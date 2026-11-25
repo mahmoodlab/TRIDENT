@@ -134,10 +134,13 @@ Use the CSV `mpp` column to *supply* a value; use `--custom_mpp_keys` only when 
 *is* in the slide metadata under a non-standard key. `--mag` in batch mode accepts floats
 (e.g. `1.25`).
 
-**6. Reuse existing patch coordinates** (e.g. legacy CLAM `*_fp/`): skip seg+patching and
+**6. Reuse existing or custom patch coordinates** (e.g. legacy CLAM `*_fp/`, or detected objects/annotations): skip seg+patching and
 point feat at them — `--task feat --coords_dir ./extracted_mag20x_patch256_fp ...` with the
 encoder's required patch_size/mag (must match the coords' resolution). `--wsi_dir` is still
-required (features read pixels from the WSIs).
+required (features read pixels from the WSIs). For your own points/boxes, write `(N, 2)`
+level-0 top-left patch origins with `trident.IO.coords_to_h5` to `<job_dir>/<coords_dir>/patches/<slide>_patches.h5`
+and run `--task feat --coords_dir <coords_dir>` (or `WSI.extract_patch_features(coords_path=...)` in Python);
+magnification and patch size come from the coordinate `.h5` file.
 
 ## Outputs (under `--job_dir`)
 
