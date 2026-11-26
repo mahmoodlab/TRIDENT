@@ -370,10 +370,11 @@ class TissueQCSegmenter(BaseSegmentationModel):
     (fold, ink, out-of-focus area, knife line, bubble, debris). The same prediction gives the default
     tissue mask (artifacts on tissue kept) or, with ``remove_artifacts``, the mask with artifact regions
     cut out, so no separate artifact model is needed. Weights: https://huggingface.co/JaumeLab/TissueQC
-    (Apache-2.0).
+    (Apache-2.0), release pinned by ``HF_REVISION``.
     """
 
     HF_REPO = "JaumeLab/TissueQC"
+    HF_REVISION = "v1.1.0"            # weights release on the Hub (tag); v1.0.0 is the first release
     CKPT_NAME = "model.safetensors"
     detects_artifacts = True          # artifacts come from this model's own prediction
 
@@ -418,7 +419,7 @@ class TissueQCSegmenter(BaseSegmentationModel):
                 raise FileNotFoundError(
                     f"Internet connection not available and checkpoint not found locally in model registry at trident/segmentation_models/local_ckpts.json.\n\n"
                     f"To proceed, please manually download {self.CKPT_NAME} from:\n"
-                    f"https://huggingface.co/{self.HF_REPO}/\n"
+                    f"https://huggingface.co/{self.HF_REPO}/tree/{self.HF_REVISION}\n"
                     f"and place it at:\nlocal_ckpts.json"
                 )
 
@@ -427,6 +428,7 @@ class TissueQCSegmenter(BaseSegmentationModel):
             checkpoint_dir = snapshot_download(
                 repo_id=self.HF_REPO,
                 repo_type='model',
+                revision=self.HF_REVISION,
                 local_dir=get_dir(),
                 cache_dir=get_dir(),
                 allow_patterns=[self.CKPT_NAME]

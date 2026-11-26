@@ -159,7 +159,7 @@ pass its required patch_size/mag.
 
 - `hest` (default): general tissue-vs-background, GPU.
 - `grandqc`: fast H&E (non-commercial license; cite the GrandQC paper).
-- `tissueqc`: tissue, background and artifact (fold, ink, blur, knife line, bubble, debris) in one 5x pass, GPU, Apache-2.0 weights (`JaumeLab/TissueQC`). Default mask keeps artifacts on tissue; `--remove_artifacts` cuts regions at least 24 µm wide and 0.005 mm² large out of the same prediction. Can over-call artifact on dense tumour, smooth muscle, fat septa and thyroid colloid edges.
+- `tissueqc`: tissue, background and artifact (fold, ink, blur, knife line, bubble, debris) in one 5x pass, GPU, Apache-2.0 weights (`JaumeLab/TissueQC`). Default mask keeps artifacts on tissue; `--remove_artifacts` cuts regions at least 24 µm wide and 0.005 mm² large out of the same prediction. Can over-call artifact on thyroid colloid edges and draw a thin artifact rim along tissue edges.
 - `otsu`: classical thresholding, **CPU-only**, no model download — the fallback when no GPU.
 - `--remove_penmarks`: removes GrandQC class PenMarking (+Background). Gentle.
 - `--remove_artifacts`: keeps **only** GrandQC class "Normal Tissue", removing Fold,
