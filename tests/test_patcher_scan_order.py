@@ -63,6 +63,17 @@ def _seek_distance(coords: np.ndarray, *, weight_x: int = 1, weight_y: int = 1) 
 
 
 class TestWSIPatcherScanOrder(unittest.TestCase):
+    def test_rounded_zero_stride_rejected_only_for_new_grid(self):
+        # At 40x on a 20x slide, 256 / 2 and 255 / 2 both round to 128, so the stride is 0.
+        kwargs = dict(
+            wsi=_DummyWSI(512, 512), patch_size=256, overlap=255,
+            src_mag=20, dst_mag=40, coords_only=True,
+        )
+        with self.assertRaisesRegex(ValueError, "stride"):
+            WSIPatcher(**kwargs)
+        patcher = WSIPatcher(**kwargs, custom_coords=np.array([[0, 0]]))
+        self.assertEqual(len(patcher), 1)
+
     def test_row_major_has_better_locality_than_col_major(self):
         patch_size = 256
         overlap = 0

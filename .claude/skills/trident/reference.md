@@ -63,7 +63,7 @@ without features, run `--task seg` then `--task coords`.
 **Patching**
 - `--mag FLOAT` (default 20.0) — target magnification; floats allowed (e.g. `1.25`).
 - `--patch_size INT` (default 512).
-- `--overlap INT` (default 0) — absolute pixels (e.g. 128 = 50% overlap on 256px). **Must be `< --patch_size`**; `>=` makes the step ≤ 0 and hangs the patching loop forever.
+- `--overlap INT` (default 0) — absolute pixels (e.g. 128 = 50% overlap on 256px). Keep `--overlap` smaller than `--patch_size`. Patching raises a `ValueError` if overlap is at least as large as the patch size after both are rounded to level-0 pixels.
 - `--min_tissue_proportion FLOAT` (default 0.0) — min tissue fraction to keep a patch.
 - `--coords_dir PATH` — reuse externally generated coords (e.g. legacy CLAM `*_fp/`).
 - `--dump_patches` — during the `coords` task, also write the patch **images** (not just coordinates) to `<mag>x_<ps>px_<ov>px_overlap/patch_images/<slide>/`.

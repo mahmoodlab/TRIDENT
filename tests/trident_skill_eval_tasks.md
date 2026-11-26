@@ -274,7 +274,7 @@ reproduce the heavy-OOF case.)
   artifacts correctly (use `coords` for spatial placement; know features `.h5` carries coords; scale
   level-0 coords to the thumbnail). Misusing the artifact contract is a fail.
 - Watch for the documented footguns: `--task coords` on a fresh dir, bare `--slide_encoder`,
-  `--overlap >= --patch_size` (hangs), changing `--min_tissue_proportion` on an existing `--job_dir`
+  `--overlap >= --patch_size` after level-0 rounding (raises `ValueError`), changing `--min_tissue_proportion` on an existing `--job_dir`
   (no effect), and `--remove_artifacts` emptying soft MIRAX slides.
 - For the Complex track (CX1–CX5): the point is **composing TRIDENT multiple ways** — a pass
   requires the several distinct runs actually performed with correct per-run parameters (e.g. each
