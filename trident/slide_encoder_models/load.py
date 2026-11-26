@@ -110,6 +110,7 @@ slide_to_patch_encoder_name = {
 
 
 class BaseSlideEncoder(torch.nn.Module, ABC):
+    requires_flash_attention = False
     
     def __init__(self, freeze: bool = True, **build_kwargs: Dict[str, Any]) -> None:
         """
@@ -289,6 +290,7 @@ class PRISMSlideEncoder(BaseSlideEncoder):
     
 
 class PRISM2SlideEncoder(BaseSlideEncoder):
+    requires_flash_attention = True
 
     def __init__(self, **build_kwargs):
         """
@@ -428,6 +430,7 @@ class CHIEFSlideEncoder(BaseSlideEncoder):
 
 class GigaPathSlideEncoder(BaseSlideEncoder):
     """GigaPath LongNet slide encoder (base class). Subclassed per variant (see below)."""
+    requires_flash_attention = True
     ENC_NAME = 'gigapath'
     SLIDE_ENC_ARCH = 'gigapath_slide_enc12l768d'
     IN_CHANS = 1536       # dim of the paired tile encoder's embeddings
