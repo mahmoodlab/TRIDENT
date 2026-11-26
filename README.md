@@ -129,7 +129,9 @@ If embedded MPP metadata is detected in a slide, Trident compares it to the CSV 
 
 Trident supports 34 patch encoders, loaded via a patch [`encoder_factory`](https://github.com/mahmoodlab/trident/blob/main/trident/patch_encoder_models/load.py). Models requiring specific installations will return error messages with additional instructions. Gated models on HuggingFace require access requests.
 
-| Patch Encoder         | Embedding Dim | Args                                                             | Link | License |
+For feature extraction, pass `--mag` or `--patch_size` explicitly if its default differs from the encoder's preference (except with `--task feat --coords_dir`).
+
+| Patch Encoder         | Embedding Dim | Preferred args                                                   | Link | License |
 |-----------------------|---------------:|------------------------------------------------------------------|------|---------|
 | **UNI**               | 1024           | `--patch_encoder uni_v1 --patch_size 256 --mag 20`               | [MahmoodLab/UNI](https://huggingface.co/MahmoodLab/UNI) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |
 | **UNI2-h**             | 1536           | `--patch_encoder uni_v2 --patch_size 256 --mag 20`               | [MahmoodLab/UNI2-h](https://huggingface.co/MahmoodLab/UNI2-h) | 🔒 [CC-BY-NC-ND-4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) |

@@ -84,6 +84,8 @@ Always copy the pair from the encoder table in [reference.md](reference.md). Com
 | `gigapath` (1536-d) / `gigapath-flash` (384-d) | `--patch_size 256 --mag 20` |
 | `ctranspath` (768-d) | `--patch_size 256 --mag 10` |
 
+When generating a grid for feature extraction, if you omit `--mag` or `--patch_size` and its default differs from the encoder's preference, the CLI stops and prints both options. Pass one explicitly.
+
 **2. Patch vs slide embeddings.** `--patch_encoder X` → one embedding per patch
 (`features_X/`, shape `(n_patches, dim)`). `--slide_encoder Y` → one embedding per slide
 (`slide_features_Y/`, shape `(dim,)`); it auto-runs the correct patch encoder first. Pass

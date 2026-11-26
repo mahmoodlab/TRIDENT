@@ -25,6 +25,64 @@ RESIZE_SUPPORTED_PATCH_ENCODERS = frozenset({
     "gigapath", "gigapath-flash", "hoptimus0", "hoptimus1", "gpfm", "lunit-vits8", "h0-mini",
 })
 
+# Preferred (magnification, patch size in pixels) pairs from the README encoder table.
+PREFERRED_MAG_AND_PATCH_SIZE = {
+    "uni_v1": (20, 256),
+    "uni_v2": (20, 256),
+    "conch_v1": (20, 512),
+    "conch_v15": (20, 512),
+    "virchow": (20, 224),
+    "virchow2": (20, 224),
+    "virchow2-cls": (20, 224),
+    "phikon": (20, 224),
+    "phikon_v2": (20, 224),
+    "keep": (20, 256),
+    "gigapath": (20, 256),
+    "gigapath-flash": (20, 256),
+    "hoptimus0": (20, 224),
+    "hoptimus1": (20, 224),
+    "h0-mini": (20, 224),
+    "musk": (20, 384),
+    "midnight12k": (20, 224),
+    "phaet": (20, 224),
+    "mascaret": (20, 224),
+    "mettle-1.5": (20, 224),
+    "openmidnight": (20, 224),
+    "gpfm": (20, 224),
+    "genbio-pathfm": (20, 224),
+    "plip": (20, 224),
+    "gemma4-e4b": (20, 224),
+    "gemma4-26b": (20, 224),
+    "kaiko-vits8": (20, 256),
+    "kaiko-vits16": (20, 256),
+    "kaiko-vitb8": (20, 256),
+    "kaiko-vitb16": (20, 256),
+    "kaiko-vitl14": (20, 256),
+    "lunit-vits8": (20, 224),
+    "hibou_l": (20, 224),
+    "ctranspath": (10, 256),
+    "resnet50": (20, 256),
+}
+
+
+def resolve_patching_defaults(parser, args, encoder, preferred):
+    """Fill omitted patching flags, requiring an explicit choice when a default differs."""
+    if preferred is not None:
+        missing = [
+            (flag, value)
+            for flag, value in zip(('mag', 'patch_size'), preferred)
+            if getattr(args, flag) is None and value != parser.get_default(flag)
+        ]
+        if missing:
+            preferred_flags = ' '.join(f'--{flag} {value:g}' for flag, value in missing)
+            default_flags = ' '.join(f'--{flag} {parser.get_default(flag):g}' for flag, _ in missing)
+            parser.error(f'{encoder} prefers {preferred_flags} (default is {default_flags}). Pass one explicitly.')
+
+    if args.mag is None:
+        args.mag = parser.get_default('mag')
+    if args.patch_size is None:
+        args.patch_size = parser.get_default('patch_size')
+
 
 def _resolve_target_img_size(enc_name: str, target_img_size: Optional[int], default_img_size: int, patch_size: int) -> int:
     """

@@ -1,9 +1,11 @@
+import io
 import unittest
 import os
 import tempfile
 from unittest.mock import patch
 
 import run_batch_of_slides as batch_mod
+from trident.patch_encoder_models.load import PREFERRED_MAG_AND_PATCH_SIZE, encoder_registry
 
 
 class _DummySegmentationModel:
@@ -262,7 +264,9 @@ class TestRunBatchOfSlides(unittest.TestCase):
 
     def test_parse_arguments_records_patch_encoder_of_slide_encoder(self):
         # Regression for #239: run manifests must report the patch encoder the slide encoder uses.
-        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis", "--task", "feat"]
+        # Pass patching flags explicitly so every encoder reaches the manifest check.
+        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis",
+                "--task", "feat", "--mag", "20", "--patch_size", "256"]
         cases = {
             "feather_uni_v2": "uni_v2",
             "titan": "conch_v15",
@@ -276,6 +280,61 @@ class TestRunBatchOfSlides(unittest.TestCase):
 
         with patch("sys.argv", base + ["--patch_encoder", "uni_v1"]):
             self.assertEqual(batch_mod.parse_arguments().patch_encoder, "uni_v1")
+
+    def test_preferred_patching_covers_patch_encoder_registry(self):
+        self.assertEqual(PREFERRED_MAG_AND_PATCH_SIZE.keys(), encoder_registry.keys())
+
+    def test_build_parser_keeps_numeric_patching_defaults(self):
+        args = batch_mod.build_parser().parse_args(
+            ["--job_dir", "job", "--wsi_dir", "wsis", "--task", "feat", "--patch_encoder", "uni_v1"]
+        )
+        self.assertEqual((args.mag, args.patch_size), (20.0, 512))
+        self.assertIs(type(args.mag), float)
+        self.assertIs(type(args.patch_size), int)
+
+    def test_parse_arguments_accepts_matching_defaults_and_explicit_patching(self):
+        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis"]
+        uni = ["--patch_encoder", "uni_v1"]
+        cases = [
+            (["--task", "feat", "--patch_encoder", "conch_v15"], (20.0, 512)),
+            (["--task", "feat", *uni, "--patch_size", "512"], (20.0, 512)),
+            (["--task", "all", *uni, "--mag", "1.25", "--patch_size", "384"], (1.25, 384)),
+            (["--task", "coords", *uni], (20.0, 512)),
+            (["--task", "feat", *uni, "--coords_dir", "stored"], (20.0, 512)),
+            (["--task", "feat", "--slide_encoder", "mean-kaiko-vit8s"], (20.0, 512)),
+            (["--task", "all", "--slide_encoder", "madeleine",
+              "--mag", "20", "--patch_size", "512"], (20.0, 512)),
+        ]
+        for flags, expected in cases:
+            with self.subTest(flags=flags), patch("sys.argv", base + flags):
+                args = batch_mod.parse_arguments()
+                self.assertEqual((args.mag, args.patch_size), expected)
+
+    def test_parse_arguments_errors_when_omitted_default_is_not_preferred(self):
+        base = ["run_batch_of_slides.py", "--job_dir", "job", "--wsi_dir", "wsis"]
+        uni = ["--patch_encoder", "uni_v1"]
+        cases = [
+            (["--task", "feat", *uni],
+             "uni_v1 prefers --patch_size 256 (default is --patch_size 512). Pass one explicitly."),
+            (["--task", "feat", *uni, "--mag", "10"],
+             "uni_v1 prefers --patch_size 256 (default is --patch_size 512). Pass one explicitly."),
+            # all can generate a grid even with a coords directory.
+            (["--task", "all", *uni, "--coords_dir", "stored"],
+             "uni_v1 prefers --patch_size 256 (default is --patch_size 512). Pass one explicitly."),
+            (["--task", "feat", "--slide_encoder", "feather_uni_v2"],
+             "feather_uni_v2 prefers --patch_size 256 (default is --patch_size 512). Pass one explicitly."),
+            (["--task", "feat", "--slide_encoder", "madeleine"],
+             "madeleine prefers --mag 10 --patch_size 256 (default is --mag 20 --patch_size 512). Pass one explicitly."),
+            (["--task", "feat", "--slide_encoder", "madeleine", "--patch_size", "256"],
+             "madeleine prefers --mag 10 (default is --mag 20). Pass one explicitly."),
+        ]
+        for flags, message in cases:
+            with self.subTest(flags=flags), patch("sys.argv", base + flags), \
+                 patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                with self.assertRaises(SystemExit) as error:
+                    batch_mod.parse_arguments()
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn(message, stderr.getvalue())
 
     def test_cli_slide_encoders_exclude_untrained_abmil(self):
         # ABMIL needs hyperparameters the CLI cannot pass, so it is Python API only.

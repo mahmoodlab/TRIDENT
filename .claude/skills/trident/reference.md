@@ -98,6 +98,8 @@ Same model/segmenter/patching flags as batch, but for one slide:
   `--seg_conf_thresh`, `--remove_holes`, `--remove_artifacts`, `--remove_penmarks`,
   `--reader_type`, `--custom_mpp_keys`.
 
+For feature extraction, pass `--mag` or `--patch_size` explicitly if its default differs from the encoder's preference (except with `--task feat --coords_dir`).
+
 ## Patch encoders
 
 Loaded via `trident.patch_encoder_models.encoder_factory(name)`. The `patch_size`/`mag`
