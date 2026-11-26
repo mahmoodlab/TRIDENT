@@ -81,6 +81,64 @@ Metadata and patching semantics
 
    By default, TRIDENT includes all tissue patches (including holes). Use `--remove_holes` to exclude them. Not recommended, as "holes" often help define the tissue microenvironment.
 
+.. _faq-custom-coords:
+
+.. dropdown:: **How do I extract patch features at custom coordinates (e.g., detected objects or annotations)?**
+
+   Use this when you want embeddings at specific locations—such as centers of detected
+   objects (glomeruli, tumor regions, cells) or annotation boxes—rather than a full tissue grid.
+
+   Convert level-0 ``(x, y)`` centers or boxes to ``(N, 2)`` level-0 top-left patch origins and
+   write the coordinate HDF5 with ``trident.IO.coords_to_h5``:
+
+   .. code-block:: python
+
+      from pathlib import Path
+      import numpy as np
+      from trident import load_wsi
+      from trident.IO import coords_to_h5
+
+      target_mag, patch_size = 20, 256
+      points = np.array([(768, 768), (1024, 768)])                # (x, y) at level 0
+      boxes = np.array([(1024, 256, 2048, 1280)])                 # xmin, ymin, xmax, ymax
+      centers = np.vstack([points, (boxes[:, :2] + boxes[:, 2:]) / 2])
+
+      coords_dir = Path("job/objects_20x_256px")
+      with load_wsi("wsis/example.svs", lazy_init=False) as wsi:
+          patch_size_level0 = round(patch_size * (wsi.mag / target_mag))
+          coords = np.floor(centers - patch_size_level0 / 2).astype(np.int64)
+          coords_path = coords_dir / "patches" / f"{wsi.name}_patches.h5"
+          coords_path.parent.mkdir(parents=True, exist_ok=True)
+          coords_to_h5(
+              coords=coords.tolist(), save_path=coords_path, patch_size=patch_size,
+              src_mag=wsi.mag, target_mag=target_mag, save_coords=str(coords_dir),
+              width=wsi.width, height=wsi.height, name=wsi.name, overlap=0,
+          )
+
+   Then run feature extraction pointing ``--coords_dir`` (relative to ``--job_dir``) at that folder:
+
+   .. code-block:: bash
+
+      python run_batch_of_slides.py --task feat --wsi_dir ./wsis --job_dir ./job \
+          --coords_dir objects_20x_256px --patch_encoder uni_v1
+
+   For a single slide in Python (``run_single_slide.py`` does not accept ``--coords_dir``), pass the file directly to ``WSI.extract_patch_features``:
+
+   .. code-block:: python
+
+      from trident import load_wsi
+      from trident.patch_encoder_models import encoder_factory
+
+      with load_wsi("wsis/example.svs", lazy_init=False) as wsi:
+          wsi.extract_patch_features(
+              patch_encoder=encoder_factory("uni_v1"),
+              coords_path="job/objects_20x_256px/patches/example_patches.h5",
+              save_features="job/objects_20x_256px/features_uni_v1",
+              device="cuda:0",
+          )
+
+   Magnification and patch size are read from the coordinate ``.h5`` file's metadata, and output rows preserve the input coordinate order.
+
 Models and compute (GPU/CPU)
 ----------------------------
 
