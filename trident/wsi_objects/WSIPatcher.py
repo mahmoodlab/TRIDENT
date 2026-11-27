@@ -379,7 +379,7 @@ class WSIPatcher:
         
     def _prepare(self) -> None:
         level, _ = self.wsi.get_best_level_and_custom_downsample(self.downsample, tolerance=0.1)
-        level_downsample = int(self.wsi.level_downsamples[level])
+        level_downsample = self.wsi.level_downsamples[level]
         patch_size_level = round(self.patch_size_src / level_downsample)
         overlap_level = round(self.overlap_src / level_downsample)
         return level, patch_size_level, overlap_level
